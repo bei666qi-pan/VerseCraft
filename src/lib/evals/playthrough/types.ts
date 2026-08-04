@@ -8,7 +8,7 @@
  * ④ 编排 harness — 跑 N 局 × M 个 persona，收集 transcript，聚合失败
  */
 
-import type { ChatSseProbeMetrics } from "@/lib/perf/chatSseProbe";
+import type { _ChatSseProbeMetrics } from "@/lib/perf/chatSseProbe";
 
 // === Persona 定义 ===
 
@@ -126,6 +126,8 @@ export interface PlaythroughTranscript {
   terminatedReason: TerminatedReason;
   totalSteps: number;
   durationMs: number;
+  /** 实验溯源身份 */
+  provenance?: import("@/lib/evals/harness/types").ExperimentProvenance;
 }
 
 export type TerminatedReason =

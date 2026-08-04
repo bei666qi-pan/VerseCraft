@@ -34,7 +34,7 @@ function checkFinalGate(latencyMs: number): GateCheckResult {
   return "fail";
 }
 
-function checkTtftP50Gate(latencyMs: number): GateCheckResult {
+function _checkTtftP50Gate(latencyMs: number): GateCheckResult {
   if (latencyMs <= TTFT_P50_BUDGET_MS) return "pass";
   return "fail";
 }

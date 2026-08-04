@@ -182,10 +182,6 @@ export interface NpcRelationStateV2 {
   trust: number;
   fear: number;
   debt: number;
-  affection: number;
-  desire: number;
-  romanceEligible: boolean;
-  romanceStage: "none" | "hint" | "bonded" | "committed";
   betrayalFlags: string[];
 }
 

@@ -14,6 +14,21 @@ function statVal(stats: Record<StatType, number> | null | undefined, k: StatType
 /** Stage-3 武器阶级加成：阶级越高，底子越扎实（轻量，避免数值碾压）。 */
 const WEAPON_TIER_SCORE: Record<string, number> = { C: 0, B: 0.6, A: 1.2, S: 2 };
 
+/** 将武器改装名映射为战斗弱点标签（"silent"→"silence", "echo_lure"→"sound" 等）。 */
+const MOD_TO_VULN_NORMALIZE: Record<string, string> = {
+  silent: "silence",
+  echo_lure: "sound",
+  mirror: "mirror",
+  grappling: "grappling",
+  conductive: "conductive",
+  anti_pollution: "anti_pollution",
+};
+
+function normalizeToCombatTag(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  return MOD_TO_VULN_NORMALIZE[lower] ?? lower;
+}
+
 function weaponCounterMatchBonus(
   weapon: Weapon,
   opponentVulnerableTags: string[] | undefined
@@ -23,7 +38,7 @@ function weaponCounterMatchBonus(
     [
       ...(Array.isArray(weapon.counterTags) ? weapon.counterTags : []),
       ...(Array.isArray(weapon.currentMods) ? weapon.currentMods : []),
-    ].map((x) => String(x).toLowerCase())
+    ].map((x) => normalizeToCombatTag(String(x)))
   );
   const matched = opponentVulnerableTags.some((t) => tagPool.has(String(t).toLowerCase()));
   // “用对武器”窗口：比笼统的 knowsWeakness 更具体，给稍高权重。

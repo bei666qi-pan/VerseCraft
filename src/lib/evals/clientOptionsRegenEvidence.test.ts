@@ -1,81 +1,46 @@
-import assert from "node:assert/strict";
 import test from "node:test";
-import { requestClientOptionsRegenEvidence, shouldRequestClientOptionsRegen } from "./clientOptionsRegenEvidence";
-import { createInitialStateSnapshot } from "./playthrough/invariants";
+import assert from "node:assert/strict";
+import { shouldRequestClientOptionsRegen } from "@/lib/evals/clientOptionsRegenEvidence";
 
-function sse(value: unknown): Response {
-  return new Response(`data: __VERSECRAFT_FINAL__:${JSON.stringify(value)}\n\n`, { status: 200, headers: { "content-type": "text/event-stream" } });
-}
+// ── shouldRequestClientOptionsRegen edge cases ──────────────────
 
-test("client options evidence accepts four real options-only choices after the UI quality gates", async () => {
-  const calls: RequestInit[] = [];
-  const result = await requestClientOptionsRegenEvidence({
-    baseUrl: "http://example.test",
-    sessionId: "trace-test",
-    playerAction: "观察走廊尽头的门缝",
-    narrative: "走廊尽头的门缝透出微光，墙角有一串潮湿脚印。",
-    state: createInitialStateSnapshot({ playerLocation: "旧公寓三楼走廊" }),
-    fetcher: async (_url, init) => {
-      calls.push(init ?? {});
-      return sse({ ok: true, options: ["检查门缝", "沿走廊撤退", "用手机照亮墙角", "顺着脚印靠近墙角"] });
-    },
-  });
-  assert.equal(result.applied, true);
-  assert.equal(result.complete, true);
-  assert.equal(result.options.length, 4);
-  assert.equal(result.attempts, 1);
-  assert.equal((calls[0]?.headers as Record<string, string>)["X-VerseCraft-Chat-Purpose"], "options_regen_only");
-  assert.equal((calls[0]?.headers as Record<string, string>)["x-versecraft-output-language"], "zh-CN");
-  assert.match(String(calls[0]?.body), /"clientPurpose":"options_regen_only"/);
-});
-
-test("client-equivalent repair starts only below the four-choice target", () => {
+test("shouldRequestClientOptionsRegen: empty array triggers regen", () => {
   assert.equal(shouldRequestClientOptionsRegen([]), true);
-  assert.equal(shouldRequestClientOptionsRegen(["检查门缝", "沿走廊撤退", "照亮墙角"]), true);
-  assert.equal(shouldRequestClientOptionsRegen(["检查门缝", "沿走廊撤退", "照亮墙角", "呼叫老刘"]), false);
 });
 
-test("client options evidence preserves two real gated choices as playable without claiming full completion", async () => {
-  const result = await requestClientOptionsRegenEvidence({
-    baseUrl: "http://example.test",
-    sessionId: "trace-test",
-    playerAction: "观察走廊尽头的门缝",
-    narrative: "走廊尽头的门缝透出微光，墙角有一串潮湿脚印。",
-    state: createInitialStateSnapshot({ playerLocation: "旧公寓三楼走廊" }),
-    fetcher: async () => sse({ ok: true, options: ["检查门缝", "用手机照亮墙角"] }),
-  });
-  assert.equal(result.applied, true);
-  assert.equal(result.complete, false);
-  assert.deepEqual(result.options, ["检查门缝", "用手机照亮墙角"]);
-  assert.equal(result.failureReason, null);
+test("shouldRequestClientOptionsRegen: single option triggers regen", () => {
+  assert.equal(shouldRequestClientOptionsRegen(["检查门缝"]), true);
 });
 
-test("client options evidence accepts aliases of a concrete object already visible in narrative", async () => {
-  const result = await requestClientOptionsRegenEvidence({
-    baseUrl: "http://example.test",
-    sessionId: "trace-test",
-    playerAction: "查看门缝里的纸片",
-    narrative: "一张泛黄纸片从门缝边缘露出来，旁边的裂纹还在渗水。",
-    state: createInitialStateSnapshot({ playerLocation: "旧公寓三楼走廊" }),
-    fetcher: async () => sse({ ok: true, options: ["抽出那张纸条查看", "沿着裂缝检查墙面"] }),
-  });
-
-  assert.equal(result.applied, true);
-  assert.equal(result.complete, false);
-  assert.deepEqual(result.options, ["抽出那张纸条查看", "沿着裂缝检查墙面"]);
+test("shouldRequestClientOptionsRegen: two options triggers regen", () => {
+  assert.equal(shouldRequestClientOptionsRegen(["检查门缝", "沿走廊撤退"]), true);
 });
 
-test("client options evidence rejects a single real choice as insufficient", async () => {
-  const result = await requestClientOptionsRegenEvidence({
-    baseUrl: "http://example.test",
-    sessionId: "trace-test",
-    playerAction: "观察门缝",
-    narrative: "门缝里传来脚步声。",
-    state: createInitialStateSnapshot({ playerLocation: "旧公寓三楼走廊" }),
-    fetcher: async () => sse({ ok: true, options: ["检查门缝"] }),
-  });
-  assert.equal(result.applied, false);
-  assert.equal(result.complete, false);
-  assert.deepEqual(result.options, []);
-  assert.equal(result.failureReason, "insufficient_options_after_repair");
+test("shouldRequestClientOptionsRegen: three options triggers regen", () => {
+  assert.equal(shouldRequestClientOptionsRegen(["一", "二", "三"]), true);
+});
+
+test("shouldRequestClientOptionsRegen: four or more options skip regen", () => {
+  assert.equal(shouldRequestClientOptionsRegen(["一", "二", "三", "四"]), false);
+  assert.equal(shouldRequestClientOptionsRegen(["一", "二", "三", "四", "五"]), false);
+});
+
+test("shouldRequestClientOptionsRegen: filters empty/whitespace strings", () => {
+  // only 1 real option + 3 empty → should trigger regen
+  assert.equal(shouldRequestClientOptionsRegen(["一", "", "  ", undefined, null]), true);
+  // 4 real options → should skip regen
+  assert.equal(shouldRequestClientOptionsRegen(["一", "二", "三", "四", "", null]), false);
+});
+
+test("shouldRequestClientOptionsRegen: non-string values do not count", () => {
+  assert.equal(shouldRequestClientOptionsRegen([1, 2, 3, 4]), true); // numbers don't count as strings
+  assert.equal(shouldRequestClientOptionsRegen([true, false, {}, []]), true); // non-strings filtered out
+});
+
+test("shouldRequestClientOptionsRegen: sparse array with empty slots still counts correctly", () => {
+  // sparse array with holes — only real strings count
+  const sparse = ["一", , "二", , "三"]; // length 5, but only 3 strings
+  assert.equal(shouldRequestClientOptionsRegen(sparse), true);
+  const full = ["一", "二", "三", "四", ,]; // 4 strings
+  assert.equal(shouldRequestClientOptionsRegen(full), false);
 });

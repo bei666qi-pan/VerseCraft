@@ -21,6 +21,6 @@ test("outcome maps to layered conflict result", () => {
   assert.equal(outcomeToResultLayer("pressured"), "forced_withdraw");
   assert.equal(outcomeToResultLayer("collapse"), "runaway_collapse");
   assert.ok(resultLayerToPlayerText("suppress_success").includes("压制成功"));
-  assert.ok(postureTierToThreatSense("under_pressure").length > 0);
+  assert.ok(postureTierToThreatSense("under_pressure").includes("被动"));
 });
 

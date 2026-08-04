@@ -207,6 +207,12 @@ export type NarrativeValidationReport = {
    * DM JSON with a non-story retry shell.
    */
   narrativeOverride: string | null;
+  /**
+   * Non-null when the action resolver backfills items from narrative
+   * (e.g. "捡起了徽章" but awarded_items was empty). Caller must merge
+   * these into the DM record's awarded_items.
+   */
+  awardedItemsOverride: unknown[] | null;
   telemetry: NarrativeValidationTelemetry;
 };
 
@@ -376,13 +382,19 @@ function mapUnsupportedSeverity(code: UnsupportedFactIssueCode): "low" | "medium
  * 3-8 char match is too greedy *and* misses partial matches; overlapping
  * 3-grams gives a tight but reliable leak signal.
  */
-export function extractFactKeywords(content: string): string[] {
+export function extractFactKeywords(
+  content: string,
+  onLowSignal?: () => void
+): string[] {
   if (!isString(content) || !content.trim()) return [];
   const highSignalContent = HIGH_SIGNAL_FACT_KEYWORD_RE.test(content);
   // DM-only leak fallback is intentionally reserved for high-signal secrets.
   // Generic private lore often shares mundane scene words with safe prose, and
   // those should stay in lower-risk governance paths instead of clearing a turn.
-  if (!highSignalContent) return [];
+  if (!highSignalContent) {
+    onLowSignal?.();
+    return [];
+  }
   const runs = content.match(/[\u4e00-\u9fa5]+/g) ?? [];
   const out = new Set<string>();
   for (const run of runs) {
@@ -447,7 +459,7 @@ function optionLooksLikeCombatVerb(opt: string): boolean {
  * Avoids false positives on generic verbs like "拿着某物观察".
  */
 const INVENTORY_ACQUISITION_PATTERN =
-  /(捡起|拾起|收进口袋|放进口袋|装进背包|放入背包|收下了|得到了|获得了)/;
+  /(捡起|拾起|收进口袋|放进口袋|装进背包|放入背包|收下了|得到了|获得了|塞进(?:了)?(?:口袋|兜里|裤兜|包里|背包)|揣进(?:了)?(?:口袋|兜里|怀里)|握紧(?:了)?(?:钥匙|纸条|照片|徽章|卡片|信件|信)|抽出(?:了)?(?:信封|纸条|信件|钥匙|照片|文件|笔记本)|拿起(?:了)?(?:钥匙|纸条|照片|信封|信件|徽章|卡片)|取下(?:了)?(?:钥匙|纸条|照片|徽章|卡片|信件|笔记本)|翻出(?:了)?(?:钥匙|纸条|照片|信封|徽章|卡片)|摸出(?:了)?(?:钥匙|纸条|照片|徽章|卡片))/;
 const FIRST_PERSON_POSSESSION_PATTERN =
   /我(?:下意识)?(?:摸(?:了摸|向)?|伸手(?:摸向|探进)?|翻找)?(?:自己的)?(?:口袋|背包)(?:里|中的|内).{0,12}?(便签|纸条|钥匙|徽章|卡片|药|绷带|武器|刀|枪|证件|硬币|信|笔记本)/;
 
@@ -477,12 +489,15 @@ const LONG_TIME_FEEL_PATTERN =
 const TASK_COMPLETION_CLAIM_PATTERN =
   /(任务(?:已)?完成|任务(?:已)?结束|线索(?:已)?达成|支线(?:已)?达成|委托(?:已)?完成)/;
 
-function countFactKeywords(facts: readonly KnowledgeFact[]): string[] {
+function countFactKeywords(
+  facts: readonly KnowledgeFact[],
+  onLowSignal?: () => void
+): string[] {
   const out: string[] = [];
   for (const f of facts) {
     const content = (f as { content?: unknown }).content;
     if (!isString(content)) continue;
-    for (const k of extractFactKeywords(content)) {
+    for (const k of extractFactKeywords(content, onLowSignal)) {
       out.push(k);
     }
   }
@@ -509,13 +524,25 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
 
   // 1. DM-only fact leak detection.
   if (args.epistemicFilter && narrative) {
-    const dmKeywords = countFactKeywords(args.epistemicFilter.dmOnlyFacts);
+    let dmOnlyFactsLowSignalPresent = false;
+    const dmKeywords = countFactKeywords(
+      args.epistemicFilter.dmOnlyFacts,
+      () => { dmOnlyFactsLowSignalPresent = true; }
+    );
     const leaked = narrativeContainsAnyKeyword(narrative, dmKeywords);
     if (leaked) {
       issues.push({
         code: "dm_only_fact_leaked_in_narrative",
         detail: `keyword:${leaked}`,
         severity: "high",
+      });
+    }
+    // Telemetry: record when DM-only facts exist but are low-signal (not intercepted)
+    if (dmOnlyFactsLowSignalPresent && !leaked) {
+      issues.push({
+        code: "dm_only_fact_leaked_in_narrative",
+        detail: "low_signal:dm_only_facts_present_but_below_high_signal_threshold",
+        severity: "low",
       });
     }
   }
@@ -850,6 +877,11 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
         })()
       : null;
 
+  let awardedItemsOverride: unknown[] | null = null;
+  if (backfillResult?.didBackfill && backfillResult.awardedItems?.length) {
+    awardedItemsOverride = backfillResult.awardedItems;
+  }
+
   const telemetry: NarrativeValidationTelemetry = {
     totalIssues: issues.length,
     byCode,
@@ -895,6 +927,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     issues,
     optionsOverride,
     narrativeOverride,
+    awardedItemsOverride,
     telemetry,
   };
 }

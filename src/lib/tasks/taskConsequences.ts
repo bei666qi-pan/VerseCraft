@@ -71,7 +71,7 @@ export function deriveTaskConsequences(args: {
     if (t.canBackfire && Array.isArray(t.backfireConsequences)) {
       for (const raw of t.backfireConsequences.slice(0, 3)) {
         const s = asText(raw);
-        const m = s.match(/^rel:([^:]+):(favorability|trust|fear|debt|affection|desire):([+-]?\d+)$/);
+        const m = s.match(/^rel:([^:]+):(favorability|trust|fear|debt):([+-]?\d+)$/);
         if (!m) continue;
         const npcId = m[1] ?? "";
         const key = m[2] as keyof Omit<RelationshipStatePatch, "npcId">;
@@ -117,4 +117,3 @@ export function deriveTaskConsequences(args: {
     toastHint,
   };
 }
-

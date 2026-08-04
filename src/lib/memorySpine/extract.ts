@@ -112,16 +112,14 @@ function push(out: MemoryCandidateDraft[], row: MemoryCandidateDraft) {
   out.push({ ...row, summary: s.slice(0, 80) });
 }
 
-type RelationshipDeltaKey = "favorability" | "trust" | "fear" | "debt" | "affection" | "desire";
+type RelationshipDeltaKey = "favorability" | "trust" | "fear" | "debt";
 
-/** 与 mergeCodex（useGameStore.ts）累加语义保持一致的字段判定顺序：favorability > trust > fear > debt > affection > desire。 */
+/** 与 mergeCodex（useGameStore.ts）累加语义保持一致的字段判定顺序。 */
 const RELATIONSHIP_DELTA_KEYS: readonly RelationshipDeltaKey[] = [
   "favorability",
   "trust",
   "fear",
   "debt",
-  "affection",
-  "desire",
 ];
 
 /** 每个字段 + 方向对应的定性描述短句；不出现原始数值或内部字段名，可直接面向玩家呈现。 */
@@ -130,8 +128,6 @@ const RELATIONSHIP_DELTA_PHRASES: Record<RelationshipDeltaKey, { up: string; dow
   trust: { up: "看起来更信任你了", down: "对你起了些戒心" },
   fear: { up: "似乎有点怵你", down: "对你的怯意淡去了些" },
   debt: { up: "欠你的人情又多了一层", down: "还清了一些欠你的人情" },
-  affection: { up: "似乎更在意你了", down: "那份在意淡了几分" },
-  desire: { up: "眼神里多了些说不清的意味", down: "那点心思像是淡了" },
 };
 
 /**
@@ -415,4 +411,3 @@ export function extractMemoryCandidates(input: ExtractInput): MemoryCandidateDra
   compact.sort((a, b) => (b.salience * b.confidence) - (a.salience * a.confidence));
   return compact.slice(0, 14).map((row) => bindCandidateToChapter(row, chapter));
 }
-

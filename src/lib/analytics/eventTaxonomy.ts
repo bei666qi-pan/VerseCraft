@@ -74,7 +74,7 @@ const surveyRequiredPayload = ["surveyKey", "surveyVersion", "stepIndex", "quest
 const surveyOptionalPayload = ["version", "stepTotal", "placement", "mode", "surveyCompletion", "progressPct", "fromStepIndex", "toStepIndex", "reason", "message", "answeredCount", "responseId", "source", "completedStepCount", "hasUrl", "urlHost"];
 
 export const ANALYTICS_EVENT_TAXONOMY = {
-  page_viewed: c("page_viewed", "acquisition", "Privacy-minimized public page view.", sessionIdentity, ["visitorId"], [], "growth"),
+  page_viewed: c("page_viewed", "acquisition", "Privacy-minimized public page view.", sessionIdentity, ["visitorId"], ["trafficSource"], "growth"),
   home_viewed: c("home_viewed", "acquisition", "Home page impression and entry state.", sessionIdentity, ["entryState"], ["loggedIn", "hasLocalProgress", "hasCloud"], "growth"),
   home_auth_clicked: c("home_auth_clicked", "acquisition", "Home auth CTA clicked.", sessionIdentity, ["entryState"], ["mode", "placement"], "growth"),
   home_start_new_clicked: c("home_start_new_clicked", "acquisition", "Home start-new CTA clicked.", sessionIdentity, ["entryState"], ["loggedIn", "hasLocalProgress"], "growth"),

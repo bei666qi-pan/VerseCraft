@@ -13,7 +13,8 @@ test("getHiddenNpcCombatProfile: major npc 有稳定风格标签", () => {
 
 test("getHiddenNpcCombatProfile: dangerForPlayer 不返回裸数字", () => {
   const out = getHiddenNpcCombatProfile({ npcId: "N-010" });
-  assert.ok(typeof out.dangerForPlayer === "string");
+  assert.ok(typeof out.dangerForPlayer === "string" && out.dangerForPlayer.length > 0);
+  assert.ok(!/\d/.test(out.dangerForPlayer));
   assert.ok(!/\d/.test(out.displayName));
 });
 

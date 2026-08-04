@@ -135,7 +135,15 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     currentLocation: legacy.playerLocation ?? "B1_SafeZone",
     alive: (legacy.stats?.sanity ?? DEFAULT_STATS.sanity) > 0,
     equippedWeapon: legacy.equippedWeapon ?? null,
-    weaponBag: (legacy as LegacySaveSurface & { weaponBag?: Weapon[] }).weaponBag ?? [],
+    weaponBag: (() => {
+      const bag = (legacy as LegacySaveSurface & { weaponBag?: Weapon[] }).weaponBag ?? [];
+      const eq = legacy.equippedWeapon;
+      // 防御性去重：如果旧存档中已装备武器同时也出现在武器背包中，从背包中移除
+      if (eq && eq.id && bag.length > 0) {
+        return bag.filter((w) => w.id !== eq.id);
+      }
+      return bag;
+    })(),
     day: legacy.time?.day ?? 0,
     hour: legacy.time?.hour ?? 0,
     dynamicNpcStates: legacy.dynamicNpcStates ?? {},

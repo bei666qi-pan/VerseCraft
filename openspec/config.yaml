@@ -1,6 +1,6 @@
 schema: spec-driven
 
-# This context is supplied to Codex whenever it creates or updates OpenSpec artifacts.
+# This context is supplied to configured coding agents whenever they create or update OpenSpec artifacts.
 context: |
   VerseCraft（文界工坊）是单机、浏览器内运行、AI 驱动的中文互动叙事游戏平台原型；
   当前主世界为「序章·暗月」。所有产品 UI 文案默认使用简体中文。

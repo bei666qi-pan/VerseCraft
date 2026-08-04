@@ -183,7 +183,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
         "对欣蓝（N-010）有旧七人阵残响信任，须任务互证后才并队",
         "与北夏（N-018）动线—货源互用非盟誓",
         "与枫（N-013）在『谁该被送上 7F』上长期张力",
-        "主锚复活节拍是他判断世界是否撒谎的参照，非恋爱羁绊",
+        "主锚复活节拍是他判断世界是否撒谎的职能参照",
       ],
     },
   },
@@ -386,7 +386,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolWandererNote:
       "同一权柄碎片流通链边缘的常驻者；循环后身份被写成游荡商人脸孔，仍保留对价本能。",
     residualEchoToProtagonist:
-      "与主锚有未结清「欠条」体感——非恋爱，是旧校互助券没撕干净。",
+      "与主锚有未结清「欠条」体感，源自旧校互助券没撕干净。",
     whyNotImmediateAlly:
       "并队必须计价；无偿跟队会破坏他维持的交换平衡，引来泡层反噬。",
     partyRelinkConditions: [
@@ -432,7 +432,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     ],
     riskTriggers: ["追问货源坐标", "要他无偿站队", "把人情当无限透支券"],
     traumaMechanism:
-      "交易节点记忆极强、私情压缩：欠条体感来自旧校互助券未撕净，不是恋爱脚本。",
+      "交易节点记忆极强：欠条体感来自旧校互助券未撕净。",
     implementationNotes: [
       "任务：merchant.fragment.trade、dragon.space.shard",
       "debt 数值门闸与履约回写",
@@ -523,7 +523,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
       "与北夏讨价还价后才敢给真货",
       "叶的冷淡是他最怕的否决票",
     ],
-    riskTriggers: ["当众拆穿剧本", "资源诱惑前加码", "把他当恋爱替身"],
+    riskTriggers: ["当众拆穿剧本", "资源诱惑前加码", "把他当替身"],
     traumaMechanism:
       "台词记忆强于悔意：替身梗被泡层兑现成现实，耻感晚到但锋利。",
     implementationNotes: [

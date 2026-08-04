@@ -1,7 +1,7 @@
 import type { ClueEntry } from "@/lib/domain/narrativeDomain";
 import type { ActiveMenu, CodexEntry, GameState, GameTask } from "@/store/useGameStore";
 import type { ConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
-import type { SaveSlotData } from "@/lib/state/schema";
+import type { SaveSlotData } from "@/store/useGameStore";
 import type { SnapshotMainThreatState } from "@/lib/state/snapshot/types";
 
 export type StoreGovernanceLayers = {

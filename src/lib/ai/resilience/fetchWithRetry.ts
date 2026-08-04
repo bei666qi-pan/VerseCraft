@@ -1,9 +1,7 @@
 // src/lib/ai/resilience/fetchWithRetry.ts
-import {
-  buildPlayerTurnJsonFallbackInit,
-  normalizePlayerTurnTerminalToolResponse,
-  shouldFallbackPlayerTurnTerminalTool,
-} from "@/lib/ai/stream/playerTurnTerminalToolResponse";
+import https from "node:https";
+import { Readable } from "node:stream";
+import { envBoolean } from "@/lib/config/envRaw";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -23,10 +21,66 @@ export function isRetryableHttpStatus(status: number): boolean {
   return status === 429 || status === 503 || status === 502 || status === 408;
 }
 
+/**
+ * HTTP/1.1-only fetch. Node's built-in fetch negotiates HTTP/2 with
+ * api.deepseek.com, and a pathological h2 DATA flood was observed to pin the
+ * whole event loop inside nghttp2 read callbacks — starving timers, new
+ * connections, and every later request (the "turn ~7 wedge"). `node:https`
+ * never speaks h2, so gateway traffic cannot take down the process this way.
+ */
+async function http1Fetch(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request(
+      {
+        method: (init.method as string | undefined) ?? "GET",
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        headers: init.headers as Record<string, string> | undefined,
+      },
+      (res) => {
+        const headers = new Headers();
+        for (const [key, value] of Object.entries(res.headers)) {
+          if (Array.isArray(value)) for (const item of value) headers.append(key, item);
+          else if (value !== undefined) headers.set(key, value);
+        }
+        const status = res.statusCode ?? 0;
+        const body =
+          status === 204 || status === 304
+            ? null
+            : (Readable.toWeb(res) as ReadableStream<Uint8Array>);
+        resolve(new Response(body, { status, statusText: res.statusMessage ?? "", headers }));
+      }
+    );
+    req.on("error", reject);
+    if (signal) {
+      if (signal.aborted) {
+        req.destroy(signal.reason ?? new Error("aborted"));
+        return;
+      }
+      signal.addEventListener(
+        "abort",
+        () => req.destroy(signal.reason ?? new Error("aborted")),
+        { once: true }
+      );
+    }
+    if (init.body) req.write(init.body as string);
+    req.end();
+  });
+}
+
+/** Whether gateway traffic is forced onto HTTP/1.1 (see http1Fetch). Kill switch: AI_GATEWAY_FORCE_HTTP1=0. */
+export function forceHttp1ForGateway(): boolean {
+  return envBoolean("AI_GATEWAY_FORCE_HTTP1", true);
+}
+
 export interface ResilientFetchOptions {
   timeoutMs: number;
   maxRetries: number;
   parentSignal?: AbortSignal;
+  /** "http1" forces the HTTP/1.1 transport (see http1Fetch); default is global fetch. */
+  transport?: "default" | "http1";
   isRetryable?: (response: Response | null, error: unknown) => boolean;
   onRetry?: (ctx: { attempt: number; waitMs: number; cause: "http" | "error"; status?: number }) => void;
 }
@@ -70,7 +124,10 @@ export async function resilientFetch(
         : timeoutController.signal;
 
     try {
-      lastResponse = await fetch(url, { ...init, signal: combined });
+      lastResponse =
+        options.transport === "http1"
+          ? await http1Fetch(url, init, combined)
+          : await fetch(url, { ...init, signal: combined });
       clearTimeout(timeoutId);
 
       if (await shouldFallbackPlayerTurnTerminalTool(lastResponse, init)) {

@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties, ReactNode } from "react";
 import { VcSpinner } from "@/features/play/components/VcSpinner";
 import { mobileReadingTheme } from "../theme";
 import type { MobileOptionsEmptyStateProps } from "../types";

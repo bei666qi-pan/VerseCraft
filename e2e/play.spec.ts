@@ -310,13 +310,13 @@ test.describe("Play page", () => {
       await page.getByPlaceholder("账号").fill(TEST_USER);
       await page.getByPlaceholder("密码").fill(TEST_PASS);
       await page.getByRole("button", { name: /登录|正在连接/ }).click();
-      await page.waitForTimeout(3000);
+      await page.waitForURL("**/play", { timeout: 10000 });
     }
 
     const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15000 });
     expect(res?.status()).toBeLessThan(500);
 
-    await page.waitForTimeout(5000);
+    await page.waitForLoadState("networkidle");
 
     const body = await page.locator("body").innerText();
     const hasAppError = body.includes("Application error") || body.includes("client-side exception");

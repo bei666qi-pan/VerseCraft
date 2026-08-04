@@ -48,11 +48,11 @@ function dmWire(): string {
 describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
   it("1 空间权柄：flags 含 space + world entry + 社交可开关", () => {
     const f = getVerseCraftRolloutFlags();
-    assert.equal(typeof f.enableSpaceAuthorityCanon, "boolean");
-    assert.equal(typeof f.enableWorldEntryPackets, "boolean");
-    assert.equal(typeof f.enableNpcSocialSurface, "boolean");
-    assert.equal(typeof f.enableWorldFeelPackets, "boolean");
-    assert.equal(typeof f.enableMonthStartStudentWorldlogic, "boolean");
+    assert.equal(f.enableSpaceAuthorityCanon, true);
+    assert.equal(f.enableWorldEntryPackets, true);
+    assert.equal(f.enableNpcSocialSurface, true);
+    assert.equal(f.enableWorldFeelPackets, true);
+    assert.equal(f.enableMonthStartStudentWorldlogic, true);
   });
 
   it("2 月初误闯：普通 NPC 基线 packet 含误闯语义（默认 monthly entry）", () => {
@@ -65,7 +65,7 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
     const night = getNpcCanonicalIdentity(NIGHT_READER_NPC_ID);
     assert.equal(major.memoryPrivilege, "major_charm");
     assert.equal(night.memoryPrivilege, "night_reader");
-    assert.ok((major.revealTierCap ?? 0) >= 0);
+    assert.ok((major.revealTierCap ?? 0) >= 1, "major NPC should have at least fracture-level reveal cap");
   });
 
   it("4 欣蓝：最强门闸但不等于全知（特权 xinlan + 真相档位 cap）", () => {

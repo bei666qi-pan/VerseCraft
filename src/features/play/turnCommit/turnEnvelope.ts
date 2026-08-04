@@ -42,6 +42,7 @@ export type TurnEnvelope = {
   options: string[];
   currency_change: number;
   consumed_items: string[];
+  consumed_warehouse_items: string[];
   consumed_time?: never;
   awarded_items: unknown[];
   awarded_warehouse_items: unknown[];
@@ -145,6 +146,7 @@ export type TurnEnvelope = {
   loot_changes: {
     currency_change: number;
     consumed_items: string[];
+    consumed_warehouse_items: string[];
     awarded_items: unknown[];
     awarded_warehouse_items: unknown[];
   };
@@ -162,4 +164,7 @@ export type TurnEnvelope = {
 
   // Phase-5: 伏笔操作（可选，DM 可发 plant/reinforce/payoff）
   foreshadow_ops?: Array<Record<string, unknown>>;
+
+  /** 回合提交标记（审计/安全/合规标签），缺省 [] */
+  _commit_flags?: string[];
 };

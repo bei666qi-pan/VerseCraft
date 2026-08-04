@@ -39,6 +39,6 @@ export function shouldCountPresenceHeartbeat(args: { visible: boolean; hasFocus:
 }
 
 /** Always true for a structurally valid heartbeat — timestamps should be refreshed even when the tab is in background. */
-export function shouldUpdatePresenceTimestamp(_args: { visible: boolean; hasFocus: boolean }): boolean {
+export function shouldUpdatePresenceTimestamp(__args: { visible: boolean; hasFocus: boolean }): boolean {
   return true;
 }

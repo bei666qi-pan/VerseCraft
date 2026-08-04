@@ -115,7 +115,7 @@ function clampChars(s: string, max: number): string {
 
 /** 拼入 DM 长上下文：锚定「物品能做什么」而非堆数值。 */
 export function buildItemGameplayPromptBlock(ctx: ItemGameplayPromptContext, maxChars = 900): string {
-  const low = ctx.lowSanityThreshold ?? 38;
+  const __low = ctx.lowSanityThreshold ?? 38;
   const inv = ctx.inventoryItems ?? [];
   const wh = ctx.warehouseItems ?? [];
   if (inv.length === 0 && wh.length === 0) return "";

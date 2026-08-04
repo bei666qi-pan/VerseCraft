@@ -4,8 +4,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 test("api/chat: defer main-turn options skips post-resolve LLM regen when gated", () => {
-  const p = join(process.cwd(), "src/app/api/chat/route.ts");
-  const content = readFileSync(p, "utf8");
+  // deferMainTurnOptions logic 已内联回 route.ts；options regen 决策收口至 optionsRegenDecision.ts。
+  const content = readFileSync(join(process.cwd(), "src/app/api/chat/route.ts"), "utf8");
+  const regenPath = join(process.cwd(), "src/app/api/chat/optionsRegenDecision.ts");
+  const regenContent = readFileSync(regenPath, "utf8");
 
   const deferDecl = content.indexOf("const deferPlayableOptsToSeparateRequest =");
   assert.ok(deferDecl >= 0, "missing deferPlayableOptsToSeparateRequest");
@@ -13,9 +15,12 @@ test("api/chat: defer main-turn options skips post-resolve LLM regen when gated"
   const gateIdx = content.indexOf("!deferPlayableOptsToSeparateRequest", deferDecl);
   assert.ok(gateIdx >= 0, "defer gate must skip at least one LLM options path");
 
+  // post-resolve empty-options regen condition 拆分至两个文件：
+  // enableOptionsAutoRegenOnEmpty + resolvedOptCount < 2 在 optionsRegenDecision.ts，
+  // !deferPlayableOptsToSeparateRequest gate 在 route.ts。
   assert.ok(
-    content.includes("rollout.enableOptionsAutoRegenOnEmpty") &&
-      content.includes("resolvedOptCount < 2") &&
+    regenContent.includes("enableOptionsAutoRegenOnEmpty") &&
+      regenContent.includes("resolvedOptCount < 2") &&
       content.includes("!deferPlayableOptsToSeparateRequest"),
     "post-resolve empty-options regen must honor defer gate"
   );

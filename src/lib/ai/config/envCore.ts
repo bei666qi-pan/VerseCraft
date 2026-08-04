@@ -46,13 +46,19 @@ function resolvePlayerChatExtraBody(): Record<string, unknown> | undefined {
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-export type AiGatewayProviderId = "oneapi" | "mock";
+/**
+ * Gateway deployment kind. `oneapi` means an actual one-api deployment;
+ * `openai_compatible` is a direct OpenAI-wire-compatible endpoint.
+ */
+export type AiGatewayProviderId = "oneapi" | "openai_compatible" | "mock";
 
 export interface ResolvedAiEnv {
   gatewayProvider: AiGatewayProviderId;
   /** Resolved chat/completions URL (includes /v1/chat/completions when base is root). */
   gatewayBaseUrl: string;
   gatewayApiKey: string;
+  /** Optional task-scoped model for the realtime player/gameplay lane only. */
+  playerGameplayModel: string;
   /** Upstream model name per logical role (from AI_MODEL_*). Empty if unset. */
   modelsByRole: Record<AiLogicalRole, string>;
   /** Extra ordering for PLAYER_CHAT merges (after policy primaries). */
@@ -176,14 +182,45 @@ export interface ResolvedAiEnv {
 /** Default player SSE fallback role order when env omits chain. */
 export const DEFAULT_PLAYER_ROLE_CHAIN: AiLogicalRole[] = ["main", "control"];
 
+type KimiOpenAiBinding = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+};
+
+/**
+ * Inherit an OpenAI-compatible binding from a running Kimi session. The
+ * provider-type guard keeps ordinary Kimi sessions on VerseCraft's normal
+ * gateway configuration, while existing `kimi -ds` sessions can hand their
+ * already-in-memory binding to a child Next.js process without a restart.
+ */
+function resolveKimiOpenAiBinding(): KimiOpenAiBinding | undefined {
+  if ((envRaw("KIMI_MODEL_PROVIDER_TYPE") ?? "").trim().toLowerCase() !== "openai") {
+    return undefined;
+  }
+  const baseUrl = (envRaw("KIMI_MODEL_BASE_URL") ?? "").trim();
+  const apiKey = (envRaw("KIMI_MODEL_API_KEY") ?? "").trim();
+  const model = (envRaw("KIMI_MODEL_NAME") ?? "").trim();
+  if (!baseUrl || !apiKey || !model) return undefined;
+  return { baseUrl, apiKey, model };
+}
+
 function resolveGatewayChatCompletionsUrl(): string {
   // Local-only direct-provider override. Its distinct prefix prevents Next's
   // .env.local loading from replacing an explicitly injected test binding.
-  const raw = (envRaw("VC_AI_DIRECT_BASE_URL") ?? envRaw("AI_GATEWAY_BASE_URL") ?? "").trim();
+  const raw = (
+    envRaw("VC_AI_DIRECT_BASE_URL") ??
+    resolveKimiOpenAiBinding()?.baseUrl ??
+    envRaw("AI_GATEWAY_BASE_URL") ??
+    ""
+  ).trim();
   if (!raw) return "";
   const normalized = raw.replace(/\/+$/, "");
   if (normalized.toLowerCase().endsWith("/chat/completions")) {
     return normalized;
+  }
+  if (normalized.toLowerCase().endsWith("/v1")) {
+    return `${normalized}/chat/completions`;
   }
   return `${normalized}/v1/chat/completions`;
 }
@@ -209,7 +246,15 @@ function resolveGatewayEmbeddingsUrl(): string {
 
 export function resolveAiProviderId(): AiGatewayProviderId {
   const raw = (envRaw("AI_PROVIDER") ?? envRaw("AI_GATEWAY_PROVIDER") ?? "oneapi").trim().toLowerCase();
-  return raw === "mock" ? "mock" : "oneapi";
+  if (raw === "mock") return "mock";
+  if (
+    resolveKimiOpenAiBinding() ||
+    envRaw("VC_AI_DIRECT_BASE_URL") ||
+    ["openai", "openai-compatible", "openai_compatible", "direct"].includes(raw)
+  ) {
+    return "openai_compatible";
+  }
+  return "oneapi";
 }
 
 export function isMockAiProviderEnv(): boolean {
@@ -224,9 +269,26 @@ function readModelForRole(role: AiLogicalRole): string {
         ? "AI_MODEL_CONTROL"
         : role === "enhance"
           ? "AI_MODEL_ENHANCE"
-          : "AI_MODEL_REASONER";
-  const directOverride = (envRaw("VC_AI_DIRECT_MODEL") ?? "").trim();
-  const direct = directOverride || (envRaw(key) ?? "").trim();
+          : role === "reasoner"
+            ? "AI_MODEL_REASONER"
+            : role === "writer"
+              ? "AI_MODEL_WRITER"
+              : "AI_MODEL_MAIN";
+  const directRoleOverride = (
+    envRaw(`VC_AI_DIRECT_MODEL_${role.toUpperCase()}`) ?? ""
+  ).trim();
+  const directAllRolesOverride = (envRaw("VC_AI_DIRECT_MODEL") ?? "").trim();
+  const directOverride =
+    directRoleOverride || directAllRolesOverride || (resolveKimiOpenAiBinding()?.model ?? "").trim();
+  let direct = directOverride || (envRaw(key) ?? "").trim();
+  // Writer role: fall back to AI_MODEL_MAIN when AI_MODEL_WRITER is not configured.
+  // Also respects VC_AI_DIRECT_MODEL_MAIN override so writer inherits the main role's direct model.
+  if (role === "writer" && !direct) {
+    const mainKey = "AI_MODEL_MAIN";
+    const mainDirectRoleOverride = (envRaw("VC_AI_DIRECT_MODEL_MAIN") ?? "").trim();
+    const mainDirect = mainDirectRoleOverride || directAllRolesOverride || (envRaw(mainKey) ?? "").trim();
+    direct = mainDirect;
+  }
   if (isMockAiProviderEnv()) {
     return direct.length > 0 ? direct : `mock-${role}`;
   }
@@ -315,7 +377,12 @@ export function resolveAiEnv(): ResolvedAiEnv {
   const gatewayBaseUrl = gatewayProvider === "mock" ? "mock://chat/completions" : resolveGatewayChatCompletionsUrl();
   const gatewayApiKey = gatewayProvider === "mock"
     ? "mock-key"
-    : (envRaw("VC_AI_DIRECT_API_KEY") ?? envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
+    : (
+        envRaw("VC_AI_DIRECT_API_KEY") ??
+        resolveKimiOpenAiBinding()?.apiKey ??
+        envRaw("AI_GATEWAY_API_KEY") ??
+        ""
+      ).trim();
 
   const modelsByRole = {} as Record<AiLogicalRole, string>;
   for (const r of AI_LOGICAL_ROLES) {
@@ -327,6 +394,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
     gatewayProvider,
     gatewayBaseUrl,
     gatewayApiKey,
+    playerGameplayModel: (envRaw("VC_AI_DIRECT_PLAYER_MODEL") ?? "").trim(),
     modelsByRole,
     playerRoleFallbackChain: resolvePlayerRoleFallbackChain(),
     memoryPrimaryRole: resolveMemoryPrimaryRole(),

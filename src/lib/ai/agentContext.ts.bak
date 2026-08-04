@@ -1,0 +1,244 @@
+/**
+ * Agent Context — 统一开发测试 Agent 的上下文管理
+ *
+ * 同一个 AI Agent 在 dev 模式和 test 模式之间切换。
+ * 此模块提供模式定义、上下文构建、测试范围推断。
+ *
+ * 设计原则：
+ * - 所有测试代码由同一个 AI（本 Agent）编写和执行
+ * - 不调用外部测试 API 或单独的测试 AI
+ * - Mock 优先，live 仅用于校准
+ */
+
+import type { ExperimentProvenance } from "@/lib/evals/harness/types";
+import { resolveExperimentProvenance } from "@/lib/evals/harness/provenance";
+
+// ── 模式定义 ──────────────────────────────────────────────
+
+/** Agent 运行模式 */
+export type AgentMode = "dev" | "test";
+
+/** 测试范围 */
+export interface TestScope {
+  /** unit test 文件 glob 模式 */
+  unit: string[];
+  /** contract test 文件 */
+  contract: string[];
+  /** e2e spec 文件 */
+  e2e: string[];
+  /** eval 维度 */
+  eval: string[];
+  /** benchmark 维度 */
+  benchmark: string[];
+}
+
+/** 测试报告 */
+export interface AgentTestReport {
+  /** 测试时间 */
+  timestamp: string;
+  /** 实验溯源 */
+  provenance: ExperimentProvenance;
+  /** 触发测试的 diff */
+  diff: {
+    files: string[];
+    summary: string;
+  };
+  /** 各层测试结果 */
+  tests: {
+    unit?: { total: number; pass: number; fail: number };
+    contract?: { total: number; pass: number; fail: number };
+    lint?: { errors: number; warnings: number };
+    build?: { success: boolean; error?: string };
+  };
+  /** eval 结果（mock 模式） */
+  evals?: Record<string, { passRate: number; gate: "pass" | "fail" }>;
+  /** 综合判定 */
+  verdict: "pass" | "fail";
+  /** 失败详情 */
+  failures?: string[];
+}
+
+/** Agent 上下文 */
+export interface AgentContext {
+  /** 当前模式 */
+  mode: AgentMode;
+  /** 实验溯源 */
+  provenance: ExperimentProvenance;
+  /** 受影响的模块列表 */
+  affectedModules: string[];
+  /** 自动检测的测试范围 */
+  testScope: TestScope;
+  /** 最近一次修改的 diff */
+  lastDiff?: {
+    files: string[];
+    summary: string;
+  };
+  /** 最近一次测试报告 */
+  lastTestReport?: AgentTestReport;
+}
+
+// ── 上下文构建 ────────────────────────────────────────────
+
+/** 创建默认 Agent 上下文 */
+export function createAgentContext(
+  mode: AgentMode,
+  overrides?: Partial<AgentContext>,
+): AgentContext {
+  return {
+    mode,
+    provenance: resolveExperimentProvenance(),
+    affectedModules: [],
+    testScope: { unit: [], contract: [], e2e: [], eval: [], benchmark: [] },
+    ...overrides,
+  };
+}
+
+// ── 测试范围推断 ──────────────────────────────────────────
+
+/**
+ * 根据修改的文件路径推断需要运行的测试范围。
+ *
+ * 规则表见 docs/ai-dev-test-agent.md 第 4 节。
+ */
+export function inferTestScope(changedFiles: string[]): TestScope {
+  const scope: TestScope = {
+    unit: [],
+    contract: [],
+    e2e: [],
+    eval: [],
+    benchmark: [],
+  };
+
+  for (const file of changedFiles) {
+    // Turn Engine
+    if (file.includes("src/lib/turnEngine/")) {
+      scope.unit.push("src/lib/turnEngine/*.test.ts");
+      scope.contract.push("src/lib/playRealtime/chatRouteContract.test.ts");
+    }
+
+    // Play Realtime (prompt, DM JSON)
+    if (file.includes("src/lib/playRealtime/")) {
+      scope.contract.push("src/lib/playRealtime/chatRouteContract.test.ts");
+      scope.benchmark.push("chat-metrics");
+    }
+
+    // API Chat Route
+    if (file.includes("src/app/api/chat/")) {
+      scope.contract.push(
+        "src/lib/playRealtime/chatRouteContract.test.ts",
+        "src/app/api/chat/controlPreflightBudget.contract.test.ts",
+      );
+      scope.e2e.push("chat-sse-contract.spec.ts");
+      scope.benchmark.push("chat-metrics");
+    }
+
+    // Eval infrastructure
+    if (file.includes("src/lib/evals/")) {
+      scope.unit.push("src/lib/evals/**/*.test.ts");
+    }
+
+    // Store
+    if (file.includes("src/store/")) {
+      scope.unit.push("src/store/**/*.test.ts");
+      scope.e2e.push("play.spec.ts");
+    }
+
+    // DB / Schema
+    if (file.includes("src/db/")) {
+      scope.unit.push("src/db/**/*.test.ts");
+    }
+
+    // AI module
+    if (file.includes("src/lib/ai/")) {
+      scope.unit.push("src/lib/ai/**/*.test.ts");
+      scope.eval.push("chat-quality");
+    }
+
+    // Security
+    if (file.includes("src/lib/security/")) {
+      scope.eval.push("narrative-safety");
+    }
+
+    // NPC consistency
+    if (file.includes("src/lib/npcConsistency/")) {
+      scope.eval.push("npc-consistency");
+    }
+
+    // General source changes
+    if (file.startsWith("src/") && file.endsWith(".ts")) {
+      // 自动加对应的 test 文件
+      const testFile = file.replace(/\.ts$/, ".test.ts");
+      scope.unit.push(testFile);
+    }
+  }
+
+  // 去重
+  scope.unit = [...new Set(scope.unit)];
+  scope.contract = [...new Set(scope.contract)];
+  scope.e2e = [...new Set(scope.e2e)];
+  scope.eval = [...new Set(scope.eval)];
+  scope.benchmark = [...new Set(scope.benchmark)];
+
+  return scope;
+}
+
+// ── 报告生成 ──────────────────────────────────────────────
+
+/** 创建空的通过报告 */
+export function createPassReport(
+  provenance: ExperimentProvenance,
+  changedFiles: string[],
+  summary: string,
+): AgentTestReport {
+  return {
+    timestamp: new Date().toISOString(),
+    provenance,
+    diff: { files: changedFiles, summary },
+    tests: {
+      unit: { total: 0, pass: 0, fail: 0 },
+      lint: { errors: 0, warnings: 0 },
+      build: { success: true },
+    },
+    verdict: "pass",
+  };
+}
+
+/** 从失败列表创建失败报告 */
+export function createFailReport(
+  provenance: ExperimentProvenance,
+  changedFiles: string[],
+  summary: string,
+  failures: string[],
+): AgentTestReport {
+  return {
+    timestamp: new Date().toISOString(),
+    provenance,
+    diff: { files: changedFiles, summary },
+    tests: {},
+    verdict: "fail",
+    failures,
+  };
+}
+
+// ── 辅助工具 ──────────────────────────────────────────────
+
+/** 判断 Agent 是否可以继续（上次测试通过） */
+export function canProceed(context: AgentContext): boolean {
+  if (!context.lastTestReport) return true;
+  return context.lastTestReport.verdict === "pass";
+}
+
+/** 获取需要修复的失败列表 */
+export function getFailures(context: AgentContext): string[] {
+  return context.lastTestReport?.failures ?? [];
+}
+
+/** 从 Agent 上下文生成 CLI 可用的环境变量 */
+export function agentEnvFromContext(context: AgentContext): Record<string, string> {
+  return {
+    VERSECRAFT_DM_STABLE_PROMPT_VERSION: context.provenance.promptVersion,
+    VERSECRAFT_EVAL_CONFIG: context.provenance.config,
+    VERSECRAFT_EVAL_DATASET_VERSION: context.provenance.datasetVersion,
+    VERSECRAFT_EVAL_SEED: String(context.provenance.seed),
+  };
+}

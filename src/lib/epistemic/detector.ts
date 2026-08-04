@@ -172,6 +172,9 @@ export type CognitiveAnomalyDetectorInput = {
   nowIso?: string;
   maxRevealRank?: number;
   canonical?: NpcCanonicalIdentity | null;
+  /** 惰性模式：跳过事实池 forbidden 和玩家输入规则层检测，仅返回空结果。
+   *  适用于 pre-prompt 的 TTFT 关键路径，完整检测可推迟到 post-generation。 */
+  lazy?: boolean;
 };
 
 function mergeAnomalyResults(a: EpistemicAnomalyResult, b: EpistemicAnomalyResult): EpistemicAnomalyResult {
@@ -244,8 +247,12 @@ function detectPlayerInputRuleSignals(input: CognitiveAnomalyDetectorInput): Epi
 
 /**
  * 认知异常检测（阶段6）：事实池 forbidden + 玩家输入规则层；供生成前 prompt / alert 包。
+ *
+ * 惰性模式（lazy=true）：跳过所有检测逻辑，直接返回空结果。
+ * 适用于 pre-prompt TTFT 关键路径；完整检测推迟到 post-generation。
  */
 export function detectCognitiveAnomaly(input: CognitiveAnomalyDetectorInput): EpistemicAnomalyResult {
+  if (input.lazy) return emptyResult(input.npcId);
   const base = detectEpistemicAnomaly(input);
   const rule = detectPlayerInputRuleSignals(input);
   if (!rule) return base;

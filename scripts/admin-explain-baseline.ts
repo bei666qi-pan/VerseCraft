@@ -1,5 +1,9 @@
-import "dotenv/config";
+import path from "node:path";
+import { config as dotenvConfig } from "dotenv";
 import { Client } from "pg";
+
+dotenvConfig({ path: path.resolve(process.cwd(), ".env.local") });
+dotenvConfig();
 
 type BaselineQuery = {
   name: string;
@@ -56,6 +60,34 @@ const QUERIES: BaselineQuery[] = [
         COUNT(*) FILTER (WHERE event_time >= NOW() - INTERVAL '60 minutes') AS m60
       FROM analytics_events
       WHERE event_time >= NOW() - INTERVAL '60 minutes';
+    `,
+  },
+  {
+    name: "overview_web_traffic_today",
+    thresholdMs: 180,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      WITH scoped AS (
+        SELECT
+          (event_time AT TIME ZONE 'Asia/Shanghai')::date AS date_key,
+          CASE
+            WHEN payload->>'trafficSource' IN ('direct', 'internal', 'search', 'social', 'referral')
+            THEN payload->>'trafficSource'
+            ELSE 'direct'
+          END AS traffic_source,
+          payload->>'visitorId' AS visitor_id
+        FROM analytics_events
+        WHERE event_name = 'page_viewed'
+          AND event_time >= (date_trunc('day', NOW() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai') - INTERVAL '1 day'
+          AND event_time < ((date_trunc('day', NOW() AT TIME ZONE 'Asia/Shanghai') + INTERVAL '1 day') AT TIME ZONE 'Asia/Shanghai')
+      )
+      SELECT
+        date_key,
+        CASE WHEN GROUPING(traffic_source) = 1 THEN '__total__' ELSE traffic_source END AS traffic_source,
+        COUNT(*)::int AS page_views,
+        COUNT(DISTINCT CASE WHEN visitor_id ~ '^[A-Za-z0-9_-]{16,96}$' THEN visitor_id ELSE NULL END)::int AS unique_visitors
+      FROM scoped
+      GROUP BY GROUPING SETS ((date_key), (date_key, traffic_source));
     `,
   },
   {
@@ -325,4 +357,3 @@ async function main() {
 }
 
 void main();
-

@@ -11,7 +11,7 @@ import type { Detector, DetectorResult, DetectorIssue, DetectorMeta } from "./ty
 
 // ── 获得语义类型 ─────────────────────────────────────────
 
-type GainSemanticType = "ItemObtained" | "CurrencyChange" | "CodexUnlock" | "TaskProgress";
+type _GainSemanticType = "ItemObtained" | "CurrencyChange" | "CodexUnlock" | "TaskProgress";
 
 // ── 降级关键词列表（narrative 中出现的矛盾信号）───────
 
@@ -45,7 +45,7 @@ const meta: DetectorMeta = {
 
 // ── 辅助类型 ────────────────────────────────────────────
 
-interface GainScenario {
+interface _GainScenario {
   name: string;
   narrative: string;
   awardedItems: unknown[];

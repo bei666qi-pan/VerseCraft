@@ -10,7 +10,8 @@ test("buildNpcCombatPowerDisplay: 不包含数字", () => {
 
 test("styleTagsToPlayerHint: 输出短提示且不含数字", () => {
   const s = styleTagsToPlayerHint(["boundary_guard", "close_quarters"]);
-  assert.ok(s.includes("守线") || s.includes("近身"));
+  assert.ok(s.includes("守线"));
+  assert.ok(s.includes("近身"));
   assert.ok(!/\d/.test(s));
 });
 

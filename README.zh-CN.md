@@ -157,7 +157,7 @@ pnpm worker:kg           # 启动后台世界推演 worker
 | `AUTH_SECRET` / `AUTH_TRUST_HOST` | NextAuth 会话签名与反代信任 |
 | `ADMIN_PASSWORD` | 管理后台登录口令 |
 | `ALTCHA_HMAC_KEY` | ALTCHA 人机校验 HMAC |
-| `AI_GATEWAY_PROVIDER` / `AI_GATEWAY_BASE_URL` / `AI_GATEWAY_API_KEY` | one-api 兼容网关接入 |
+| `AI_GATEWAY_PROVIDER` / `AI_GATEWAY_BASE_URL` / `AI_GATEWAY_API_KEY` | one-api 实例或 OpenAI-compatible 直连网关接入 |
 | `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER` | 逻辑角色对应的上游模型名 |
 | `AI_OPERATION_MODE` | 运行模式 `full` \| `safe` \| `emergency` |
 | `MIGRATE_ON_BOOT` / `RUNTIME_SCHEMA_ENSURE` | 启动时迁移 / 运行时确保 schema |

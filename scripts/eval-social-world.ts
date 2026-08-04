@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runSocialWorldEvalCases, type SocialWorldEvalCase } from "@/lib/socialWorld/eval";
-import { appendHistory, getGitSha } from "../src/lib/evals/harness";
+import { appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 
 async function main(): Promise<void> {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +17,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "social-world",
     mode: "mock",
@@ -25,7 +26,8 @@ async function main(): Promise<void> {
     passRate: report.failures.length === 0 ? 1 : 0,
     gate: report.failures.length === 0 ? "pass" : "fail",
     timestamp: new Date().toISOString(),
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 }
 

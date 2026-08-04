@@ -15,11 +15,7 @@ import type { NormalizedCompletionRequest } from "../src/lib/ai/providers/types"
 import type { AiLogicalRole } from "../src/lib/ai/models/logicalRoles";
 import { normalizeAiLogicalRole } from "../src/lib/ai/models/logicalRoles";
 import { getStablePlayerDmSystemPrefix } from "../src/lib/playRealtime/playerChatSystemPrompt";
-import {
-  clampPlayerChatMaxTokens,
-  getTaskBinding,
-  resolveOrderedRoleChain,
-} from "../src/lib/ai/tasks/taskPolicy";
+import { getTaskBinding, resolveOrderedRoleChain } from "../src/lib/ai/tasks/taskPolicy";
 import { assemblePlayerChatPrompt } from "../src/lib/turnEngine/promptAssembly";
 import { envRaw } from "../src/lib/config/envRaw";
 
@@ -64,7 +60,6 @@ type CliOptions = {
   promptProfile: "small" | "app-sized";
   role: AiLogicalRole | null;
   model: string | null;
-  maxTokens: number | null;
   dynamicChars: number;
   timeoutMs: number;
   acceptEncoding: string | null;
@@ -109,7 +104,6 @@ function parseCli(): CliOptions {
 
   const runsRaw = getArgValue(args, "--runs") ?? process.env.VC_GATEWAY_PROBE_RUNS ?? "10";
   const warmupRaw = getArgValue(args, "--warmup-runs") ?? process.env.VC_GATEWAY_PROBE_WARMUP_RUNS ?? "0";
-  const maxTokensRaw = getArgValue(args, "--max-tokens") ?? process.env.VC_GATEWAY_PROBE_MAX_TOKENS ?? "";
   const timeoutRaw = getArgValue(args, "--timeout-ms") ?? process.env.VC_GATEWAY_PROBE_TIMEOUT_MS ?? "";
   const promptProfileRaw =
     getArgValue(args, "--prompt-profile") ?? process.env.VC_GATEWAY_PROBE_PROMPT_PROFILE ?? "small";
@@ -118,7 +112,6 @@ function parseCli(): CliOptions {
   }
   const dynamicCharsRaw =
     getArgValue(args, "--dynamic-chars") ?? process.env.VC_GATEWAY_PROBE_DYNAMIC_CHARS ?? "5200";
-  const maxTokens = maxTokensRaw ? Number(maxTokensRaw) : null;
 
   return {
     runs: Math.max(1, Math.min(100, Number(runsRaw) || 10)),
@@ -126,7 +119,6 @@ function parseCli(): CliOptions {
     promptProfile: promptProfileRaw,
     role,
     model: getArgValue(args, "--model") ?? process.env.VC_GATEWAY_PROBE_MODEL ?? null,
-    maxTokens: maxTokens != null && Number.isFinite(maxTokens) ? maxTokens : null,
     dynamicChars: Math.max(0, Math.min(30_000, Number(dynamicCharsRaw) || 5_200)),
     timeoutMs: Math.max(3_000, Math.min(180_000, Number(timeoutRaw) || 90_000)),
     acceptEncoding:
@@ -497,21 +489,22 @@ async function main(): Promise<void> {
   const binding = getTaskBinding("PLAYER_CHAT");
   const roleChain = resolveOrderedRoleChain("PLAYER_CHAT", env);
   const role = options.role ?? roleChain[0] ?? "main";
-  const model = options.model ?? env.modelsByRole[role];
+  const model = options.model ?? env.playerGameplayModel ?? env.modelsByRole[role];
   if (!model) {
     throw new Error(`No model configured for role=${role}.`);
   }
 
-  const maxTokens = clampPlayerChatMaxTokens(
-    options.maxTokens ?? env.playerChatMaxTokensOverride ?? binding.maxTokens
-  ).maxTokens;
-  const extraBody = options.noExtraBody ? undefined : mergeExtraBody(env.gatewayExtraBody, env.playerChatExtraBody);
+  const directPlayerSplit = Boolean(env.playerGameplayModel);
+  const extraBody = options.noExtraBody
+    ? undefined
+    : directPlayerSplit
+      ? env.playerChatExtraBody
+      : mergeExtraBody(env.gatewayExtraBody, env.playerChatExtraBody);
   const prompt = buildProbeMessages(options.promptProfile, env.splitPlayerChatDualSystem, options.dynamicChars);
   const body: NormalizedCompletionRequest = {
     modelApiName: model,
     messages: prompt.messages,
     stream: binding.stream && env.enableStream,
-    maxTokens,
     temperature: binding.temperature,
     responseFormatJsonObject: binding.responseFormatJsonObject,
     streamIncludeUsage: (binding.stream && env.enableStream && env.playerChatStreamIncludeUsage) || false,
@@ -534,10 +527,11 @@ async function main(): Promise<void> {
     dynamicCharLen: prompt.dynamicCharLen,
     responseFormatJsonObject: body.responseFormatJsonObject,
     streamIncludeUsage: body.streamIncludeUsage,
-    maxTokens,
+    maxTokens: "(omitted/unbounded)",
     extraBodyKeys: extraBody ? Object.keys(extraBody).sort() : [],
     requestBodyFlags: {
       stream: requestBodyPreview.stream,
+      max_tokens: requestBodyPreview.max_tokens,
       response_format: requestBodyPreview.response_format,
       stream_options: requestBodyPreview.stream_options,
       extraBodyKeys: Object.keys(requestBodyPreview)

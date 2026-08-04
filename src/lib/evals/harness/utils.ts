@@ -6,10 +6,11 @@
  */
 
 import fs from "node:fs";
+import { execSync } from "node:child_process";
 import path from "node:path";
 import type { EvalMode } from "./config";
 import { resolveEvalMode } from "./config";
-import type { EvalCaseBase, ReportEntry, EvalSummaryBase } from "./types";
+import type { _EvalCaseBase, ReportEntry, EvalSummaryBase } from "./types";
 import { HISTORY_DIR } from "./config";
 
 // ── CLI 参数 ─────────────────────────────────────────────
@@ -116,14 +117,26 @@ export function readLastHistory(suite: string, n: number = 1): ReportEntry[] {
     .map((line) => JSON.parse(line) as ReportEntry);
 }
 
-/** 计算 git SHA */
+/** 计算 git SHA（40 字符完整值） */
 export function getGitSha(): string {
   try {
-    return fs
-      .readFileSync(path.resolve(".git", "HEAD"), "utf8")
-      .trim()
-      .slice(0, 7);
+    return execSync("git rev-parse HEAD", { encoding: "utf8", timeout: 5000 }).trim();
   } catch {
+    // 兜底：尝试从 .git/HEAD 解析 ref 再读实际 SHA
+    try {
+      const head = fs.readFileSync(path.resolve(".git", "HEAD"), "utf8").trim();
+      const refMatch = /^ref:\s+(.+)$/.exec(head);
+      if (refMatch) {
+        const refPath = path.resolve(".git", refMatch[1]!);
+        if (fs.existsSync(refPath)) {
+          return fs.readFileSync(refPath, "utf8").trim();
+        }
+      }
+      // 可能是 detached HEAD（直接是 SHA）
+      if (/^[0-9a-f]{40}$/.test(head)) return head;
+    } catch {
+      // ignore
+    }
     return "unknown";
   }
 }

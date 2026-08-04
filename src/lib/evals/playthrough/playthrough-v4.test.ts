@@ -22,12 +22,12 @@ import {
 } from "./invariants";
 import {
   SCENARIOS,
-  getScenariosByCategory,
+
   getScenarioLibraryStats,
   findScenario,
 } from "./scenarios";
 import { judgeNarrativeConsistencyMock } from "./narrativeJudge";
-import type { GameStateSnapshot, PlaythroughTranscript } from "./types";
+import type { _GameStateSnapshot, PlaythroughTranscript } from "./types";
 import { isDegradedSutResult } from "./sutAdapter";
 
 // === 扩展场景库验证 ===

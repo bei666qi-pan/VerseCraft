@@ -21,8 +21,9 @@
  */
 
 import type { EvalCliOptions } from "./utils";
-import { evalLog, writeJson, appendHistory, getGitSha, buildEvalOutput } from "./utils";
-import type { EvalSummaryBase, EvalResultBase, ReportEntry } from "./types";
+import { evalLog, writeJson, appendHistory, buildEvalOutput } from "./utils";
+import { resolveExperimentProvenance } from "./provenance";
+import type { EvalSummaryBase, EvalResultBase } from "./types";
 
 export interface SuiteRunner<TCase, TResult extends EvalResultBase> {
   suite: string;
@@ -92,6 +93,7 @@ export async function runSuite<TCase, TResult extends EvalResultBase>(
   writeJson(options.jsonOut, output);
 
   // 写入历史聚合行
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: runner.suite,
     mode: options.mode,
@@ -101,7 +103,8 @@ export async function runSuite<TCase, TResult extends EvalResultBase>(
     gate: summary.gate,
     dimensions: summary.dimensions,
     timestamp: summary.timestamp,
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 
   // jsonOnly 模式额外输出到 stdout

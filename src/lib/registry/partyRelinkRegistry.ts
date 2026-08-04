@@ -58,7 +58,7 @@ export interface PartyRelinkSkeleton {
   fractureHintStyle: PartyFractureHintStyle;
   /** 为何不立刻并队（玩家体验向一句） */
   whyNotImmediateParty: string;
-  /** 为何最终会进入旧闭环（逻辑向，非恋爱） */
+  /** 为何最终会进入旧闭环（逻辑向） */
   whyEventuallyJoins: string;
   primaryPhase3Traction: PartyPhase3Traction;
   /** 进入该角色深层闭环时玩家须完成的系统向条件摘要 */

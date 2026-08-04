@@ -192,7 +192,7 @@ function ChipRow({ vm }: { vm: TaskStageCardViewModel }) {
 export function PlayNarrativeTaskBoard({
   tasks,
   originium,
-  journalClues: _journalClues, // 保留 API；舞台卡文案由投影层字段驱动，不在这里拼线索标题
+  journalClues: __journalClues, // 保留 API；舞台卡文案由投影层字段驱动，不在这里拼线索标题
   codex,
   highlightTaskIds,
   onClaimTask,

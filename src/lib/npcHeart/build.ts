@@ -136,10 +136,6 @@ export function normalizeRelationStatePartial(input: Partial<NpcRelationStateV2>
     trust: clampInt(o.trust, -100, 100),
     fear: clampInt(o.fear, -100, 100),
     debt: clampInt(o.debt, 0, 999),
-    affection: clampInt(o.affection, -100, 100),
-    desire: clampInt(o.desire, -100, 100),
-    romanceEligible: Boolean(o.romanceEligible),
-    romanceStage: o.romanceStage ?? "none",
     betrayalFlags: Array.isArray(o.betrayalFlags) ? o.betrayalFlags.filter((x): x is string => typeof x === "string").slice(0, 24) : [],
   };
 }

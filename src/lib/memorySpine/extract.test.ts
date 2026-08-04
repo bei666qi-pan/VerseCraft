@@ -82,7 +82,7 @@ test("relationship_shift：所有 delta 均为 0 或缺失时不生成记忆", (
 test("relationship_shift：anchors.npcIds 仍正确写入，供 relationshipMemoryDisplay 按 npcId 过滤", () => {
   const out = extractMemoryCandidates(
     baseInput({
-      resolvedTurn: { relationship_updates: [{ npcId: "N-010", desire: 4 }] },
+      resolvedTurn: { relationship_updates: [{ npcId: "N-010", trust: 4 }] },
       after: {
         playerLocation: "B1_SafeZone",
         tasks: [],

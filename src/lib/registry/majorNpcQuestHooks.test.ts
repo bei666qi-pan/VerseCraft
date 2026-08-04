@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NPCS } from "@/lib/registry/npcs";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
-import { MAJOR_NPC_IDS, type MajorNpcId } from "@/lib/registry/majorNpcDeepCanon";
+import { MAJOR_NPC_IDS, type _MajorNpcId } from "@/lib/registry/majorNpcDeepCanon";
 import { MAJOR_NPC_BRANCH_SEEDS } from "@/lib/registry/majorNpcBranchSeeds";
 import {
   assertAllMajorNpcQuestHooksPresent,

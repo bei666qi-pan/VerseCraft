@@ -22,11 +22,11 @@ import {
   parseJudgeVerdict,
   aggregateMultiJudge,
   type ExecuteJudgeInput,
-  type AggregateMultiJudgeInput,
+  type _AggregateMultiJudgeInput,
   type OfflineJudgeInput,
 } from "./judgeExecutor";
 import {
-  type JudgeRubric,
+  type _JudgeRubric,
   type JudgeTarget,
   type JudgeVerdict,
   type MultiJudgeResult,

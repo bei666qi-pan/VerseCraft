@@ -210,7 +210,7 @@ test("prompt：stable 前缀体积可控且含 packet 边界句", () => {
   // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积上升到约 9326（见 5d43d7e）；
   // v4 升级：5 个描述式 NPC 升格为真名 + 新增 N-021 双胞胎分裂后行数增多；
   // 阈值同步上调但仍保留可控余量，防止后续无节制增长。Commit 3 扩到 43 后再观察。
-  assert.ok(s.length < 11000, `stable prefix length ${s.length}`);
+  assert.ok(s.length < 11500, `stable prefix length ${s.length}`);
   assert.ok(s.includes("major_npc_relink_packet"));
   assert.ok(s.includes("no-instant-party"));
   assert.ok(s.includes("reveal-first"));

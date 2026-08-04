@@ -17,9 +17,9 @@ import {
   parseEvalCli,
   buildEvalOutput,
   appendHistory,
-  getGitSha,
   writeJson,
 } from "@/lib/evals/harness/utils";
+import { resolveExperimentProvenance } from "@/lib/evals/harness";
 
 function parseFilter(raw: string[]): { category?: DetectorCategory; detectorId?: string } {
   const args = raw.slice();
@@ -100,6 +100,7 @@ async function runDetectors(): Promise<void> {
   writeJson(jsonPath, output);
   if (cli.jsonOnly) { console.log(JSON.stringify(output)); return; }
 
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "detectors",
     mode: cli.mode,
@@ -108,7 +109,8 @@ async function runDetectors(): Promise<void> {
     passRate: overallScore,
     gate,
     timestamp: new Date().toISOString(),
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 
   console.log(`\n📝 报告: ${jsonPath}`);

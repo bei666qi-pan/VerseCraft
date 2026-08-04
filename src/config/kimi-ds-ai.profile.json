@@ -1,0 +1,7 @@
+{
+  "AI_GATEWAY_PROVIDER": "openai_compatible",
+  "VC_AI_DIRECT_MODEL": "deepseek-v4-pro-202606",
+  "VC_AI_DIRECT_PLAYER_MODEL": "deepseek-v4-flash",
+  "AI_PLAYER_CHAT_DISABLE_THINKING": "1",
+  "AI_ONLINE_SHORT_JSON_DISABLE_THINKING": "1"
+}

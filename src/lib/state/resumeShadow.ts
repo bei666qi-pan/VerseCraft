@@ -39,6 +39,10 @@ export type ResumeShadowSnapshot = {
   professionState?: unknown;
   /** 已确认遇到职业认证签发者；旧 shadow 缺省时按未确认处理。 */
   hasMetProfessionCertifier: boolean;
+  /** 当前装备武器（浅拷贝，含核心战斗字段）。 */
+  equippedWeapon?: unknown;
+  /** 武器背包（浅拷贝，最多 24 把）。 */
+  weaponBag?: unknown;
 };
 
 export type ResumeShadowSummary = {
@@ -207,6 +211,10 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
     originium: clampInt(state.originium, 0, 999999),
     ...(state.professionState ? { professionState: state.professionState } : {}),
     hasMetProfessionCertifier: state.hasMetProfessionCertifier === true,
+    ...(state.equippedWeapon ? { equippedWeapon: state.equippedWeapon } : {}),
+    ...(Array.isArray((state as any).weaponBag) && (state as any).weaponBag.length > 0
+      ? { weaponBag: (state as any).weaponBag }
+      : {}),
   };
 }
 

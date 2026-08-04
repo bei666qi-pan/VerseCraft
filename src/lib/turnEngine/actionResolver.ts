@@ -13,13 +13,59 @@
  */
 
 // 物品拾取关键词模式
+// 注意：发现/拿到/获得太宽泛，仅在前面有量词（一个/一张/一把等）时才认为可能指物品
 const PICKUP_PATTERNS = [
   /捡起[了]?\s*(.{1,12})/,
   /拾起[了]?\s*(.{1,12})/,
-  /发现[了]?\s*(.{1,12})(?:在|，)/,
-  /拿到[了]?\s*(.{1,12})/,
-  /获得[了]?\s*(.{1,12})/,
+  /发现[了]?\s*(?:一个|一张|一把|一只|一根|一条|一块|一本|一枚|一件)?(.{1,12})(?:在|，|。|$)/,
+  /拿到[了]?\s*(?:一个|一张|一把|一只|一根|一条|一块|一本|一枚|一件)?(.{1,12})(?:，|。|$)/,
+  /获得[了]?\s*(?:一个|一张|一把|一只|一根|一条|一块|一本|一枚|一件)?(.{1,12})(?:，|。|$)/,
   /收[好起][了]?\s*(.{1,12})/,
+  /掏[出到][了]?\s*(.{1,12})/,
+];
+
+// 已知的非物品短语（正则匹配），不应作为物品回填
+const NON_ITEM_PATTERNS = [
+  /^没有/,
+  /^没/,
+  /^明确/,
+  /^自己/,
+  /^手指/,
+  /^手[在的]/,
+  /坏了$/,
+  /^坏了/,
+  /^那个/,
+  /^这个/,
+  /^什么/,
+  /^他[们]/,
+  /^她[们]/,
+  /^它[们]/,
+  /^一个/,
+  /^威胁/,
+  /^危险/,
+  /^东西/,
+  /^动静/,
+  /^声音/,
+  /^人影/,
+  /^影子/,
+  /^脚步/,
+  /^呼吸/,
+  /^目光/,
+  /^视线/,
+  /^感觉/,
+  /^异常/,
+  /^变化/,
+  /^痕迹/,
+  /^气味/,
+  /刮痕$/,
+  /^边缘/,
+  /^木框/,
+  /^一道/,
+  /^道刮/,
+  /裂缝$/,
+  /污渍$/,
+  /水渍$/,
+  /划痕$/,
 ];
 
 // 物品消耗关键词模式
@@ -70,9 +116,16 @@ function extractMatch(text: string, patterns: RegExp[]): string | null {
       // The broad legacy capture permits up to 12 characters so that compound
       // Chinese item names remain usable. Never let it cross a clause boundary:
       // otherwise “捡起了黄铜钥匙，迅速塞进口袋” becomes a fabricated item name.
-      const extracted = m[1].split(/[，。！？；、\s]/, 1)[0]?.trim() ?? "";
-      // 过滤掉明显不是物品名的提取（如：他、她、它、自己、一个等）
-      if (extracted.length >= 2 && !/^(他|她|它|自己|一个|那个|这个|东西|什么)$/.test(extracted)) {
+      let extracted = m[1].split(/[，。！？；、\s]/, 1)[0]?.trim() ?? "";
+      // Strip trailing particles that often get captured with items
+      extracted = extracted.replace(/[了的]$/, "");
+      // 过滤掉明显不是物品名的提取
+      if (
+        extracted.length >= 2 &&
+        extracted.length <= 10 &&
+        !NON_ITEM_PATTERNS.some((p) => p.test(extracted)) &&
+        !/^(他|她|它|自己|一个|那个|这个|东西|什么)$/.test(extracted)
+      ) {
         return extracted;
       }
     }

@@ -1,0 +1,24 @@
+# VerseCraft Self-Improving Agent — independent-verifier
+# 只读。在主 Agent 修改后独立检查 diff、测试和潜在 Reward Hacking。
+
+[identity]
+name = "independent-verifier"
+role = "只读。在主 Agent 修改后独立检查 diff、测试和潜在 Reward Hacking。"
+readonly = true
+
+[permissions]
+sandbox = "workspace-write"
+can_modify_code = false
+can_run_tests = true
+can_read_files = true
+can_write_files = false
+approval_policy = "never"
+
+[outputs]
+format = "jsonl"
+include_file_paths = true
+include_function_names = true
+include_business_invariants = true
+
+[task]
+default_prompt = "Analyze the VerseCraft codebase and report findings per your agent role. Do NOT modify any files."

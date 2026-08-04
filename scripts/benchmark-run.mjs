@@ -95,8 +95,8 @@ function runNarrativeQuality() {
     const safetyResult = sh("npx tsx --test src/lib/evals/narrativeSafetyRubric.test.ts", 30_000);
     const safetyPass = extractPassRate(safetyResult.output);
 
-    const combinedTotal = (judgePass.total || 32) + (safetyPass.total || 8);
-    const combinedPass = (judgePass.pass || 32) + (safetyPass.pass || 8);
+    const combinedTotal = (judgePass.total || 0) + (safetyPass.total || 0);
+    const combinedPass = (judgePass.pass || 0) + (safetyPass.pass || 0);
     const score = combinedTotal > 0 ? combinedPass / combinedTotal : 0;
 
     return {
@@ -159,15 +159,17 @@ function runSafetyCompliance() {
   const redPass = extractPassRate(redTeam.output);
 
   // 再跑 narrative safety（如果网络可达）
-  let safetyPass = { passRate: 1, total: 28, pass: 28 };
+  let safetyPass = { passRate: 0, total: 0, pass: 0 };
   const safetyResult = sh("npx tsx --test src/lib/evals/narrativeSafetyRubric.test.ts", 30_000);
   if (safetyResult.ok) {
     safetyPass = extractPassRate(safetyResult.output);
+  } else {
+    log(`  ${colors.yellow}⚠  narrative safety 测试不可用，不计入 pass${colors.reset}`);
   }
 
-  const combinedTotal = (redPass.total || 23) + (safetyPass.total || 8);
-  const combinedPass = (redPass.pass || 23) + (safetyPass.pass || 8);
-  const combinedRate = combinedTotal > 0 ? combinedPass / combinedTotal : 1;
+  const combinedTotal = (redPass.total || 0) + (safetyPass.total || 0);
+  const combinedPass = (redPass.pass || 0) + (safetyPass.pass || 0);
+  const combinedRate = combinedTotal > 0 ? combinedPass / combinedTotal : 0;
 
   return {
     ok: redTeam.ok && safetyResult.ok,

@@ -31,6 +31,7 @@
 import { promises as fs } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveExperimentProvenance } from "@/lib/evals/harness/provenance";
 import { generateMockAction, PERSONAS } from "./playerAgent";
 import {
   checkAllInvariants,
@@ -103,6 +104,8 @@ export interface TraceArtifact {
   durationMs: number;
   terminatedReason: TerminatedReason;
   totalSteps: number;
+  /** 实验溯源身份 */
+  provenance: import("@/lib/evals/harness/types").ExperimentProvenance;
   /** 首回合前的权威状态；用于审计首次状态变更。 */
   initialState: GameStateSnapshot;
   /** 各步不变量检查结果 */
@@ -580,6 +583,7 @@ export async function runSinglePlaythroughV3(
     scenarioCategory: scenario.category,
     persona: personaType,
     seed,
+    provenance: resolveExperimentProvenance({ seed }),
     startedAt: new Date(startTime).toISOString(),
     finishedAt: new Date(Date.now()).toISOString(),
     durationMs: transcript.durationMs,

@@ -19,8 +19,6 @@ const highTrustRel = normalizeRelationStatePartial({
   trust: 85,
   fear: 5,
   favorability: 80,
-  affection: 70,
-  romanceStage: "bonded",
 });
 
 test("普通 NPC 默认不应把玩家当旧识", () => {

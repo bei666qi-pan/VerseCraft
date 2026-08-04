@@ -387,7 +387,7 @@ function printReportSummary(report: BenchmarkReport): void {
     console.log(`  ${category}: ${stats.average.toFixed(2)} 分, 通过 ${stats.passed}/${stats.count} (${(passRate * 100).toFixed(0)}%)`);
   }
 
-  const passThreshold = 0.7;
+  const passThreshold = 0.80;
   const excellentThreshold = 0.9;
   if (report.passRate >= excellentThreshold) {
     console.log(`\n🌟 优秀 (≥${excellentThreshold * 100}%)`);

@@ -32,7 +32,7 @@ async function collectChatLatencyMetrics(options: {
   sessionIdPrefix?: string;
   timeoutMs?: number;
 } = {}): Promise<ChatSseProbeMetrics> {
-  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
+  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://[::1]:666";
   const sessionId = `${options.sessionIdPrefix ?? "latency"}-${Date.now()}`;
   const content = options.content ?? "我贴着墙根听走廊尽头的动静。";
   return probeChatSse({

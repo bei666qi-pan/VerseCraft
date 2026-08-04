@@ -6,6 +6,7 @@ import { env } from "@/lib/env";
 import {
   buildQuotaLimitNarrative,
   computeDailyTokenLimit,
+  getDailyQuotaWindow,
   type QuotaActorType,
   type QuotaDenialReason,
 } from "@/lib/quotaPolicy";
@@ -30,6 +31,7 @@ export type QuotaCheckResult =
       bonusTokens: number;
       hasSurveyBonus: boolean;
       remainingTokens: number;
+      nextRefreshAt: string;
     }
   | {
       ok: false;
@@ -40,15 +42,12 @@ export type QuotaCheckResult =
       bonusTokens: number;
       hasSurveyBonus: boolean;
       estimatedTokens: number;
+      nextRefreshAt: string | null;
     };
 
 function normalizeEstimatedTokens(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.trunc(value));
-}
-
-function todayDateKey(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 async function hasUserSurveyBonus(userId: string): Promise<boolean> {
@@ -64,6 +63,8 @@ async function checkRegisteredUserQuota(
   userId: string,
   estimatedTokens: number
 ): Promise<QuotaCheckResult> {
+  const dailyWindow = getDailyQuotaWindow();
+  const nextRefreshAt = dailyWindow.nextRefreshAt.toISOString();
   const rows = await db
     .select({
       dailyTokens: usersQuota.dailyTokens,
@@ -75,7 +76,7 @@ async function checkRegisteredUserQuota(
     .where(eq(usersQuota.userId, userId))
     .limit(1);
 
-  const today = todayDateKey();
+  const today = dailyWindow.dateKey;
   const row = rows[0];
   const hasSurveyBonus = await hasUserSurveyBonus(userId);
   const dailyTokenLimit = computeDailyTokenLimit({
@@ -97,6 +98,7 @@ async function checkRegisteredUserQuota(
       bonusTokens,
       hasSurveyBonus,
       estimatedTokens,
+      nextRefreshAt: null,
     };
   }
 
@@ -114,6 +116,7 @@ async function checkRegisteredUserQuota(
       bonusTokens,
       hasSurveyBonus,
       estimatedTokens,
+      nextRefreshAt,
     };
   }
   if (dailyActions + 1 > DAILY_ACTION_LIMIT) {
@@ -126,6 +129,7 @@ async function checkRegisteredUserQuota(
       bonusTokens,
       hasSurveyBonus,
       estimatedTokens,
+      nextRefreshAt,
     };
   }
   return {
@@ -136,6 +140,7 @@ async function checkRegisteredUserQuota(
     bonusTokens,
     hasSurveyBonus,
     remainingTokens: Math.max(0, dailyTokenLimit - dailyTokens - estimatedTokens),
+    nextRefreshAt,
   };
 }
 
@@ -143,6 +148,8 @@ async function checkGuestQuota(
   guestId: string,
   estimatedTokens: number
 ): Promise<QuotaCheckResult> {
+  const dailyWindow = getDailyQuotaWindow();
+  const nextRefreshAt = dailyWindow.nextRefreshAt.toISOString();
   const dailyTokenLimit = computeDailyTokenLimit({
     actorType: "guest",
     registeredDailyTokenLimit: REGISTERED_DAILY_TOKEN_LIMIT,
@@ -154,7 +161,7 @@ async function checkGuestQuota(
   const rows = await db
     .select({ dailyTokenCost: actorDailyTokens.dailyTokenCost })
     .from(actorDailyTokens)
-    .where(and(eq(actorDailyTokens.actorId, `g:${guestId}`), eq(actorDailyTokens.dateKey, todayDateKey())))
+    .where(and(eq(actorDailyTokens.actorId, `g:${guestId}`), eq(actorDailyTokens.dateKey, dailyWindow.dateKey)))
     .limit(1);
   const usedTokens = rows[0]?.dailyTokenCost ?? 0;
   if (usedTokens + estimatedTokens > dailyTokenLimit) {
@@ -167,6 +174,7 @@ async function checkGuestQuota(
       bonusTokens: 0,
       hasSurveyBonus: false,
       estimatedTokens,
+      nextRefreshAt,
     };
   }
   return {
@@ -177,6 +185,7 @@ async function checkGuestQuota(
     bonusTokens: 0,
     hasSurveyBonus: false,
     remainingTokens: Math.max(0, dailyTokenLimit - usedTokens - estimatedTokens),
+    nextRefreshAt,
   };
 }
 
@@ -187,6 +196,7 @@ export function buildQuotaLimitMessage(result: Extract<QuotaCheckResult, { ok: f
     dailyTokenLimit: result.dailyTokenLimit,
     surveyBonusDailyTokenLimit: SURVEY_BONUS_DAILY_TOKEN_LIMIT,
     hasSurveyBonus: result.hasSurveyBonus,
+    nextRefreshAt: result.nextRefreshAt,
   });
 }
 
@@ -201,6 +211,7 @@ export async function checkQuota(
       ? { userId: inputOrUserId, estimatedTokens: estimatedTokensArg }
       : inputOrUserId;
   const estimatedTokens = normalizeEstimatedTokens(input.estimatedTokens);
+  const nextRefreshAt = getDailyQuotaWindow().nextRefreshAt.toISOString();
   const userId = typeof input.userId === "string" && input.userId.trim() ? input.userId.trim() : null;
   const guestId = typeof input.guestId === "string" && input.guestId.trim() ? input.guestId.trim() : null;
 
@@ -221,6 +232,7 @@ export async function checkQuota(
     bonusTokens: 0,
     hasSurveyBonus: false,
     remainingTokens: dailyTokenLimit,
+    nextRefreshAt,
   };
 }
 
@@ -229,26 +241,28 @@ export async function incrementQuota(
   actualTokens: number
 ): Promise<void> {
   const tokenDelta = Math.max(0, Math.trunc(actualTokens));
+  const dateKey = getDailyQuotaWindow().dateKey;
   await db
     .insert(usersQuota)
     .values({
       userId,
       dailyTokens: tokenDelta,
       dailyActions: 1,
-      lastActionDate: sql`CURRENT_DATE`,
+      // 与 checkQuota 和 actor_daily_tokens 使用同一个 UTC key，不能依赖 DB 会话时区。
+      lastActionDate: sql`${dateKey}::date`,
     })
     .onConflictDoUpdate({
       target: usersQuota.userId,
       set: {
         dailyTokens: sql`CASE 
-          WHEN ${usersQuota.lastActionDate} < CURRENT_DATE THEN ${tokenDelta}
+          WHEN ${usersQuota.lastActionDate} < ${dateKey}::date THEN ${tokenDelta}
           ELSE ${usersQuota.dailyTokens} + ${tokenDelta}
         END`,
         dailyActions: sql`CASE 
-          WHEN ${usersQuota.lastActionDate} < CURRENT_DATE THEN 1
+          WHEN ${usersQuota.lastActionDate} < ${dateKey}::date THEN 1
           ELSE ${usersQuota.dailyActions} + 1
         END`,
-        lastActionDate: sql`CURRENT_DATE`,
+        lastActionDate: sql`${dateKey}::date`,
       },
     });
 }

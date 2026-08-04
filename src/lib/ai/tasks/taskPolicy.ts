@@ -44,7 +44,12 @@ const MAIN = "main" as const satisfies AiLogicalRole;
 const CONTROL = "control" as const satisfies AiLogicalRole;
 const ENHANCE = "enhance" as const satisfies AiLogicalRole;
 const REASONER = "reasoner" as const satisfies AiLogicalRole;
+const WRITER = "writer" as const satisfies AiLogicalRole;
 
+// PLAYER_CHAT returns one complete DM JSON object. 896/1152 proved too small
+// for real app-sized prompts: the provider ended with finish_reason=length and
+// left an unparseable partial object. Keep 2048 as a hard compatibility floor;
+// callers may still request the 2304 ceiling for the normal gameplay lane.
 export const PLAYER_CHAT_MAX_TOKENS_MIN = 2048;
 export const PLAYER_CHAT_MAX_TOKENS_MAX = 2304;
 
@@ -52,8 +57,6 @@ const PLAYER_CHAT_MAX_TOKENS_BY_TIER: Record<PlayerChatNarrativeBudgetTier, numb
   micro: 2048,
   short: 2048,
   standard: 2304,
-  // reveal/climax 随文风改造的 narrativeBudgetPackets 字数上限同步上调，
-  // 但保持在 PLAYER_CHAT_MAX_TOKENS_MAX(2304) 之内；ending 已在上限，不再上调。
   reveal: 2048,
   climax: 2304,
   ending: 2304,
@@ -62,13 +65,24 @@ const PLAYER_CHAT_MAX_TOKENS_BY_TIER: Record<PlayerChatNarrativeBudgetTier, numb
 export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   PLAYER_CHAT: {
     task: "PLAYER_CHAT",
-    primaryRole: MAIN,
-    fallbackRoles: [],
+    primaryRole: WRITER,
+    fallbackRoles: [MAIN],
     stream: true,
     maxTokens: 2304,
     timeoutMs: 60_000,
     budgetLevel: "critical",
     responseFormatJsonObject: true,
+  },
+  DM_AGENT: {
+    task: "DM_AGENT",
+    primaryRole: WRITER,
+    fallbackRoles: [],
+    stream: false,
+    maxTokens: 2048,
+    temperature: 0.7,
+    timeoutMs: 45_000,
+    budgetLevel: "critical",
+    responseFormatJsonObject: false,
   },
   PLAYER_CONTROL_PREFLIGHT: {
     task: "PLAYER_CONTROL_PREFLIGHT",
@@ -109,7 +123,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   RULE_RESOLUTION: {
     task: "RULE_RESOLUTION",
-    primaryRole: MAIN,
+    primaryRole: WRITER,
     fallbackRoles: [CONTROL],
     stream: false,
     maxTokens: 1792,
@@ -120,7 +134,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   COMBAT_NARRATION: {
     task: "COMBAT_NARRATION",
-    primaryRole: MAIN,
+    primaryRole: WRITER,
     fallbackRoles: [CONTROL],
     stream: false,
     maxTokens: 1280,
@@ -167,7 +181,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   // state or enter the realtime /api/chat first-token path.
   GAMEPLAY_LOCALIZATION: {
     task: "GAMEPLAY_LOCALIZATION",
-    primaryRole: MAIN,
+    primaryRole: WRITER,
     fallbackRoles: [CONTROL],
     stream: false,
     maxTokens: 1400,
@@ -181,9 +195,9 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryRole: REASONER,
     fallbackRoles: [MAIN],
     stream: false,
-    maxTokens: 2048,
+    maxTokens: 8192,
     temperature: 0.3,
-    timeoutMs: 75_000,
+    timeoutMs: 180_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
@@ -192,20 +206,20 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryRole: REASONER,
     fallbackRoles: [MAIN],
     stream: false,
-    maxTokens: 6144,
+    maxTokens: 8192,
     temperature: 0.25,
-    timeoutMs: 120_000,
+    timeoutMs: 180_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
   DIRECTOR_PLAN_CRITIC: {
     task: "DIRECTOR_PLAN_CRITIC",
-    primaryRole: CONTROL,
-    fallbackRoles: [MAIN],
+    primaryRole: REASONER,
+    fallbackRoles: [],
     stream: false,
-    maxTokens: 768,
+    maxTokens: 8192,
     temperature: 0,
-    timeoutMs: 12_000,
+    timeoutMs: 180_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
@@ -214,15 +228,15 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryRole: REASONER,
     fallbackRoles: [MAIN],
     stream: false,
-    maxTokens: 2048,
+    maxTokens: 8192,
     temperature: 0.2,
-    timeoutMs: 60_000,
+    timeoutMs: 180_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
   MEMORY_COMPRESSION: {
     task: "MEMORY_COMPRESSION",
-    primaryRole: MAIN,
+    primaryRole: WRITER,
     fallbackRoles: [REASONER, CONTROL],
     stream: false,
     maxTokens: 1792,
@@ -232,16 +246,17 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   EVAL_JUDGE: {
     task: "EVAL_JUDGE",
-    primaryRole: CONTROL,
-    fallbackRoles: [MAIN],
+    primaryRole: REASONER,
+    fallbackRoles: [],
     stream: false,
-    // Judge output is small structured JSON; keep tight.
-    maxTokens: 1024,
+    // Pro/max reasoning needs room for hidden reasoning plus the JSON verdict.
+    // Do not solve a reasoning-budget failure by moving the judge to Flash.
+    maxTokens: 8192,
     temperature: 0,
     // Narrative review has a compact output but may inspect a multi-turn
     // transcript. Keep it offline and bounded, without cutting a healthy
     // control attempt before its verdict can arrive.
-    timeoutMs: 30_000,
+    timeoutMs: 180_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
@@ -261,10 +276,10 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
   GAMEPLAY_LOCALIZATION: new Set([REASONER, ENHANCE]),
   WORLDBUILD_OFFLINE: new Set([ENHANCE]),
   STORYLINE_SIMULATION: new Set([ENHANCE]),
-  DIRECTOR_PLAN_CRITIC: new Set([REASONER, ENHANCE]),
+  DIRECTOR_PLAN_CRITIC: new Set([MAIN, CONTROL, ENHANCE]),
   DEV_ASSIST: new Set([ENHANCE]),
   MEMORY_COMPRESSION: new Set([ENHANCE]),
-  EVAL_JUDGE: new Set([REASONER, ENHANCE]),
+  EVAL_JUDGE: new Set([MAIN, CONTROL, ENHANCE]),
 };
 
 /**
@@ -276,6 +291,7 @@ export const TASK_TOOLS_ALLOWED: ReadonlySet<TaskType> = new Set<TaskType>([
   "WORLDBUILD_OFFLINE",
   "STORYLINE_SIMULATION",
   "DEV_ASSIST",
+  "DM_AGENT",
 ]);
 
 export function isToolUseAllowedForTask(task: TaskType): boolean {
@@ -291,31 +307,9 @@ export function assertToolUseAllowedForTask(task: TaskType): void {
 }
 
 export function getTaskBinding(task: TaskType): TaskBinding {
-  const base = TASK_POLICY[task];
-  const env = resolveAiEnv();
-  if (env.offlineBudgetProfile !== "peak") return base;
-  if (task === "WORLDBUILD_OFFLINE") {
-    return {
-      ...base,
-      maxTokens: Math.min(base.maxTokens, 1536),
-      timeoutMs: Math.min(base.timeoutMs, 45_000),
-    };
-  }
-  if (task === "DEV_ASSIST") {
-    return {
-      ...base,
-      maxTokens: Math.min(base.maxTokens, 1536),
-      timeoutMs: Math.min(base.timeoutMs, 35_000),
-    };
-  }
-  if (task === "STORYLINE_SIMULATION") {
-    return {
-      ...base,
-      maxTokens: Math.min(base.maxTokens, 4096),
-      timeoutMs: Math.min(base.timeoutMs, 75_000),
-    };
-  }
-  return base;
+  // Do not shrink Pro/offline reasoning under a traffic or spend profile.
+  // Transport-level max_tokens is omitted entirely by the gateway adapter.
+  return TASK_POLICY[task];
 }
 
 export function clampPlayerChatMaxTokens(value: number): PlayerChatMaxTokensResolution {
@@ -497,13 +491,13 @@ export function explainTaskRouting(
 /** Markdown table for docs / copy-paste into runbooks. */
 export function exportTaskModelMatrixMarkdown(): string {
   const rows: string[] = [
-    "| Task | PrimaryRole | FallbackRoles | Stream | max_tokens | timeout_ms | budget | json_mode |",
-    "|------|-------------|---------------|--------|------------|------------|--------|-----------|",
+    "| Task | PrimaryRole | FallbackRoles | Stream | timeout_ms | budget | json_mode |",
+    "|------|-------------|---------------|--------|------------|--------|-----------|",
   ];
   for (const t of Object.keys(TASK_POLICY) as TaskType[]) {
     const b = TASK_POLICY[t];
     rows.push(
-      `| ${b.task} | ${b.primaryRole} | ${b.fallbackRoles.join(", ")} | ${b.stream} | ${b.maxTokens} | ${b.timeoutMs} | ${b.budgetLevel} | ${b.responseFormatJsonObject} |`
+      `| ${b.task} | ${b.primaryRole} | ${b.fallbackRoles.join(", ")} | ${b.stream} | ${b.timeoutMs} | ${b.budgetLevel} | ${b.responseFormatJsonObject} |`
     );
   }
   rows.push("", "## Forbidden role × task", "", "| Task | Forbidden roles |", "|------|-----------------|");

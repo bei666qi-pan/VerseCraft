@@ -17,8 +17,8 @@
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `AI_GATEWAY_PROVIDER` | 否 | 默认 `oneapi` |
-| `AI_GATEWAY_BASE_URL` | 是* | one-api 根 URL 或完整 chat-completions URL |
+| `AI_GATEWAY_PROVIDER` | 否 | `oneapi` 表示真实 one-api 实例；直连 OpenAI 兼容端点使用 `openai_compatible`；默认 `oneapi` |
+| `AI_GATEWAY_BASE_URL` | 是* | one-api 或其他 OpenAI 兼容根 URL，也可填写完整 chat-completions URL |
 | `AI_GATEWAY_API_KEY` | 是* | 网关访问令牌（勿 `NEXT_PUBLIC_*`） |
 | `AI_MODEL_MAIN` | 是* | 主叙事、多数裁决类任务 |
 | `AI_MODEL_CONTROL` | 建议 | 控制面 / 意图 / 安全预筛 |

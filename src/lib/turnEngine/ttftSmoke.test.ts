@@ -98,8 +98,8 @@ test("TTFT smoke: validator + commit + tick decision stays under 50ms p95 (20 it
 
     // Sanity: confirm we actually exercised each step.
     assert.ok(summary.turnIndex === i);
-    assert.ok(decision.triggers.length >= 0);
-    assert.ok(report.telemetry.totalIssues >= 0);
+    assert.ok(Array.isArray(decision.triggers), "triggers should be an array");
+    assert.ok(typeof report.telemetry.totalIssues === "number", "totalIssues should be a number");
   }
   durations.sort((a, b) => a - b);
   const p50 = percentile(durations, 50);

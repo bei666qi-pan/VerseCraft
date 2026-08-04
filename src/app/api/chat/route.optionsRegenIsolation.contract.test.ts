@@ -4,34 +4,22 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 test("api/chat: options_regen_only returns before turn commit side-effects", () => {
-  const p = join(process.cwd(), "src/app/api/chat/route.ts");
-  const content = readFileSync(p, "utf8");
+  const routePath = join(process.cwd(), "src/app/api/chat/route.ts");
+  const routeContent = readFileSync(routePath, "utf8");
 
-  const fastPathIdx = content.indexOf('if (clientPurpose === "options_regen_only")');
-  // Accept the historical helpers and the status-frame stream form. The fast
-  // path still must return before turn commit side effects.
-  const legacyReturnIdx = content.indexOf("return new Response(sseText(payload)", fastPathIdx);
-  const createSseReturnIdx = content.indexOf("return createSseResponse(", fastPathIdx);
-  const statusFrameReturnIdx = content.indexOf("return new Response(`${statusFrames", fastPathIdx);
-  const candidateReturnIdxs = [legacyReturnIdx, createSseReturnIdx, statusFrameReturnIdx].filter((idx) => idx >= 0);
-  const fastPathReturnIdx = candidateReturnIdxs.length > 0 ? Math.min(...candidateReturnIdxs) : -1;
-  const resolveTurnIdx = content.indexOf("resolveDmTurn(dmRecord)");
-  const persistFactsIdx = content.indexOf("persistTurnFacts(");
-
+  // options_regen_only fast path must exist in route.ts
+  const fastPathIdx = routeContent.indexOf('if (clientPurpose === "options_regen_only")');
   assert.ok(fastPathIdx >= 0, "missing options_regen_only fast path");
-  assert.ok(fastPathReturnIdx >= 0, "missing options_regen_only early return");
-  assert.ok(resolveTurnIdx >= 0, "missing resolveDmTurn in main path");
-  assert.ok(
-    persistFactsIdx >= 0,
-    "missing persistTurnFacts in main path"
-  );
-  assert.ok(
-    fastPathReturnIdx < resolveTurnIdx,
-    "options_regen_only must return before turn commit resolver"
-  );
-  assert.ok(
-    fastPathReturnIdx < persistFactsIdx,
-    "options_regen_only must return before world fact persistence"
-  );
-});
 
+  // fast path must return before calling runStreamFinalHooks
+  const hooksCallIdx = routeContent.indexOf("runStreamFinalHooks(");
+  assert.ok(hooksCallIdx >= 0, "missing runStreamFinalHooks call");
+  assert.ok(fastPathIdx < hooksCallIdx,
+    "options_regen_only must return before stream final hooks");
+
+  // turn commit side-effects (resolveDmTurn, persistTurnFacts) now inlined into route.ts
+  const resolveTurnIdx = routeContent.indexOf("resolveDmTurn(dmRecord)");
+  const persistFactsIdx = routeContent.indexOf("persistTurnFacts(");
+  assert.ok(resolveTurnIdx >= 0, "missing resolveDmTurn in route.ts");
+  assert.ok(persistFactsIdx >= 0, "missing persistTurnFacts in route.ts");
+});

@@ -14,7 +14,15 @@
 .cursor/debug-*.log
 
 # local agent scratch / backups
-.claude/
+# Keep Claude Code's local state out of Git, but version the project-level
+# OpenSpec commands and skills so a clone gets the same workflow adapters.
+.claude/*
+!.claude/commands/
+!.claude/commands/opsx/
+!.claude/commands/opsx/*.md
+!.claude/skills/
+!.claude/skills/openspec-*/
+!.claude/skills/openspec-*/SKILL.md
 .codex-backup/
 
 # testing
@@ -46,6 +54,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .pnpm-debug.log*
+
+# playtest / local logs (runtime artifacts)
+/logs/
+/playtest-logs/
 
 # env files (keep templates)
 .env
@@ -81,6 +93,7 @@ redis_data/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.tsconfig.ai-playtest-*.json
 dump.rdb
 
 # 本地部署凭证,严禁入库

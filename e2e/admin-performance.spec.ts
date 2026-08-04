@@ -18,7 +18,7 @@ test.describe("Admin dashboard performance baseline", () => {
     const adminPassword = (process.env.ADMIN_PASSWORD ?? "").trim();
     test.skip(!adminPassword, "需要 ADMIN_PASSWORD 以进入后台页面");
 
-    const url = new URL(baseURL ?? "http://127.0.0.1:666");
+    const url = new URL(baseURL ?? "http://[::1]:666");
     await context.addCookies([
       {
         name: ADMIN_COOKIE,

@@ -47,18 +47,16 @@ test("ForeshadowLedgerInsertParams: reinforce op shape", () => {
 // insertForeshadowLedgerRows: fire-and-forget 不阻塞
 // ============================================================
 
-test("insertForeshadowLedgerRows: does not throw on empty ops", () => {
-  // 动态 import 验证模块可加载（不触 DB，因为 ops 为空）
-  import("./foreshadowLedger").then(({ insertForeshadowLedgerRows }) => {
-    // fire-and-forget，不 await，不抛错
-    insertForeshadowLedgerRows({
+test("insertForeshadowLedgerRows: does not throw on empty ops", async () => {
+  const { insertForeshadowLedgerRows } = await import("./foreshadowLedger");
+  await assert.doesNotReject(async () => {
+    await insertForeshadowLedgerRows({
       sessionId: "test_session",
       userId: null,
       turnIndex: 0,
       ops: [],
     });
-    assert.ok(true); // 到达此处即通过
-  });
+  }, "empty ops should not throw");
 });
 
 // ============================================================
@@ -73,13 +71,28 @@ test("readDueForeshadowEntries: returns empty array when DB unavailable", async 
   // 不检查 length === 0，因为如果 DB 恰好可用会有数据
 });
 
+test("readDueForeshadowEntries: result elements have ForeshadowEntry shape", async () => {
+  const { readDueForeshadowEntries } = await import("./foreshadowLedger");
+  const result = await readDueForeshadowEntries("nonexistent_session", 10);
+  assert.ok(Array.isArray(result));
+  // 如果 DB 恰好可用返回了数据，验证元素具有正确的 ForeshadowEntry 形状
+  for (const entry of result) {
+    assert.ok(typeof entry.id === "number", "entry.id 应为 number");
+    assert.ok(typeof entry.seedText === "string", "entry.seedText 应为 string");
+    assert.ok(typeof entry.source === "string", "entry.source 应为 string");
+    assert.ok(typeof entry.plantedTurn === "number", "entry.plantedTurn 应为 number");
+    assert.ok(typeof entry.status === "string", "entry.status 应为 string");
+    assert.ok(typeof entry.importance === "number", "entry.importance 应为 number");
+  }
+});
+
 // ============================================================
 // expireOverdueForeshadows: fire-and-forget 不阻塞
 // ============================================================
 
 test("expireOverdueForeshadows: does not throw", async () => {
   const { expireOverdueForeshadows } = await import("./foreshadowLedger");
-  // fire-and-forget，不 await，不抛错
-  expireOverdueForeshadows("nonexistent_session", 100);
-  assert.ok(true);
+  await assert.doesNotReject(async () => {
+    await expireOverdueForeshadows("nonexistent_session", 100);
+  }, "expireOverdueForeshadows should not throw on unknown session");
 });

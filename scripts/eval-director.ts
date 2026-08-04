@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { detectWorldEngineTriggers, parseWorldEngineDeltaJson } from "@/lib/worldEngine/contracts";
 import { validateDirectorPlan } from "@/lib/worldEngine/validator";
-import { appendHistory, getGitSha } from "../src/lib/evals/harness";
+import { appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 
 type RiskPatch = Partial<{
   agency_risk: "low" | "medium" | "high";
@@ -185,6 +185,7 @@ async function main(): Promise<void> {
     console.error(JSON.stringify({ failures }, null, 2));
     process.exit(1);
   }
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "director",
     mode: "mock",
@@ -193,7 +194,8 @@ async function main(): Promise<void> {
     passRate: summary.failures === 0 ? 1 : 0,
     gate: summary.failures === 0 ? "pass" : "fail",
     timestamp: new Date().toISOString(),
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 }
 

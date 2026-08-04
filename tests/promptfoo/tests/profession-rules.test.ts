@@ -62,9 +62,12 @@ describe("职业规则一致性 — 确定性断言", () => {
     });
 
     it("未认证职业时所有技能名都不应出现", () => {
-      // 不设置 profession — mock 输出中的技能名来源于基准数据
-      // 实际场景中由 prompt 控制，此处仅验证 mock 数据完整性
-      assert.ok(true);
+      // 不设置 profession — 验证所有职业技能名都不应出现在输出中
+      const output = { ...mockOutputWithSkill("守灯人"), narrative: "走廊中的暗影变得清晰。" };
+      // 遍历所有职业的技能名，确认无一名出现在叙事中
+      for (const skill of Object.values(PROFESSION_SKILL_MAP)) {
+        assert.ok(!output.narrative.includes(skill), `叙事不应包含技能名: ${skill}`);
+      }
     });
   });
 

@@ -131,7 +131,7 @@ function formatChatsForCompression(chats: ChatMessage[]): string {
 
 export function stripEpistemicEmbedFromPlayerStatus(ps: Record<string, unknown>): Record<string, unknown> {
   if (!ps || typeof ps !== "object") return {};
-  const { [SESSION_MEMORY_EPISTEMIC_EMBED_KEY]: _drop, ...rest } = ps;
+  const { [SESSION_MEMORY_EPISTEMIC_EMBED_KEY]: __drop, ...rest } = ps;
   return { ...rest };
 }
 

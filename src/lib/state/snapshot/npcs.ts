@@ -21,10 +21,6 @@ export function buildNpcSnapshotMap(args: {
     trust: Math.max(-100, Math.min(100, Math.trunc(favorability / 2))),
     fear: 0,
     debt: 0,
-    affection: 0,
-    desire: 0,
-    romanceEligible: false,
-    romanceStage: "none",
     betrayalFlags: [],
   });
 

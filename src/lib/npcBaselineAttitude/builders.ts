@@ -155,7 +155,7 @@ export function mergeNpcBaselineWithRelation(input: MergeNpcBaselineInput): NpcB
   let guardedness = baseline.baselineGuardedness - relation.trust * 0.06 + relation.fear * 0.16;
   let suspicion = baseline.baselineSuspicion + relation.fear * 0.1 - relation.trust * 0.04;
   let curiosity = baseline.baselineCuriosity + relation.trust * 0.05;
-  let protectiveness = baseline.baselineProtectiveness + Math.max(0, relation.affection) * 0.08;
+  let protectiveness = baseline.baselineProtectiveness + Math.max(0, relation.trust) * 0.08;
   let distance = baseline.baselineDistance - relation.trust * 0.1 + relation.fear * 0.12;
 
   if (scene.hotThreatPresent) {
@@ -291,10 +291,10 @@ export function shouldNpcTreatPlayerAsKnownOldFriend(
   const r = normalizeRelationStatePartial(relationPartial);
   if (canon.memoryPrivilege === "normal") return false;
   if (canon.memoryPrivilege === "xinlan") {
-    return r.trust >= 52 && r.affection >= 38;
+    return r.trust >= 52 && r.favorability >= 38;
   }
   if (canon.memoryPrivilege === "major_charm" || canon.memoryPrivilege === "night_reader") {
-    return r.trust >= 78 && r.favorability >= 58 && r.romanceStage !== "none";
+    return r.trust >= 78 && r.favorability >= 58;
   }
   return false;
 }

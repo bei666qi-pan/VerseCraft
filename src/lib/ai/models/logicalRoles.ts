@@ -5,7 +5,7 @@
  * `legacyVendorModelIdToRole` 仅用于解析旧版 `AI_PLAYER_MODEL_CHAIN` 等 env 中的历史 id，
  * 不是业务路径上的「当前模型」；新部署请使用 `AI_PLAYER_ROLE_CHAIN` + `AI_MODEL_*`。
  */
-export const AI_LOGICAL_ROLES = ["main", "control", "enhance", "reasoner"] as const;
+export const AI_LOGICAL_ROLES = ["main", "control", "enhance", "reasoner", "writer"] as const;
 
 export type AiLogicalRole = (typeof AI_LOGICAL_ROLES)[number];
 

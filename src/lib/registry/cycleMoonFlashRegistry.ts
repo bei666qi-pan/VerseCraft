@@ -123,7 +123,7 @@ export function positionInDecade(day: number): number {
 }
 
 /** 第 3 日起进入校准相位（与全局「第3日0时起暗月」同口径，按日历日判定）；位相 6+ 带宽收紧，9+ 与纠错窗口强耦合。 */
-export function moonSemanticForSignalsResolved(day: number, _hour: number): MoonSemanticKey {
+export function moonSemanticForSignalsResolved(day: number, __hour: number): MoonSemanticKey {
   if (day < CALIBRATION_START_DAY) {
     return "baseline_scheduling";
   }

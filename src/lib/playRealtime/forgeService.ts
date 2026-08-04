@@ -380,17 +380,9 @@ export function executeLightForge(args: {
       weaponUpdates: [],
     };
   }
-  if (!args.weapon.repairable && recipe.operation === "repair") {
-    return {
-      ok: false,
-      operation: "repair",
-      narrative: "该武器当前不可维护，需要先回到可维护状态。",
-      consumedItemIds: [],
-      consumedWarehouseIds: [],
-      currencyChange: 0,
-      weaponUpdates: [],
-    };
-  }
+  // 修复操作本身就是将武器恢复到可维护状态的手段。
+  // 武器 repairable: false 时不拒绝修复，因为修复后会自动恢复为可维护。
+  // 如果该武器根本不需要修复（稳定度≥95 且污染≤5），上游应提前拒绝，避免无意义消耗。
   if (args.originium < recipe.costOriginium) {
     return {
       ok: false,
@@ -445,7 +437,20 @@ export function executeLightForge(args: {
   }
 
   if (recipe.operation === "mod" && recipe.weaponMod) {
-    const mods = [...new Set([...(args.weapon.currentMods ?? []), recipe.weaponMod])];
+    const currentMods = args.weapon.currentMods ?? [];
+    const maxSlots = args.weapon.modSlots?.length ?? 0;
+    if (maxSlots > 0 && currentMods.length >= maxSlots && !currentMods.includes(recipe.weaponMod)) {
+      return {
+        ok: false,
+        operation: "mod",
+        narrative: `武器改装槽已满（${maxSlots} 个槽位），请先拆除一个模块后再安装新模块。`,
+        consumedItemIds: [],
+        consumedWarehouseIds: [],
+        currencyChange: 0,
+        weaponUpdates: [],
+      };
+    }
+    const mods = [...new Set([...currentMods, recipe.weaponMod])];
     return {
       ok: true,
       operation: "mod",
@@ -462,7 +467,22 @@ export function executeLightForge(args: {
   }
 
   if (recipe.operation === "infuse" && recipe.infusionTag) {
-    const kept = (args.weapon.currentInfusions ?? []).filter((x) => x.threatTag !== recipe.infusionTag);
+    const MAX_SIMULTANEOUS_INFUSIONS = 2;
+    const currentInfusions = args.weapon.currentInfusions ?? [];
+    const kept = currentInfusions.filter((x) => x.threatTag !== recipe.infusionTag);
+    // 如果替换已有的同 threatTag 灌注，不计入新增槽位
+    const isReplacing = currentInfusions.some((x) => x.threatTag === recipe.infusionTag);
+    if (!isReplacing && kept.length >= MAX_SIMULTANEOUS_INFUSIONS) {
+      return {
+        ok: false,
+        operation: "infuse",
+        narrative: `武器同时只能维持最多 ${MAX_SIMULTANEOUS_INFUSIONS} 种灌注，请等待现有灌注自然消退后再尝试。`,
+        consumedItemIds: [],
+        consumedWarehouseIds: [],
+        currencyChange: 0,
+        weaponUpdates: [],
+      };
+    }
     const nextInfusions = [...kept, { threatTag: recipe.infusionTag, turnsLeft: 3 }];
     return {
       ok: true,

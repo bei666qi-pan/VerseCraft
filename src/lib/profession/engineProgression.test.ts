@@ -17,16 +17,14 @@ test("profession progression stages should be computed without breaking compat",
     equippedWeapon: null,
   });
   const p = next.progressByProfession["守灯人"];
-  assert.equal(typeof p.statQualified, "boolean");
-  assert.equal(typeof p.certified, "boolean");
-  // 新字段为可选，但在 compute 后应被填充为布尔。
-  assert.equal(typeof p.inclinationVisible, "boolean");
-  assert.equal(typeof p.observedByCertifier, "boolean");
-  assert.equal(typeof p.trialOffered, "boolean");
-  assert.equal(typeof p.trialAccepted, "boolean");
-  assert.equal(typeof p.identityImprinted, "boolean");
-  // 倾向可见：主属性达标应触发
+  assert.equal(p.statQualified, true);
+  assert.equal(p.certified, false);
+  // 新字段为可选，但在 compute 后应被填充为具体值。
   assert.equal(p.inclinationVisible, true);
+  assert.equal(p.observedByCertifier, false);
+  assert.equal(p.trialOffered, false);
+  assert.equal(p.trialAccepted, false);
+  assert.equal(p.identityImprinted, false);
 });
 
 test("trialOffered should become true when certifier is in codex", () => {

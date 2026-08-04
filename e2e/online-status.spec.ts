@@ -19,7 +19,7 @@ test.describe("在线状态", () => {
     const adminPassword = (process.env.ADMIN_PASSWORD ?? "").trim();
     test.skip(!adminPassword, "需要 ADMIN_PASSWORD 进入后台页面");
 
-    const url = new URL(baseURL ?? "http://127.0.0.1:666");
+    const url = new URL(baseURL ?? "http://[::1]:666");
     await context.addCookies([
       {
         name: ADMIN_COOKIE,
@@ -111,11 +111,7 @@ test.describe("在线状态", () => {
 
     await page.goto("/saiduhsa", { waitUntil: "domcontentloaded", timeout: 45_000 });
     const select = page.locator("select").first();
-    try {
-      await select.waitFor({ timeout: 20_000 });
-    } catch {
-      test.skip(true, "后台不可用");
-    }
+    await select.waitFor({ timeout: 20_000 });
 
     await page.getByRole("button", { name: /玩家 \/ 游客/ }).click();
     const rowFresh = page.locator("tr", { hasText: "fresh-45s" });

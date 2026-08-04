@@ -35,6 +35,17 @@ export const ADMIN_METRIC_DEFINITIONS: AdminMetricDefinition[] = [
     notes: "清除浏览器存储或换设备会被视为新访客；日界为 Asia/Shanghai。",
   },
   {
+    id: "overview.traffic_sources_today",
+    nameZh: "今日访问来源",
+    meaning: "今日页面访问按直接、站内、搜索、社交、其他外部来源分类。",
+    calculation: "page_viewed 事件按 trafficSource 粗粒度类别计数。",
+    source: "analytics_events.page_viewed",
+    refresh: "页面进入后非阻塞采集；后台读取时直接汇总",
+    scope: "all",
+    degradable: true,
+    notes: "不保存原始来源链接、域名、查询参数或 UTM；类别仅用于观察流量构成。",
+  },
+  {
     id: "overview.new_registered_today",
     nameZh: "今日新增注册用户",
     meaning: "今天首次完成账号注册的用户数。",

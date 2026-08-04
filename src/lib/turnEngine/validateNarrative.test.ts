@@ -136,7 +136,7 @@ test("validateNarrative flags DM-only fact leak without narrative fallback", () 
   assert.equal(report.telemetry.safeNarrativeFallbackApplied, false);
 });
 
-test("validateNarrative ignores low-signal scene overlap in DM-only facts", () => {
+test("validateNarrative ignores low-signal scene overlap in DM-only facts, records telemetry", () => {
   const filter = makeFilter({
     dmOnlyFacts: [makeFact("走廊深处的门缝里传来低低的刮擦声") as never],
     telemetry: {
@@ -158,7 +158,16 @@ test("validateNarrative ignores low-signal scene overlap in DM-only facts", () =
       epistemicFilter: filter,
     })
   );
-  assert.equal(report.issues.some((x) => x.code === "dm_only_fact_leaked_in_narrative"), false);
+  // 不应触发 high-severity 泄露拦截
+  const highSeverityLeaks = report.issues.filter(
+    (x) => x.code === "dm_only_fact_leaked_in_narrative" && x.severity === "high"
+  );
+  assert.equal(highSeverityLeaks.length, 0, "low-signal facts should not trigger high-severity leak");
+  // 应记录 low-signal telemetry flag
+  const lowSignalTelemetry = report.issues.filter(
+    (x) => x.code === "dm_only_fact_leaked_in_narrative" && x.severity === "low"
+  );
+  assert.ok(lowSignalTelemetry.length >= 1, "low-signal DM-only facts should produce telemetry flag");
   assert.equal(report.narrativeOverride, null);
 });
 

@@ -11,7 +11,7 @@ test("PLAYER_CONTROL_PREFLIGHT 为快判任务：短 token + 短超时 + 低温"
   const b = TASK_POLICY.PLAYER_CONTROL_PREFLIGHT;
   assert.equal(b.stream, false);
   assert.equal(b.temperature, 0);
-  assert.ok(b.maxTokens > 0 && b.maxTokens <= 256, `maxTokens too large: ${b.maxTokens}`);
-  assert.ok(b.timeoutMs > 0 && b.timeoutMs <= 8000, `timeoutMs too large: ${b.timeoutMs}`);
+  assert.equal(b.maxTokens, 192);
+  assert.equal(b.timeoutMs, 6000);
 });
 

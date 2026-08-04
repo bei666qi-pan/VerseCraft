@@ -8,6 +8,8 @@ import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
 import { normalizeAiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { getAdminMetricDefinition } from "@/lib/admin/metricDefinitions";
+import { buildWebTrafficDailyMetric } from "@/lib/admin/webTrafficOverview";
+import { WEB_TRAFFIC_SOURCE_VALUES, WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN } from "@/lib/analytics/webTraffic";
 import { decodeCursor, encodeCursor, safeRate } from "@/lib/admin/metricsUtils";
 import {
   computeJourneyFunnelStages,
@@ -171,9 +173,27 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
       WHERE date_key IN (${todayUtcKey}::date, ${yesterdayUtcKey}::date)
     `).catch(() => ({ rows: [] })),
     db.execute(sql`
-      SELECT date_key AS "dateKey", page_views AS "pageViews", unique_visitors AS "uniqueVisitors"
-      FROM web_traffic_daily
-      WHERE date_key IN (${todayBeijingKey}::date, ${yesterdayBeijingKey}::date)
+      WITH scoped AS (
+        SELECT
+          (event_time AT TIME ZONE 'Asia/Shanghai')::date AS date_key,
+          CASE
+            WHEN payload->>'trafficSource' IN (${sql.join(WEB_TRAFFIC_SOURCE_VALUES.map((source) => sql`${source}`), sql`, `)})
+            THEN payload->>'trafficSource'
+            ELSE 'direct'
+          END AS traffic_source,
+          payload->>'visitorId' AS visitor_id
+        FROM analytics_events
+        WHERE event_name = 'page_viewed'
+          AND event_time >= ${yesterdayStart}
+          AND event_time <= ${todayEnd}
+      )
+      SELECT
+        date_key AS "dateKey",
+        CASE WHEN GROUPING(traffic_source) = 1 THEN '__total__' ELSE traffic_source END AS "trafficSource",
+        COUNT(*)::int AS "pageViews",
+        COUNT(DISTINCT CASE WHEN visitor_id ~ ${WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN} THEN visitor_id ELSE NULL END)::int AS "uniqueVisitors"
+      FROM scoped
+      GROUP BY GROUPING SETS ((date_key), (date_key, traffic_source))
     `).catch(() => ({ rows: [] })),
     db.execute(sql`SELECT MAX(updated_at) AS "adminMetricsUpdatedAt" FROM admin_metrics_daily`).catch(() => ({ rows: [] })),
   ]);
@@ -181,9 +201,8 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
   const guestRow = rowsOf(guestRaw)[0] ?? {};
   const aiRow = rowsOf(aiRaw)[0] ?? {};
   const actorsRow = rowsOf(actorsRaw)[0] ?? {};
-  const trafficByDate = new Map(rowsOf(trafficRaw).map((row) => [String(row.dateKey ?? ""), row]));
-  const trafficToday = trafficByDate.get(todayBeijingKey) ?? {};
-  const trafficYesterday = trafficByDate.get(yesterdayBeijingKey) ?? {};
+  const trafficToday = buildWebTrafficDailyMetric(rowsOf(trafficRaw), todayBeijingKey);
+  const trafficYesterday = buildWebTrafficDailyMetric(rowsOf(trafficRaw), yesterdayBeijingKey);
   const updatedAt = iso(rowsOf(updatedAtRaw)[0]?.adminMetricsUpdatedAt) ?? new Date().toISOString();
   const nowIso = new Date().toISOString();
 
@@ -200,18 +219,18 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
     kpis: [
       kpiWithTrend({
         metricId: "overview.page_views_today",
-        value: n(trafficToday.pageViews),
-        previousValue: n(trafficYesterday.pageViews),
-        source: "web_traffic_daily",
-        definition: "page_viewed 产品事件数；按北京时间自然日汇总。",
+        value: trafficToday.pageViews,
+        previousValue: trafficYesterday.pageViews,
+        source: "analytics_events.page_viewed",
+        definition: "page_viewed 产品事件数；直接按北京时间自然日从事件记录计算。",
         updatedAt: nowIso,
       }),
       kpiWithTrend({
         metricId: "overview.unique_visitors_today",
-        value: n(trafficToday.uniqueVisitors),
-        previousValue: n(trafficYesterday.uniqueVisitors),
-        source: "web_traffic_daily",
-        definition: "page_viewed 的匿名浏览器 visitorId 去重数；按北京时间自然日汇总。",
+        value: trafficToday.uniqueVisitors,
+        previousValue: trafficYesterday.uniqueVisitors,
+        source: "analytics_events.page_viewed",
+        definition: "page_viewed 的有效匿名浏览器 visitorId 去重数；直接按北京时间自然日从事件记录计算。",
         updatedAt: nowIso,
       }),
       kpi({ metricId: "overview.new_registered_today", value: overview.cards.todayNewUsers, updatedAt }),
@@ -271,6 +290,12 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
         updatedAt: nowIso,
       }),
     ],
+    traffic: {
+      dateKey: todayBeijingKey,
+      source: "analytics_events.page_viewed",
+      definition: "来源仅是浏览器上报的粗粒度类别；不保存原始来源链接、域名或 UTM。",
+      sources: trafficToday.sources,
+    },
   };
 }
 

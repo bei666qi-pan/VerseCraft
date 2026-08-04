@@ -24,7 +24,10 @@ test("buildLocalEndingFinaleFallback creates a bounded final narrative with sett
   assert.equal(finale.source, "fallback");
   assert.ok(finale.narrative.length >= 600);
   assert.ok(finale.narrative.length <= 1000);
+  assert.match(finale.narrative, /推开真正的门/);
+  assert.match(finale.narrative, /公寓/);
   assert.ok(finale.recalled.length >= 2);
+  assert.ok(finale.recalled.includes("B2 门禁碎片"));
   assert.deepEqual(finale.options, [...ENDING_SETTLEMENT_OPTIONS]);
 });
 

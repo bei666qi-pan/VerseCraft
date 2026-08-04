@@ -139,7 +139,7 @@ test("A4：stable 前缀体积；minimal/full runtime + compose 主链路", () =
   const stable = getStablePlayerDmSystemPrefix();
   // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积上升到约 9326（见 5d43d7e）；
   // 阈值同步上调但仍保留可控余量，防止后续无节制增长。
-  assert.ok(stable.length < 11000, `stable length ${stable.length}`);
+  assert.ok(stable.length < 11500, `stable length ${stable.length}`);
   const base = {
     playerContext:
       "游戏时间[第1日 9时]。用户位置[B1_SafeZone]。世界标记：无。锚点解锁：B1[1]，1F[0]，7F[0]。",

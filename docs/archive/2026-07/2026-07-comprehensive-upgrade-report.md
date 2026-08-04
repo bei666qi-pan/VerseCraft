@@ -20,7 +20,7 @@
 
 ### T1：修复关系数值写入不一致
 
-**改动**：`useGameStore.ts` 的 `mergeCodex` 对 `favorability/trust/fear/debt/affection/desire` 六个字段，从"覆盖写"改为"累加 + `clampRelation` 裁剪到 [-100,100]"，与任务结算路径（`applyTaskRelationshipConsequencesToCodex`）的既有语义保持一致，同时防止 AI 单次异常输出把数值写出合法范围。
+**改动**：`useGameStore.ts` 的 `mergeCodex` 对 `favorability/trust/fear/debt` 四个字段，从"覆盖写"改为"累加 + `clampRelation` 裁剪到 [-100,100]"，与任务结算路径（`applyTaskRelationshipConsequencesToCodex`）的既有语义保持一致，同时防止 AI 单次异常输出把数值写出合法范围。
 
 **文件**：`src/store/useGameStore.ts`
 

@@ -36,7 +36,7 @@ test.describe("English play-language regression", () => {
   test("a Chinese upstream turn cannot commit Chinese narrative or choices to an English session", async () => {
     test.skip(!MOCK_AI, "Requires AI_PROVIDER=mock so the upstream emits the intentional Chinese fixture.");
     test.setTimeout(120_000);
-    const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
+    const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "http://[::1]:666";
     const sessionId = `english-final-guard-${Date.now()}`;
     const result = await probeChatSse({
       baseUrl,

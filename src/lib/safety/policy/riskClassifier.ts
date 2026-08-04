@@ -79,7 +79,7 @@ function detectMinorsSexual(text: string): boolean {
 }
 
 function detectExplicitSexual(text: string): boolean {
-  // Avoid punishing mild romance; focus on explicitness.
+  // Focus only on explicit sexual content.
   return /(性交|口交|肛交|强奸|轮奸|性奴|露骨|生殖器|精液)/.test(text);
 }
 
@@ -218,4 +218,3 @@ export function classifyVerseCraftRisk(args: {
     publicSensitive,
   };
 }
-

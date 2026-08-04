@@ -19,6 +19,9 @@ import { getChatRateLimitBucketForHeaders } from "@/lib/chatPurpose";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER } from "@/lib/chatQueue/types";
 
 type Entry = { count: number; resetAt: number };
+const ANONYMOUS_CHAT_LIMIT_IDENTITY_COOKIE = "versecraft_chat_limit_identity";
+const ANONYMOUS_CHAT_LIMIT_IDENTITY_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const SAFE_ANONYMOUS_CHAT_LIMIT_IDENTITY = /^vcrl_[a-zA-Z0-9_-]{16,96}$/;
 
 function createRateLimiter(limit: number, intervalMs: number) {
   const store = new Map<string, Entry>();
@@ -67,12 +70,49 @@ function getClientIp(req: NextRequest): string {
   return (req as unknown as { ip?: string }).ip ?? "unknown";
 }
 
+function isAnonymousChatLimitIdentityEnabled(): boolean {
+  return (envRaw("VERSECRAFT_ENABLE_ANONYMOUS_CHAT_LIMIT_IDENTITY") ?? "true").toLowerCase() !== "false";
+}
+
+function createAnonymousChatLimitIdentity(): string {
+  const random = globalThis.crypto?.randomUUID?.().replaceAll("-", "") ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  return `vcrl_${random.slice(0, 96)}`;
+}
+
+function getAnonymousChatLimitIdentity(req: NextRequest): string | null {
+  if (!isAnonymousChatLimitIdentityEnabled()) return null;
+  const candidate = req.cookies.get(ANONYMOUS_CHAT_LIMIT_IDENTITY_COOKIE)?.value ?? "";
+  return SAFE_ANONYMOUS_CHAT_LIMIT_IDENTITY.test(candidate) ? candidate : null;
+}
+
 function buildLlmLimitKey(req: NextRequest): string {
   const ip = getClientIp(req);
   const ua = (req.headers.get("user-agent") ?? "").slice(0, 80);
   const fp = req.headers.get(CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER) ?? "";
   const safeFp = /^[a-zA-Z0-9_.:-]{8,160}$/.test(fp) ? fp : "";
-  return `${ip}|${ua}|${safeFp}`;
+  const anonymousIdentity = safeFp ? "" : getAnonymousChatLimitIdentity(req) ?? "";
+  return `${ip}|${ua}|${safeFp}|${anonymousIdentity}`;
+}
+
+function issueAnonymousChatLimitIdentity(req: NextRequest, response: NextResponse, pathname: string): NextResponse {
+  if (
+    isAnonymousChatLimitIdentityEnabled() &&
+    !isApiPath(pathname) &&
+    (req.method === "GET" || req.method === "HEAD") &&
+    !req.nextUrl.searchParams.has("_rsc") &&
+    !getAnonymousChatLimitIdentity(req)
+  ) {
+    response.cookies.set({
+      name: ANONYMOUS_CHAT_LIMIT_IDENTITY_COOKIE,
+      value: createAnonymousChatLimitIdentity(),
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: ANONYMOUS_CHAT_LIMIT_IDENTITY_MAX_AGE_SECONDS,
+    });
+  }
+  return response;
 }
 
 const RATE_LIMITED_JSON = {
@@ -228,7 +268,7 @@ export async function middleware(req: NextRequest) {
     return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
   }
 
-  return withHeaders(NextResponse.next(), {
+  return withHeaders(issueAnonymousChatLimitIdentity(req, NextResponse.next(), pathname), {
     previewHost: isPreviewHost,
     previewAccessPage: pathname === "/preview-access",
   });

@@ -44,16 +44,13 @@ export function resolveCodexDisplayName(entry: Pick<CodexEntry, "id" | "name" | 
   return rawName || "未知条目";
 }
 
-export type CodexRelationshipLabel = "暂无" | "盟友" | "恋人" | "敌人";
+export type CodexRelationshipLabel = "暂无" | "盟友" | "敌人";
 
 export function computeRelationshipLabel(entry: Pick<
   CodexEntry,
-  "type" | "romanceStage" | "betrayalFlags" | "favorability" | "fear" | "trust"
+  "type" | "betrayalFlags" | "favorability" | "fear" | "trust"
 >): CodexRelationshipLabel {
   if (entry.type !== "npc") return "暂无";
-
-  const stage = entry.romanceStage ?? "none";
-  if (stage === "bonded" || stage === "committed") return "恋人";
 
   const betrayal = Array.isArray(entry.betrayalFlags) ? entry.betrayalFlags.filter((x) => typeof x === "string") : [];
   const favor = typeof entry.favorability === "number" && Number.isFinite(entry.favorability) ? entry.favorability : 0;
@@ -95,4 +92,3 @@ export function buildCodexIntro(entry: Pick<CodexEntry, "id" | "type">): string 
   }
   return "";
 }
-

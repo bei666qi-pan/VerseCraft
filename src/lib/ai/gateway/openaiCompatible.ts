@@ -41,8 +41,10 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
       model: body.modelApiName,
       messages: body.messages.map(toWireMessage),
       stream: body.stream,
-      max_tokens: body.maxTokens,
     };
+    // Deliberately omit max_tokens. The codex-ds DeepSeek models must be
+    // allowed to finish their reasoning and complete JSON naturally. Keep
+    // max_tokens reserved so extraBody cannot silently introduce a cap.
     if (body.temperature !== undefined) {
       payload.temperature = body.temperature;
     }
@@ -89,12 +91,19 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
         payload[k] = v;
       }
     }
+    // `codex-ds` injects this marker only for its local Sangfor DeepSeek
+    // binding. The loopback gateway records exact upstream usage, so label
+    // calls made by VerseCraft explicitly instead of guessing from `*-pro`.
+    const meterSource = process.env.VC_AI_DIRECT_SOURCE ? "VerseCraft /api/chat" : undefined;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    };
+    if (meterSource) headers["x-deepseek-meter-source"] = meterSource;
+
     return {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify(payload),
     };
   },

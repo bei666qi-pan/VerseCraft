@@ -30,7 +30,7 @@ export default function ServiceWorkerRegistrar() {
   useEffect(() => {
     let mounted = true;
     const isProd = process.env.NODE_ENV === "production";
-    const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+    const __pathname = typeof window !== "undefined" ? window.location.pathname : "";
     const safeGet = (key: string): string | null => {
       try {
         return localStorage.getItem(key);

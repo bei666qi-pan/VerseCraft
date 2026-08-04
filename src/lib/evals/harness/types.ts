@@ -6,12 +6,17 @@
  * - Scorer 接口允许 rule-based / feature-heuristic / LLM judge 三种实现
  * - Reporter 双写全量 JSON + 聚合历史行
  * - Registry 保证 case 元数据可自检
+ * - ExperimentProvenance 统一所有实验的溯源身份
  */
 
 import type { EvalMode } from "./config";
 
+// ── 实验溯源（统一身份）──────────────────────────────────
+
 /**
- * 实验溯源身份（供 selfImprove / eval 统一 provenance）。
+ * 每次实验的不可变溯源身份。
+ *
+ * 设计目标：
  * - 所有 eval/bench/playthrough 脚本共享同一套字段
  * - 统一 JSONL 历史，支持跨批次对比
  * - 可审计：谁在什么配置下用什么模型跑了什么数据集
@@ -117,7 +122,10 @@ export interface ReportEntry {
   dimensions?: Record<string, number>;
   latencyMs?: { p50: number; p95: number };
   timestamp: string;
+  /** @deprecated Use provenance.commit instead */
   gitSha: string;
+  /** 统一实验溯源身份 */
+  provenance: ExperimentProvenance;
 }
 
 // ── Registry ─────────────────────────────────────────────

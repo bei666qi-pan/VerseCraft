@@ -208,6 +208,39 @@ describe("detectCognitiveAnomaly", () => {
     });
     assert.equal(r.anomaly, false);
   });
+
+  it("lazy 模式：跳过全部检测，返回空结果（anomaly=false）", () => {
+    const npcId = "N-003";
+    const facts: KnowledgeFact[] = [
+      {
+        id: "w1",
+        content: "旧校史档案馆记载闭环纠错链的七处锚点编号",
+        scope: "world",
+        sourceType: "system_canon",
+        certainty: "confirmed",
+        visibleTo: [],
+        inferableByOthers: false,
+        tags: [],
+        createdAt: now,
+      },
+    ];
+    const r = detectCognitiveAnomaly({
+      npcId,
+      playerInput: "我直接告诉你旧校史档案馆记载闭环纠错链的七处锚点编号",
+      allFacts: facts,
+      scene: scene([npcId]),
+      profile: buildNpcEpistemicProfile(npcId, { overrides: { remembersPlayerIdentity: "vague" } }),
+      nowIso: now,
+      maxRevealRank: 0,
+      canonical: getNpcCanonicalIdentity(npcId),
+      lazy: true,
+    });
+    assert.equal(r.anomaly, false);
+    assert.equal(r.npcId, npcId);
+    assert.equal(r.severity, "low");
+    assert.equal(r.reactionStyle, "confused");
+    assert.deepEqual(r.triggerFactIds, []);
+  });
 });
 
 describe("inputMentionsFactContent", () => {

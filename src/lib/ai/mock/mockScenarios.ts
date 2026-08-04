@@ -21,6 +21,13 @@ const MOCK_SCENARIOS = new Set<MockAiScenario>([
   "dirty_canned_options",
   "dirty_repetitive_empty",
   "dirty_name_contamination",
+  // HTTP / gateway error scenarios
+  "http_429_rate_limit",
+  "http_503_service_unavailable",
+  "http_401_unauthorized",
+  // Content error scenarios
+  "gibberish_non_json",
+  "content_filter_blocked",
 ]);
 
 function asScenario(value: unknown): MockAiScenario | null {
@@ -33,7 +40,7 @@ function messagesText(messages: ChatMessage[]): string {
   return messages.map((m) => m.content).join("\n").slice(-12_000);
 }
 
-function latestUserText(messages: ChatMessage[]): string {
+function _latestUserText(messages: ChatMessage[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message?.role === "user" && typeof message.content === "string") {
@@ -202,65 +209,34 @@ function chooseNarrative(input: MockScenarioInput, scenario?: MockAiScenario): s
         .map((m) => m.content)
         .join("\n");
   const text = rawUserInput;
-  // 仅当用户输入包含 eval 注入的关键词提示标记时才追加关键词句，
-  // 避免 narrative safety eval 的原始用户输入被错误注入到叙事中。
-  const hasKeywordHint = text.includes("（相关关键词：");
-  const kw = hasKeywordHint ? buildKeywordAppendSentence(text) : "";
   // 检测「灭火器」「停车场」→ combatNarrative（覆盖 combat_high_rules）
   if (text.includes("灭火器") || text.includes("停车场")) {
-    return combatNarrative + kw;
+    return combatNarrative;
   }
   // 检测「钥匙」「挂锁」「锁孔」「防火门」→ itemInteractionNarrative（覆盖 item_interaction）
   if (text.includes("钥匙") || text.includes("挂锁") || text.includes("锁孔") || text.includes("防火门")) {
-    return itemInteractionNarrative + kw;
+    return itemInteractionNarrative;
   }
   // 检测「线索」「时间线」→ clueNarrative（覆盖 long_context）— 必须在 npc 之前，因 playerContext 含"电梯"
   if (text.includes("线索") || text.includes("时间线")) {
-    return clueNarrative + kw;
+    return clueNarrative;
   }
   // 检测「游戏」「剧情」「手电筒」「道具」「物品」
   // → commonNarrative（覆盖 preflight_sensitive、item_interaction）— 必须在 npc 之前
   if (text.includes("游戏") || text.includes("剧情") || text.includes("手电筒") || text.includes("道具") || text.includes("物品")) {
-    return commonNarrative + kw;
+    return commonNarrative;
   }
   // 检测「老李」「电梯」「昨晚」→ npcDialogueNarrative（覆盖 npc_dialogue）
   if (text.includes("老李") || text.includes("电梯") || text.includes("昨晚")) {
-    return npcDialogueNarrative + kw;
+    return npcDialogueNarrative;
   }
   if (text.includes("原石") && text.includes("能量")) {
-    return originiumNarrative + kw;
+    return originiumNarrative;
   }
   if (text.includes("档案") && text.includes("失踪")) {
-    return taskCompleteNarrative + kw;
+    return taskCompleteNarrative;
   }
-  return normalNarrative + kw;
-}
-
-/**
- * 从用户输入中提取 CJK 关键词（2-6字），过滤常见虚词和 mock marker。
- * eval 脚本在 mock 模式下会将 mustContainAny 关键词追加到用户消息末尾，
- * 因此此处提取的关键词会包含 eval 期望的关键词。
- */
-function extractCjkKeywords(text: string, max = 6): string[] {
-  const matches = text.match(/[一-鿿]{2,6}/g) ?? [];
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const m of matches) {
-    if (result.length >= max) break;
-    if (seen.has(m)) continue;
-    if (/^(我|的|了|在|是|有|和|与|或|不|都|也|还|就|把|被|让|给|到|从|对|向|跟|等|这个|那个|一个|没有|已经|可能|应该|需要|可以|能够|通过|因为|所以|但是|然后|如果|虽然|不过|只是|而是|以及|或者|mock_scenario|normal_stream|相关关键词)$/.test(m)) continue;
-    seen.add(m);
-    result.push(m);
-  }
-  return result;
-}
-
-/** 从用户输入提取关键词，追加到叙事末尾，确保 eval mustContainAny 通过 */
-function buildKeywordAppendSentence(rawUserInput: string): string {
-  const keywords = extractCjkKeywords(rawUserInput, 6);
-  if (keywords.length === 0) return "";
-  const joined = keywords.slice(0, 5).join("、");
-  return `周围的空气里弥漫着${joined}的气息，一切都在提醒我不能掉以轻心。`;
+  return normalNarrative;
 }
 
 export const MOCK_ACTION_OPTIONS = [
@@ -341,6 +317,78 @@ export function buildMockStreamScenario(input: MockScenarioInput): MockStreamSce
     });
     return { scenario, chunks: chunkText(malformedDmJson), includeDone: true, usage };
   }
+  // HTTP 429 rate-limit error — simulates gateway returning rate-limit SSE
+  if (scenario === "http_429_rate_limit") {
+    return {
+      scenario,
+      chunks: chunkText(JSON.stringify({
+        error: {
+          type: "rate_limit_error",
+          message: "You exceeded your current quota. Please check your plan and billing details.",
+          code: "rate_limit_exceeded",
+        },
+      })),
+      includeDone: true,
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedPromptTokens: 0 },
+    };
+  }
+  // HTTP 503 service unavailable — simulates gateway downtime
+  if (scenario === "http_503_service_unavailable") {
+    return {
+      scenario,
+      chunks: chunkText(JSON.stringify({
+        error: {
+          type: "server_error",
+          message: "The server is temporarily unavailable. Please try again later.",
+          code: "service_unavailable",
+        },
+      })),
+      includeDone: true,
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedPromptTokens: 0 },
+    };
+  }
+  // HTTP 401 unauthorized — simulates invalid/missing credentials
+  if (scenario === "http_401_unauthorized") {
+    return {
+      scenario,
+      chunks: chunkText(JSON.stringify({
+        error: {
+          type: "authentication_error",
+          message: "Invalid API key provided. You can find your API key at your account dashboard.",
+          code: "invalid_api_key",
+        },
+      })),
+      includeDone: true,
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedPromptTokens: 0 },
+    };
+  }
+  // Gibberish non-JSON — simulates model returning unparseable garbage
+  if (scenario === "gibberish_non_json") {
+    return {
+      scenario,
+      chunks: chunkText("!@#$%^&*()此内容无法被JSON解析器处理{broken: true, missing_quotes: yes}一二三四五六七八九十\n\n" +
+        "asdkljhasd9123!!@#\n" +
+        "```这不是合法的JSON输出```"),
+      includeDone: true,
+      usage,
+    };
+  }
+  // Content filter blocked — simulates safety filter rejecting the response
+  if (scenario === "content_filter_blocked") {
+    return {
+      scenario,
+      chunks: chunkText(JSON.stringify({
+        error: {
+          type: "content_filter",
+          message: "Your request was blocked as a result of our safety system. Your prompt may contain text that is not allowed by our safety system.",
+          code: "content_filter",
+          param: null,
+        },
+      })),
+      includeDone: true,
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedPromptTokens: 0 },
+    };
+  }
   // 根据 tags.expectedOptionsCount 截断选项列表，匹配 eval case 期望的选项数量。
   const expectedCount = typeof input.tags?.expectedOptionsCount === "number"
     ? input.tags.expectedOptionsCount
@@ -413,6 +461,15 @@ export function buildMockCompletionScenario(input: MockScenarioInput): MockCompl
         options: sourceOptions.map((_, index) => `Continue with action ${index + 1}.`),
       }),
       usage,
+    };
+  }
+  if (input.task === "DM_AGENT") {
+    // DM Agent mock: returns a valid narrative response
+    const dmAgentNarrative = "\u6211\u73af\u987e\u56db\u5468\uff0c\u8d70\u5eca\u91cc\u7684\u706f\u5149\u5ffd\u660e\u5ffd\u6697\u3002\u8001\u5218\u4ece\u914d\u7535\u95f4\u63a2\u51fa\u5934\u6765\uff0c\u671d\u6211\u70b9\u4e86\u70b9\u5934\u3002\u201c\u6765\u5f97\u6b63\u597d\uff0c\u953b\u9020\u53f0\u521a\u68c0\u4fee\u5b8c\u3002\u201d\u4ed6\u6307\u4e86\u6307\u5899\u89d2\u90a3\u53f0\u5621\u5621\u4f5c\u54cd\u7684\u8bbe\u5907\u3002\u6211\u8d70\u8fd1\u953b\u9020\u53f0\uff0c\u91d1\u5c5e\u8868\u9762\u5fae\u5fae\u53d1\u70eb\uff0c\u4e0a\u9762\u523b\u7740\u5bc6\u5bc6\u9ebb\u9ebb\u7684\u7b26\u6587\u3002\u201c\u60f3\u6253\u70b9\u4ec0\u4e48\uff1f\u201d\u8001\u5218\u95ee\u3002\u6211\u68c0\u67e5\u4e86\u4e00\u4e0b\u80cc\u5305\u91cc\u7684\u6750\u6599\u2014\u2014\u9668\u94c1\u7684\u788e\u7247\u5728\u706f\u5149\u4e0b\u6cdb\u7740\u5e7d\u84dd\u7684\u5149\uff0c\u72fc\u738b\u7684\u7259\u9f7f\u8fd8\u5e26\u7740\u5fae\u5fae\u7684\u5bd2\u610f\u3002\u201c\u4e00\u628a\u5251\uff0c\u201d\u6211\u8bf4\uff0c\u201c\u5bf9\u4ea1\u7075\u6709\u6548\u7684\u90a3\u79cd\u3002\u201d";
+    return {
+      scenario: "normal_stream",
+      content: dmAgentNarrative,
+      usage: { promptTokens: 500, completionTokens: 200, totalTokens: 700, cachedPromptTokens: 100 },
     };
   }
   if (scenario === "options_only_invalid" || scenario === "dirty_canned_options") {

@@ -12,6 +12,9 @@ const envDevOrigins =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Live AI evaluations may run beside the developer's :666 server. Give the
+  // dedicated SUT its own build/lock directory when the runner requests one.
+  distDir: process.env.VERSECRAFT_NEXT_DIST_DIR?.trim() || ".next",
   transpilePackages: ["lucide-react", "idb-keyval", "zustand"],
   devIndicators: false,
   // Dev-only: allow requests when the browser host differs from the server's
@@ -50,6 +53,7 @@ const nextConfig: NextConfig = {
     ];
   },
   typescript: {
+    tsconfigPath: process.env.VERSECRAFT_NEXT_TSCONFIG_PATH?.trim() || "tsconfig.json",
     ignoreBuildErrors: true,
   },
 };

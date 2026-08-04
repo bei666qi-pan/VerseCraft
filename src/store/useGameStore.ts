@@ -395,10 +395,6 @@ export interface CodexEntry {
   trust?: number;
   fear?: number;
   debt?: number;
-  affection?: number;
-  desire?: number;
-  romanceEligible?: boolean;
-  romanceStage?: "none" | "hint" | "bonded" | "committed";
   betrayalFlags?: string[];
   combatPower?: number;
   combatPowerDisplay?: string;
@@ -983,10 +979,6 @@ function applyTaskRelationshipConsequencesToCodex(
       trust: clampRelation((prev.trust ?? 0) + (p.trust ?? 0)),
       fear: clampRelation((prev.fear ?? 0) + (p.fear ?? 0)),
       debt: clampRelation((prev.debt ?? 0) + (p.debt ?? 0)),
-      affection: clampRelation((prev.affection ?? 0) + (p.affection ?? 0)),
-      desire: clampRelation((prev.desire ?? 0) + (p.desire ?? 0)),
-      ...(typeof p.romanceEligible === "boolean" ? { romanceEligible: p.romanceEligible } : {}),
-      ...(p.romanceStage ? { romanceStage: p.romanceStage } : {}),
       ...(betrayalFlags.length > 0 ? { betrayalFlags } : {}),
     };
   }
@@ -2076,12 +2068,6 @@ export const useGameStore = create<GameState>()(
               ...(typeof u.trust === "number" ? { trust: clampRelation((prev?.trust ?? 0) + u.trust) } : {}),
               ...(typeof u.fear === "number" ? { fear: clampRelation((prev?.fear ?? 0) + u.fear) } : {}),
               ...(typeof u.debt === "number" ? { debt: clampRelation((prev?.debt ?? 0) + u.debt) } : {}),
-              ...(typeof u.affection === "number" ? { affection: clampRelation((prev?.affection ?? 0) + u.affection) } : {}),
-              ...(typeof u.desire === "number" ? { desire: clampRelation((prev?.desire ?? 0) + u.desire) } : {}),
-              ...(typeof u.romanceEligible === "boolean" ? { romanceEligible: u.romanceEligible } : {}),
-              ...(u.romanceStage === "none" || u.romanceStage === "hint" || u.romanceStage === "bonded" || u.romanceStage === "committed"
-                ? { romanceStage: u.romanceStage }
-                : {}),
               ...(Array.isArray(u.betrayalFlags) ? { betrayalFlags: u.betrayalFlags.filter((x): x is string => typeof x === "string") } : {}),
               ...(typeof u.combatPower === "number" ? { combatPower: u.combatPower } : {}),
               ...(typeof u.combatPowerDisplay === "string" ? { combatPowerDisplay: u.combatPowerDisplay } : {}),

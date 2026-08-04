@@ -11,8 +11,8 @@ test("resolveCombat: 明显优势 -> overwhelm/advantage", () => {
     scene,
     kind: "subdue",
   });
-  assert.ok(res.outcome === "crush" || res.outcome === "overwhelm" || res.outcome === "advantage");
-  assert.ok(res.explain.why.length >= 1);
+  assert.ok(res.outcome === "crush" || res.outcome === "overwhelm");
+  assert.ok(Array.isArray(res.explain.why) && res.explain.why.length > 0);
 });
 
 test("resolveCombat: 安全区 escape 更倾向 withdraw", () => {
@@ -34,6 +34,6 @@ test("resolveCombat: 细小优势 -> edge", () => {
     scene,
     kind: "subdue",
   });
-  assert.ok(res.outcome === "edge" || res.outcome === "stalemate");
+  assert.equal(res.outcome, "edge");
 });
 

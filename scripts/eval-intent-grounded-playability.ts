@@ -13,7 +13,7 @@ import {
   type IntentOracleVerdict,
 } from "../src/lib/evals/intentGroundedPlayability";
 import type { ModelNarrativeReviewTarget } from "../src/lib/evals/modelNarrativeReview";
-import { appendHistory, evalLog, getGitSha, parseEvalCli, writeJson } from "../src/lib/evals/harness";
+import { appendHistory, evalLog, parseEvalCli, writeJson, resolveExperimentProvenance } from "../src/lib/evals/harness";
 import type { PlayerControlPlane } from "../src/lib/playRealtime/types";
 
 for (const name of [".env", ".env.local"]) {
@@ -246,7 +246,8 @@ async function main(): Promise<void> {
     fs.mkdirSync(path.dirname(path.resolve(markdownOut)), { recursive: true });
     fs.writeFileSync(path.resolve(markdownOut), markdown(output as unknown as Record<string, unknown>), "utf8");
   }
-  appendHistory({ suite: "intent-grounded-playability", mode: cli.mode, total: baseSummary.total, pass: baseSummary.passed, passRate: baseSummary.total === 0 ? 0 : baseSummary.passed / baseSummary.total, gate: strictGatePass ? "pass" : "fail", dimensions: { liveCoverage: results.length === 0 ? 0 : liveCount / results.length, inconclusive: baseSummary.inconclusive, consistentGroups }, timestamp: new Date().toISOString(), gitSha: getGitSha() });
+  const provenance = resolveExperimentProvenance();
+  appendHistory({ suite: "intent-grounded-playability", mode: cli.mode, total: baseSummary.total, pass: baseSummary.passed, passRate: baseSummary.total === 0 ? 0 : baseSummary.passed / baseSummary.total, gate: strictGatePass ? "pass" : "fail", dimensions: { liveCoverage: results.length === 0 ? 0 : liveCount / results.length, inconclusive: baseSummary.inconclusive, consistentGroups }, timestamp: new Date().toISOString(), gitSha: provenance.commit, provenance });
   if (assertStrict && !strictGatePass) process.exitCode = 1;
 }
 

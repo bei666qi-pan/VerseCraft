@@ -52,7 +52,7 @@ const INTERNAL_TAG_LEAKS: readonly RegExp[] = [
 /**
  * 重复模式：同一名词以不同语言/写法连续出现
  */
-const DUPLICATE_PATTERNS = [
+const __DUPLICATE_PATTERNS = [
   /\b(\S{2,6})\s*[·/]\s*\1\b/u,
 ];
 

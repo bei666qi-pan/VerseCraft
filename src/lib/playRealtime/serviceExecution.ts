@@ -316,7 +316,7 @@ function applyLightForgeWeaponAction(args: {
     return true;
   }
   if (result.consumedItemIds.length > 0) appendArrayField(args.record, "consumed_items", result.consumedItemIds);
-  if (result.consumedWarehouseIds.length > 0) appendArrayField(args.record, "consumed_items", result.consumedWarehouseIds);
+  if (result.consumedWarehouseIds.length > 0) appendArrayField(args.record, "consumed_warehouse_items", result.consumedWarehouseIds);
   if (result.currencyChange !== 0) sumCurrencyChange(args.record, result.currencyChange);
   if (result.weaponUpdates.length > 0) appendObjectArrayField(args.record, "weapon_updates", result.weaponUpdates as Array<Record<string, unknown>>);
   args.record.narrative = result.narrative.replace(/^你/, "我");

@@ -35,37 +35,32 @@ import { anyAiProviderConfigured } from "@/lib/ai/service";
 import {
   enhanceScene,
   expandNarrativeOnly,
-  generateMainReply,
   generateDecisionOptionsOnlyFallback,
+  generateMainReply,
   generateOptionsOnlyFallback,
   localizeGameplayPresentation,
   repairNarrativeOnly,
   type EnhanceAfterMainStreamResult,
 } from "@/lib/ai/logicalTasks";
-import { resolvePlayerChatMaxTokensForNarrativeBudget } from "@/lib/ai/tasks/taskPolicy";
-import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
 import { buildNarrativeLanguageInstruction, normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
 import { hasWrongGameplayTurnLanguage } from "@/lib/i18n/gameplayPresentation";
 import {
   buildDynamicPlayerDmSystemSuffix,
-  buildStyleGuidePacketBlock,
   getCompactStablePlayerDmSystemPrefix,
-  shouldUseCompactStablePrompt,
   getStablePlayerDmSystemPrefix,
+  shouldUseCompactStablePrompt,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import {
-  incrEmptyOptionsTurnCount,
+  incrDecisionRequiredHitCount,
   incrOptionsOnlyRegenPathHitCount,
   incrTurnModeCount,
-  incrDecisionRequiredHitCount,
-  recordNarrativeChars,
   recordDecisionOptionsFixOutcome,
   recordLanguageAntiCheatOutcome,
+  recordNarrativeChars,
+  recordNarrativeGovernanceOutcome,
   recordOptionsAutoRegenOutcome,
   recordOptionsManualRegenOutcome,
-  recordPromptCharDelta,
-  recordNarrativeGovernanceOutcome,
 } from "@/lib/observability/versecraftRolloutMetrics";
 import { logChatGenerationMetrics } from "@/lib/observability/chatGenerationMetrics";
 import { persistTurnFacts } from "@/lib/worldKnowledge/ingestion/persistTurnFacts";
@@ -73,20 +68,6 @@ import {
   normalizePlayerDmJson,
   parseAccumulatedPlayerDmJson,
 } from "@/lib/playRealtime/normalizePlayerDmJson";
-import { resolveDmTurn, type ResolvedDmTurn } from "@/features/play/turnCommit/resolveDmTurn";
-import {
-  applyItemGameplayOptionInjection,
-  shouldSkipItemOptionInjection,
-} from "@/lib/play/itemGameplay";
-import {
-  shouldApplyDeferredOptionsStrip,
-  stripPlayableOptionsForDeferredClientDelivery,
-} from "@/lib/play/deferMainTurnOptionsDelivery";
-import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
-import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
-import {
-  sanitizeNarrativeLeakageForFinal,
-} from "@/lib/playRealtime/protocolGuard";
 import {
   createVerseCraftRequestId,
   isSafeVerseCraftRequestId,
@@ -106,6 +87,7 @@ import { isChatPurposeHeaderConsistent } from "@/lib/chatPurpose";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import { CHAT_LATENCY_BUDGET, OPTIONS_REGEN_LATENCY_BUDGET, VC_WAITING } from "@/lib/perf/waitingConfig";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
+import { buildPlayerChatMessages } from "@/lib/playRealtime/promptAssembly";
 import {
   loadVerseCraftEnvFilesOnce,
   reloadVerseCraftProcessEnv,
@@ -114,13 +96,13 @@ import {
 import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
+import { buildChatValidationFailureResponse, isEmptyChatInput } from "./chatValidationFailureResponse";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
 import { safeBlockedDmJson } from "@/lib/security/policy";
 import {
   isVisibleSafetyDegradeReason,
   visibleSafetyDegradeMessageFor,
 } from "@/lib/security/visibleSafety";
-import { mergeAutoCapturedCodexUpdates } from "@/lib/registry/codexAutoCapture";
 import {
   buildInternalNoNarrativeDmJson,
   buildVisibleSiteFailureDmJson,
@@ -128,109 +110,41 @@ import {
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
-import { auditDmOutputCandidateOnServer } from "@/lib/safety/output/pipeline";
 import { normalizeFinishReason, normalizeUsage } from "@/lib/ai/stream/openaiLike";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
-import type { TokenUsage } from "@/lib/ai/types/core";
-import { isGlobalCacheSafe } from "@/lib/kg/cacheGate";
+import type {
+ TokenUsage } from "@/lib/ai/types/core";
 import { embedText } from "@/lib/kg/embed";
 import { ingestUserKnowledge } from "@/lib/kg/ingest";
-import { normalizeForHash, sha256Hex } from "@/lib/kg/normalize";
 import { routeUserInput, type RouteResult } from "@/lib/kg/routing";
-import { getWorldRevision, putSemanticCache, touchSemanticCacheHit, tryGetSemanticCache } from "@/lib/kg/semanticCache";
+import { getWorldRevision, touchSemanticCacheHit, tryGetSemanticCache } from "@/lib/kg/semanticCache";
 import { enqueueWorldEngineTick } from "@/lib/worldEngine/queue";
-import {
-  applyB1SafetyGuard,
-  buildB1ServiceContextBlock,
-  extractPresentNpcIds,
-  guessPlayerLocationFromContext,
-} from "@/lib/playRealtime/b1Safety";
-import { applyB1ServiceExecutionGuard } from "@/lib/playRealtime/serviceExecution";
+import { applyB1SafetyGuard, extractPresentNpcIds, guessPlayerLocationFromContext } from "@/lib/playRealtime/b1Safety";
 import { buildDeterministicServiceTurn } from "@/lib/playRealtime/deterministicServiceTurn";
-import { applyEquipmentExecutionGuard } from "@/lib/playRealtime/equipmentExecution";
-import { applyMainThreatUpdateGuard } from "@/lib/playRealtime/mainThreatGuard";
-import { applyWeaponTacticalAdjudication } from "@/lib/playRealtime/weaponAdjudication";
-import { applyWorldWeaponPickupGuard } from "@/lib/playRealtime/worldWeaponAffordances";
-import { applyPresentNpcObservationGuard } from "@/lib/playRealtime/presentNpcObservationGuard";
-import { applyAuthoredLocationMovementGuard } from "@/lib/playRealtime/authoredLocationMovementGuard";
-import { applyRegisteredMechanicsGuard } from "@/lib/playRealtime/registeredMechanicsGuard";
-import { applyPhysicalInjuryNarrativeGuard } from "@/lib/playRealtime/physicalInjuryNarrativeGuard";
-import { applyEquipmentNarrativeConsistencyGuard } from "@/lib/playRealtime/equipmentNarrativeConsistencyGuard";
-import { applyPresentNpcNarrativeBoundaryGuard } from "@/lib/playRealtime/presentNpcNarrativeBoundaryGuard";
-import { applyInternalIdNarrativeGuard } from "@/lib/playRealtime/internalIdNarrativeGuard";
-import { applyProfessionNarrativeCoherenceGuard } from "@/lib/playRealtime/professionNarrativeCoherenceGuard";
-import { applyAnonymizationArtifactGuard } from "@/lib/playRealtime/anonymizationArtifactGuard";
-import { applyLocationNarrativeConsistencyGuard } from "@/lib/playRealtime/locationNarrativeConsistencyGuard";
-import { applyDeadNpcContinuityGuard } from "@/lib/playRealtime/deadNpcContinuityGuard";
-import { applyStage2SettlementGuard } from "@/lib/playRealtime/settlementGuard";
-import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
-import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
-import {
-  applyNpcProactiveGrantGuard,
-  buildNpcGrantFallbackNarrativeBlock,
-  buildNpcProactiveGrantNarrativeBlock,
-  normalizeDmTaskPayload,
-} from "@/lib/tasks/taskV2";
-import { applyDmChangeSetToDmRecord } from "@/lib/dmChangeSet/applyChangeSet";
-import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/revive/conspiracy";
-import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
-import { loadDueDirectorAgenda, markDirectorAgendaInjected, expireStaleDirectorAgenda } from "@/lib/worldEngine/agenda";
-import { resolveWorldDirectorConfig } from "@/lib/worldEngine/config";
-import { resolveSocialWorldConfig } from "@/lib/socialWorld/config";
-import { loadDueSocialEventsForPrompt, markSocialEventsProjected } from "@/lib/socialWorld/persistence";
-import { loadSocialWorldHintForPrompt } from "@/lib/socialWorld/prompt";
+import { markDirectorAgendaInjected, expireStaleDirectorAgenda } from "@/lib/worldEngine/agenda";
+import { markSocialEventsProjected } from "@/lib/socialWorld/persistence";
 import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
 import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
-import { detectCognitiveAnomaly } from "@/lib/epistemic/detector";
-import { epistemicDebugLog, getEpistemicRolloutFlags } from "@/lib/epistemic/featureFlags";
-import { loreFactsToKnowledgeFacts, mergeLorePacketSlices } from "@/lib/epistemic/loreFactBridge";
-import { buildNpcEpistemicAlertAugmentationBlock } from "@/lib/epistemic/reaction";
-import { sessionMemoryRowToKnowledgeFacts } from "@/lib/epistemic/sessionFactBridge";
+import { getEpistemicRolloutFlags } from "@/lib/epistemic/featureFlags";
 import { resolveEpistemicTargetNpcId } from "@/lib/epistemic/targetNpc";
-import type { EpistemicValidatorTelemetry } from "@/lib/epistemic/validator";
-import type { EpistemicAnomalyResult, EpistemicSceneContext, KnowledgeFact, NpcEpistemicProfile } from "@/lib/epistemic/types";
-import { PLAYER_ACTOR_ID } from "@/lib/epistemic/types";
-import { buildEpistemicResiduePerformancePlan } from "@/lib/epistemic/residuePerformance";
-import { XINLAN_NPC_ID } from "@/lib/epistemic/policy";
-import type { LorePacket } from "@/lib/worldKnowledge/types";
-import { getNpcCanonicalIdentity, isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
+import type {
+ EpistemicValidatorTelemetry } from "@/lib/epistemic/validator";
+import type {
+ LorePacket } from "@/lib/worldKnowledge/types";
+import { isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
 import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
-import {
-  buildNarrativeContinuityPacketBlock,
-  buildNarrativeStyleBiblePacketBlock,
-} from "@/lib/playRealtime/narrativeStylePackets";
+import { buildNarrativeContinuityPacketBlock } from "@/lib/playRealtime/narrativeStylePackets";
 import { shapeUserActionForModelV2 } from "@/lib/playRealtime/actionIntent";
 import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
 import { buildOptionsOnlySystemPrompt, buildOptionsOnlyUserPacket } from "@/lib/playRealtime/optionsOnlyPackets";
-import { buildProtagonistAnchorPacketBlock } from "@/lib/playRealtime/protagonistAnchorPackets";
-import { buildTurnModePolicyPacketBlock } from "@/lib/playRealtime/turnModePackets";
-import { buildNarrativeBudgetPacketBlock, resolveNarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
-import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
-import { buildNarrativeDirectiveBlock } from "@/lib/playRealtime/narrativeDirectivePackets";
-import {
-  applyHighRiskWarningsShadowMode,
-  extractNarrativeClaims,
-  summarizeVerificationForTelemetry,
-  verifyClaimsAgainstEvidence,
-  type ProvenanceTelemetrySummary,
-} from "@/lib/guardrails/provenanceVerifier";
-import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
-import { buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
-import { computeNpcFirstEncounterEchoPlan } from "@/lib/playerEcho/npcFirstEncounter";
-import { buildPlayerEchoPromptBlock } from "@/lib/playerEcho/prompt";
 import { readPlayerEchoCanon } from "@/lib/playerEcho/repository";
-import { selectPlayerEchoFragments } from "@/lib/playerEcho/select";
-import type { PlayerEchoCanon } from "@/lib/playerEcho/types";
-import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
-import { buildNpcKnowledgePacket, inferNpcKnowledgeFloorId } from "@/lib/npcKnowledge/npcKnowledgeResolver";
-import { gateFactCommit, type WorldFactCommitCandidate } from "@/lib/worldFacts/factCommitGate";
-import { getFactsForFloor, getFactsForNpc, listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
+import type {
+ PlayerEchoCanon } from "@/lib/playerEcho/types";
 import { assessAndRewriteAntiCheatInput } from "@/lib/playRealtime/antiCheatInput";
 import { buildOptionsRegenResponse } from "./optionsRegenPayload";
-import { getPostResolveOptionsRegenSkipReason, shouldSkipPostResolveOptionsRegen } from "./postResolveOptionsRegenSkip";
 import {
   createChatTtftProfile,
   elapsedMs,
@@ -238,15 +152,16 @@ import {
   pushAndSummarizeTtft,
   resolveChatPerfFlags,
 } from "@/lib/turnEngine/chatPerf";
-import { isLikelyValidDMJson, sanitizeAssistantContent } from "@/lib/turnEngine/fallback";
-import { assemblePlayerChatPrompt } from "@/lib/turnEngine/promptAssembly";
+import {
+  sanitizeAssistantContent,
+  isLikelyValidDMJson,
+} from "@/lib/turnEngine/fallback";
 import {
   buildMinimalPlayerContextSnapshot,
   buildTurnRequestMetadata,
   clampText,
   dedupeDecisionOptions,
   extractLastAssistantNarrativeTail,
-  inferPlannedTurnMode,
   parseUpstreamErrorFields,
 } from "@/lib/turnEngine/requestMetadata";
 import {
@@ -263,57 +178,18 @@ import {
   sseText,
   VERSECRAFT_FINAL_PREFIX,
 } from "@/lib/narrativeEngine/streamFrames";
-import { buildDialogueContext } from "@/lib/narrativeEngine/contextBuilder";
 import type {
   ChatTtftProfile,
   NormalizedPlayerIntent,
-  StateDelta,
-  TurnExecutionContext,
   TurnLaneDecision,
 } from "@/lib/turnEngine/types";
 import { normalizePlayerInput } from "@/lib/turnEngine/normalizePlayerInput";
 import { routeTurnLane } from "@/lib/turnEngine/routeTurnLane";
 import {
-  computePostNarrativeDelta,
-  computePreNarrativeDelta,
-} from "@/lib/turnEngine/computeStateDelta";
-import { renderNarrativeFromDelta } from "@/lib/turnEngine/renderNarrative";
-import {
   assessNarrativeLengthForTelemetry,
   buildNarrativeLengthTelemetry,
   type NarrativeLengthTelemetry,
 } from "@/lib/turnEngine/narrativeLengthTelemetry";
-import {
-  applyNpcConsistencyPostGeneration,
-  validateNarrative,
-  type NarrativeValidationReport,
-} from "@/lib/narrativeEngine/checker";
-import {
-  COMMIT_STATE_CHANGING_FIELDS,
-  COMMIT_STATE_MIRROR_FIELDS,
-  commitNarrativeEvents,
-  commitTurn,
-  type TurnCommitSummary,
-} from "@/lib/narrativeEngine/committer";
-import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
-// v4 全链路人名白名单 — final guard 依赖项
-import {
-  extractChineseNames,
-  isHighConfidenceUnregisteredPersonName,
-  redactHighConfidenceUnregisteredPersonNames,
-} from "@/lib/narrative/extractChineseNames";
-import { NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
-import { NPCS } from "@/lib/registry/npcs";
-
-const NPC_NAME_SET: ReadonlySet<string> = new Set([
-  ...NPCS.map((n) => n.name),
-  ...NPC_ALIAS_FLAT_SET,
-]);
-const NPC_ALIAS_SET: ReadonlySet<string> = NPC_ALIAS_FLAT_SET;
-import {
-  buildRouteModelOutputFromResolvedTurn,
-  buildRouteNarrativeCheckResult,
-} from "@/lib/narrativeEngine/routeAdapter";
 import { scheduleBackgroundWorldTick } from "@/lib/turnEngine/enqueueBackgroundTick";
 import { schedulePlayerEchoPersistFromTurn } from "@/lib/playerEcho/persistFromTurn";
 import {
@@ -321,14 +197,9 @@ import {
   emptyNarrativeExpansionTelemetry,
   narrativeExpansionTelemetryFromResult,
   shouldTriggerNarrativeExpansion,
-  type NarrativeExpansionTelemetry,
   type NarrativeExpansionResult,
+  type NarrativeExpansionTelemetry,
 } from "@/lib/turnEngine/narrativeExpansion";
-import {
-  buildEpistemicPromptContext,
-  buildEpistemicInput,
-  type EpistemicFilterResult,
-} from "@/lib/turnEngine/epistemic";
 import {
   asAnalyticsEventName,
   buildNarrativeSafetyTelemetryEvents,
@@ -337,24 +208,64 @@ import {
   planNarrativeSafetyEnforcement,
   pushNarrativeSafetyTelemetryEvent,
 } from "@/lib/turnEngine/narrativeSafety";
-import {
-  buildPacingCandidateFromDmRecord,
-  normalizeBeatState,
-  validatePacing,
-} from "@/lib/turnEngine/pacing";
+// ── Imports originally from the (now-removed) streamFinalHooks.ts extraction ──
+import { resolveDmTurn, type ResolvedDmTurn } from "@/features/play/turnCommit/resolveDmTurn";
+import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
+import { applyItemGameplayOptionInjection, shouldSkipItemOptionInjection } from "@/lib/play/itemGameplay";
+import { shouldApplyDeferredOptionsStrip, stripPlayableOptionsForDeferredClientDelivery } from "@/lib/play/deferMainTurnOptionsDelivery";
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
+import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
+import { mergeAutoCapturedCodexUpdates } from "@/lib/registry/codexAutoCapture";
+import { auditDmOutputCandidateOnServer } from "@/lib/safety/output/pipeline";
+import { isGlobalCacheSafe } from "@/lib/kg/cacheGate";
+import { normalizeForHash, sha256Hex } from "@/lib/kg/normalize";
+import { putSemanticCache } from "@/lib/kg/semanticCache";
+import { applyB1ServiceExecutionGuard } from "@/lib/playRealtime/serviceExecution";
+import { applyEquipmentExecutionGuard } from "@/lib/playRealtime/equipmentExecution";
+import { applyMainThreatUpdateGuard } from "@/lib/playRealtime/mainThreatGuard";
+import { applyWeaponTacticalAdjudication } from "@/lib/playRealtime/weaponAdjudication";
+import { applyWorldWeaponPickupGuard } from "@/lib/playRealtime/worldWeaponAffordances";
+import { applyPresentNpcObservationGuard } from "@/lib/playRealtime/presentNpcObservationGuard";
+import { applyAuthoredLocationMovementGuard } from "@/lib/playRealtime/authoredLocationMovementGuard";
+import { applyRegisteredMechanicsGuard } from "@/lib/playRealtime/registeredMechanicsGuard";
+import { applyPhysicalInjuryNarrativeGuard } from "@/lib/playRealtime/physicalInjuryNarrativeGuard";
+import { applyEquipmentNarrativeConsistencyGuard } from "@/lib/playRealtime/equipmentNarrativeConsistencyGuard";
+import { applyPresentNpcNarrativeBoundaryGuard } from "@/lib/playRealtime/presentNpcNarrativeBoundaryGuard";
+import { applyInternalIdNarrativeGuard } from "@/lib/playRealtime/internalIdNarrativeGuard";
+import { applyProfessionNarrativeCoherenceGuard } from "@/lib/playRealtime/professionNarrativeCoherenceGuard";
+import { applyAnonymizationArtifactGuard } from "@/lib/playRealtime/anonymizationArtifactGuard";
+import { applyLocationNarrativeConsistencyGuard } from "@/lib/playRealtime/locationNarrativeConsistencyGuard";
+import { applyDeadNpcContinuityGuard } from "@/lib/playRealtime/deadNpcContinuityGuard";
+import { applyStage2SettlementGuard } from "@/lib/playRealtime/settlementGuard";
+import { applyNpcProactiveGrantGuard, buildNpcGrantFallbackNarrativeBlock, normalizeDmTaskPayload } from "@/lib/tasks/taskV2";
+import { applyDmChangeSetToDmRecord } from "@/lib/dmChangeSet/applyChangeSet";
+import { ensure7FConspiracyTask } from "@/lib/revive/conspiracy";
+import { detectCognitiveAnomaly } from "@/lib/epistemic/detector";
+import { epistemicDebugLog } from "@/lib/epistemic/featureFlags";
+import type {
+ EpistemicSceneContext } from "@/lib/epistemic/types";
+import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
+import { applyHighRiskWarningsShadowMode, extractNarrativeClaims, summarizeVerificationForTelemetry, verifyClaimsAgainstEvidence } from "@/lib/guardrails/provenanceVerifier";
+import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
+import { buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
+import { gateFactCommit, type WorldFactCommitCandidate } from "@/lib/worldFacts/factCommitGate";
+import { listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
+import { getPostResolveOptionsRegenSkipReason } from "@/app/api/chat/postResolveOptionsRegenSkip";
+import { evaluateUnifiedOptionsRegen } from "@/app/api/chat/optionsRegenDecision";
+import { buildDialogueContext } from "@/lib/narrativeEngine/contextBuilder";
+import { computePostNarrativeDelta } from "@/lib/turnEngine/computeStateDelta";
+import { renderNarrativeFromDelta } from "@/lib/turnEngine/renderNarrative";
+import { applyNpcConsistencyPostGeneration, validateNarrative, type NarrativeValidationReport } from "@/lib/narrativeEngine/checker";
+import { COMMIT_STATE_CHANGING_FIELDS, COMMIT_STATE_MIRROR_FIELDS, commitNarrativeEvents, commitTurn, type TurnCommitSummary } from "@/lib/narrativeEngine/committer";
+import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
+import { extractChineseNames, isHighConfidenceUnregisteredPersonName, redactHighConfidenceUnregisteredPersonNames } from "@/lib/narrative/extractChineseNames";
+import { NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
+import { NPCS } from "@/lib/registry/npcs";
+import { buildRouteModelOutputFromResolvedTurn, buildRouteNarrativeCheckResult } from "@/lib/narrativeEngine/routeAdapter";
+import { buildPacingCandidateFromDmRecord, normalizeBeatState, validatePacing } from "@/lib/turnEngine/pacing";
 import { insertPacingLedgerRow } from "@/lib/turnEngine/pacing/pacingLedger";
 import { insertForeshadowLedgerRows, expireOverdueForeshadows } from "@/lib/narrativeGovernance/foreshadowLedger";
-
-function extractPartialNarrativeForRepair(raw: string): string {
-  const text = String(raw ?? "");
-  const match = text.match(/"narrative"\s*:\s*"((?:\\.|[^"\\])*)"/);
-  if (!match?.[1]) return "";
-  try {
-    return JSON.parse(`"${match[1]}"`);
-  } catch {
-    return match[1].replace(/\\"/g, '"').replace(/\\n/g, "\n").trim();
-  }
-}
+import { shouldAttemptDmAgent } from "@/lib/ai/tools/dmMechanicsIntentRouter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -362,6 +273,13 @@ export const dynamic = "force-dynamic";
 const ROUNDS_THRESHOLD = 10;
 const SHORT_TERM_ROUNDS = 5;
 const TTFT_HARD_CAP_SESSION_MEMORY_MS = 140;
+
+// NPC name sets for v4全链路人名白名单 final guard
+const NPC_NAME_SET: ReadonlySet<string> = new Set([
+  ...NPCS.map((n) => n.name),
+  ...NPC_ALIAS_FLAT_SET,
+]);
+const NPC_ALIAS_SET: ReadonlySet<string> = NPC_ALIAS_FLAT_SET;
 
 /**
  * 开局首轮（OPENING_SYSTEM_PROMPT 触发的回合）若命中安全降级，
@@ -383,28 +301,6 @@ function resolveVisibleSafetyMessageForTurn(
     return language === "en-US" ? OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE_EN : OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE;
   }
   return raw;
-}
-
-function extractChapterNarrativeBudgetInput(clientState: unknown) {
-  if (!clientState || typeof clientState !== "object" || Array.isArray(clientState)) return null;
-  const chapter = (clientState as { chapterRuntime?: unknown }).chapterRuntime;
-  if (!chapter || typeof chapter !== "object" || Array.isArray(chapter)) return null;
-  const record = chapter as Record<string, unknown>;
-  const target = Array.isArray(record.targetTextChars)
-    ? record.targetTextChars.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
-    : [];
-  return {
-    chapterId: typeof record.chapterId === "string" ? record.chapterId : null,
-    narrativeCharCount:
-      typeof record.narrativeCharCount === "number" && Number.isFinite(record.narrativeCharCount)
-        ? record.narrativeCharCount
-        : null,
-    targetTextChars: target.length >= 2 ? ([target[0], target[1]] as [number, number]) : null,
-    hardTextChars:
-      typeof record.hardTextChars === "number" && Number.isFinite(record.hardTextChars)
-        ? record.hardTextChars
-        : null,
-  };
 }
 
 function hasAuthSessionCookie(headers: Headers): boolean {
@@ -854,7 +750,12 @@ async function postChatInternal(req: Request) {
   const validated = validateChatRequest(body);
   ttftProfile.validateChatRequestMs = elapsedMs(validateStartAt);
   if (!validated.ok) {
-    return NextResponse.json({ error: validated.error }, { status: validated.status });
+    const validationRequestId = req.headers.get(VERSECRAFT_REQUEST_ID_HEADER) ?? createVerseCraftRequestId("chat");
+    return buildChatValidationFailureResponse({
+      validation: validated,
+      requestId: validationRequestId,
+      isEmptyInput: isEmptyChatInput(body),
+    });
   }
   if (!isChatPurposeHeaderConsistent({ headers: req.headers, clientPurpose: validated.clientPurpose })) {
     return NextResponse.json({ error: "chat_purpose_mismatch", message: "请求用途与请求体不一致。" }, { status: 400 });
@@ -1257,6 +1158,47 @@ async function postChatInternal(req: Request) {
     }
   }
 
+  // Pre-resolve env and start lore retrieval as early as possible after input
+  // moderation, so it overlaps with control preflight and session-memory read.
+  const preflightEnv = resolveAiEnv();
+
+  let runtimeLoreCompact = "";
+  let loreRetrievalLatencyMs = 0;
+  let loreCacheHit = false;
+  let loreSourceCount = 0;
+  let loreTokenEstimate = 0;
+  let loreFallbackPath: "none" | "db_partial" | "registry" = "none";
+  let loreBudgetHit = false;
+  let runtimePacketChars = 0;
+  let runtimePacketTokenEstimate = 0;
+  let runtimeLorePacket: LorePacket | null = null;
+
+  const loreRetrievalBudgetMs = Math.max(
+    0,
+    Math.min(preflightEnv.loreRetrievalBudgetMs, perfFlags.loreRetrievalBudgetMsCap)
+  );
+  const loreRetrievalP = riskLane === "fast" && perfFlags.enableLightweightFastPath
+    ? Promise.resolve()
+    : loadRuntimeLoreStage({
+        perfFlags,
+        riskLane,
+        loreRetrievalBudgetMs,
+        requestId,
+        userId,
+        sessionId,
+        latestUserInput,
+        playerContext,
+      }).then((result) => {
+        runtimeLoreCompact = result.runtimeLoreCompact;
+        loreRetrievalLatencyMs = result.loreRetrievalLatencyMs;
+        loreCacheHit = result.loreCacheHit;
+        loreSourceCount = result.loreSourceCount;
+        loreTokenEstimate = result.loreTokenEstimate;
+        loreFallbackPath = result.loreFallbackPath;
+        loreBudgetHit = result.loreBudgetHit;
+        runtimeLorePacket = result.runtimeLorePacket;
+      });
+
   const kgEnabled = isKgLayerEnabled();
   const kgRoute = routeUserInput(latestUserInput);
   if (kgEnabled) {
@@ -1273,7 +1215,6 @@ async function postChatInternal(req: Request) {
     void db.delete(gameSessionMemory).where(eq(gameSessionMemory.userId, userId)).catch(() => {});
   }
 
-  const preflightEnv = resolveAiEnv();
   const runControlPreflightP = runControlPreflightStage({
     perfFlags,
     riskLane,
@@ -1584,44 +1525,6 @@ async function postChatInternal(req: Request) {
     void markUserActive(userId).catch(() => {});
   }
 
-  let runtimeLoreCompact = "";
-  let loreRetrievalLatencyMs = 0;
-  let loreCacheHit = false;
-  let loreSourceCount = 0;
-  let loreTokenEstimate = 0;
-  let loreFallbackPath: "none" | "db_partial" | "registry" = "none";
-  let loreBudgetHit = false;
-  let runtimePacketChars = 0;
-  let runtimePacketTokenEstimate = 0;
-  let runtimeLorePacket: LorePacket | null = null;
-  let provenanceVerifierTelemetry: ProvenanceTelemetrySummary | null = null;
-
-  const loreRetrievalBudgetMs = Math.max(
-    0,
-    Math.min(preflightEnv.loreRetrievalBudgetMs, perfFlags.loreRetrievalBudgetMsCap)
-  );
-  const loreRetrievalP = laneSideEffectPlan.skipRuntimeLore
-    ? Promise.resolve()
-    : loadRuntimeLoreStage({
-        perfFlags,
-        riskLane,
-        loreRetrievalBudgetMs,
-        requestId,
-        userId,
-        sessionId,
-        latestUserInput,
-        playerContext,
-      }).then((result) => {
-        runtimeLoreCompact = result.runtimeLoreCompact;
-        loreRetrievalLatencyMs = result.loreRetrievalLatencyMs;
-        loreCacheHit = result.loreCacheHit;
-        loreSourceCount = result.loreSourceCount;
-        loreTokenEstimate = result.loreTokenEstimate;
-        loreFallbackPath = result.loreFallbackPath;
-        loreBudgetHit = result.loreBudgetHit;
-        runtimeLorePacket = result.runtimeLorePacket;
-      });
-
   let playerEchoReadFailed = false;
   const playerEchoCanonPromise: Promise<PlayerEchoCanon | null> =
     verseRollout.enablePlayerEchoCanon && verseRollout.enablePlayerEchoPromptPacket && userId
@@ -1633,683 +1536,71 @@ async function postChatInternal(req: Request) {
 
   const promptBuildStartAt = nowMs();
 
-  const serviceState = (() => {
-    const base = createDefaultB1ServiceState();
-    const raw =
-      clientState && typeof clientState === "object" && !Array.isArray(clientState)
-        ? ((clientState as any).services ?? (clientState as any).serviceState ?? null)
-        : null;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
-    const o = raw as Record<string, unknown>;
-    return {
-      shopUnlocked: typeof o.shopUnlocked === "boolean" ? o.shopUnlocked : base.shopUnlocked,
-      forgeUnlocked: typeof o.forgeUnlocked === "boolean" ? o.forgeUnlocked : base.forgeUnlocked,
-      anchorUnlocked: typeof o.anchorUnlocked === "boolean" ? o.anchorUnlocked : base.anchorUnlocked,
-      unlockFlags:
-        o.unlockFlags && typeof o.unlockFlags === "object" && !Array.isArray(o.unlockFlags)
-          ? (o.unlockFlags as Record<string, boolean>)
-          : base.unlockFlags,
-    };
-  })();
-
-  const serviceContextBlock = buildB1ServiceContextBlock({
-    playerLocation: guessPlayerLocationFromContext(playerContext),
-    playerContext,
-    serviceState,
-  });
-  const npcTaskNarrativeBlock =
-    !laneSideEffectPlan.compactPrompt
-      ? buildNpcProactiveGrantNarrativeBlock({
-          playerContext,
-          latestUserInput,
-        })
-      : "";
-  const conspiracyNarrativeBlock =
-    !laneSideEffectPlan.compactPrompt
-      ? build7FConspiracyNarrativeBlock({
-          playerContext,
-          latestUserInput,
-        })
-      : "";
-  const worldDirectorConfig = resolveWorldDirectorConfig();
-  const socialWorldConfig = resolveSocialWorldConfig();
-  const directorDigestForPrompt =
-    clientState && typeof clientState === "object" && !Array.isArray(clientState)
-      ? ((clientState as any).directorDigest ?? null)
-      : null;
-  const dueDirectorAgendaPromise =
-    sessionId && worldDirectorConfig.hintInjectionEnabled
-      ? loadDueDirectorAgenda({
-          sessionId,
-          turnIndex: totalRounds,
-          limit: worldDirectorConfig.maxDueHints,
-          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
-        }).catch(() => [])
-      : Promise.resolve([]);
-  const socialWorldHintPromise = loadSocialWorldHintForPrompt({
+  // Wire up promptAssembly.ts — build all prompt messages
+  const promptAssemblyResult = await buildPlayerChatMessages({
+    requestId,
+    userId,
     sessionId,
-    nowTurn: totalRounds,
-    loadDueSocialEventsForPrompt,
-    enabled: socialWorldConfig.promptInjectionEnabled,
-    timeoutMs: socialWorldConfig.queryTimeoutMs,
-    budget: socialWorldConfig.budget,
-  });
-  let dueDirectorAgendaForPrompt: Awaited<typeof dueDirectorAgendaPromise> = [];
-  let injectedDirectorAgendaIds: number[] = [];
-
-  const [, , dueDirectorAgendaItems, socialWorldHintForPrompt] = await Promise.all([
+    chatGuestId,
+    platform,
+    latestUserInput,
+    clientPurpose,
+    languageInstruction,
+    riskLane,
+    totalRounds,
+    shouldApplyFirstActionConstraint,
+    playerContextForPrompt,
+    contextMode,
+    useFastLaneCompactDynamicPackets,
+    playerContext,
+    loreFallbackPath,
+    loreSourceCount,
+    loreCacheHit,
+    loreBudgetHit,
+    loreTokenEstimate,
+    runtimeLoreCompact,
+    loreRetrievalLatencyMs,
+    runtimeLorePacket,
+    runtimePacketChars,
+    runtimePacketTokenEstimate,
+    directorBeatHint,
+    directorTension,
+    isFirstAction,
+    playerDmStablePrefix,
+    requestStartedAt,
+    clientState,
+    rawChatMessages,
+    perfFlags,
+    ttftProfile,
+    laneSideEffectPlan,
+    turnLaneDecision,
+    pipelineControl,
+    pipelineRule,
+    preflightTurnMetrics,
+    sessionMemory,
+    verseRollout,
+    epistemicRolloutFlags,
+    normalizedIntent,
+    pipelinePreflightFailed,
+    controlPreflightBudgetHit,
+    memoryBlock,
+    messagesToSend,
+    inputSafety,
+    antiCheat,
+    turnRawAction,
+    turnDice,
     runControlPreflightP,
     loreRetrievalP,
-    dueDirectorAgendaPromise,
-    socialWorldHintPromise,
-  ]);
-  dueDirectorAgendaForPrompt = dueDirectorAgendaItems;
-  injectedDirectorAgendaIds = dueDirectorAgendaItems.map((item) => item.id).filter((id) => Number.isFinite(id));
-  const socialWorldHintBlock = socialWorldHintForPrompt?.block ?? "";
-  const injectedSocialEventIds = socialWorldHintForPrompt?.projectedEventIds ?? [];
-  const socialProjectionTelemetry = {
-    socialWorldMode: socialWorldConfig.mode,
-    socialHintCount: socialWorldHintForPrompt?.socialHintCount ?? 0,
-    socialHintChars: socialWorldHintForPrompt?.socialHintChars ?? 0,
-    socialPromptChars: socialWorldHintForPrompt?.socialHintChars ?? 0,
-    socialQueryLatencyMs: socialWorldHintForPrompt?.socialQueryLatencyMs ?? 0,
-    socialHintVisibilityCounts: socialWorldHintForPrompt?.socialHintVisibilityCounts ?? {
-      ambient: 0,
-      rumor: 0,
-      directly_observable: 0,
-    },
-    socialEventsProjected: injectedSocialEventIds.length,
-    socialProjectionSkippedReason:
-      socialWorldHintForPrompt?.socialProjectionSkippedReason ??
-      (socialWorldConfig.promptInjectionEnabled ? "query_failed" : "disabled"),
-  };
-  const directorHintBlock = (() => {
-    try {
-      return buildServerDirectorHintBlock(
-        directorDigestForPrompt,
-        dueDirectorAgendaForPrompt.map((item) => ({
-          id: item.id,
-          eventCode: item.eventCode,
-          title: item.title,
-          injectionHint: item.injectionHint,
-          triggerConditions: [],
-          agencyConstraints: item.agencyConstraints,
-          forbiddenOutcomes: item.forbiddenOutcomes,
-          salience: item.salience,
-          revealPolicy: item.revealPolicy,
-        }))
-      );
-    } catch {
-      return "";
-    }
-  })();
-  ttftProfile.controlPreflightMs =
-    typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
-  ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
-
-  const nowIsoForEpistemic = new Date().toISOString();
-  const playerLocForEpistemic = guessPlayerLocationFromContext(playerContext);
-  const presentNpcIdsForEpistemic = extractPresentNpcIds(playerContext, playerLocForEpistemic);
-  const signalsForEpistemicReveal = parsePlayerWorldSignals(playerContext, playerLocForEpistemic);
-  const maxRevealRankForMemory = computeMaxRevealRankFromSignals(signalsForEpistemicReveal);
-
-  let focusNpcForPrompt: string | null = null;
-  let epistemicAnomalyResult: EpistemicAnomalyResult | null = null;
-  let epistemicProfileForPrompt: NpcEpistemicProfile | null = null;
-  let allEpistemicFactsForPrompt: KnowledgeFact[] = [];
-  let epistemicAlertAugmentation = "";
-
-  /**
-   * Epistemic 浣撶郴灞炰簬鈥滆川閲忓寮哄眰鈥濊€岄潪鈥滈瀛楁纭€у簳绾库€濓細
-   * - fast lane 棣栧瓧浼樺厛锛氱姝㈣繘鍏ヨ閲嶈绠楀垎鏀紝閬垮厤鎶婃櫘閫氬洖鍚堟嫋鎱㈠埌鎱㈣溅閬?TTFT
-   * - slow lane 鍙惎鐢細鐢ㄤ簬 NPC 璁板繂/璁ょ煡寮傚父绛変竴鑷存€у寮?   *
-   * 涓轰粈涔堜笉浼氱牬鍧忓畨鍏?鐜╂硶锛?   * - 杈撳叆瀹夊叏銆佸崗璁畧鍗€乶pcConsistencyBoundary锛坈ompact锛変粛鍦?core prompt 閲?   * - 璇ュ垎鏀富瑕佸奖鍝嶁€滃彊浜嬩竴鑷存€?璁板繂绮惧害鈥濓紝涓嶈礋璐ｅ唴瀹瑰畨鍏ㄤ笌纭鍐?   */
-  const shouldResolveFocusNpcForPrompt =
-    !shouldApplyFirstActionConstraint && (!laneSideEffectPlan.compactPrompt || laneSideEffectPlan.requireFullEpistemic);
-  const shouldRunFullEpistemicForPrompt =
-    shouldResolveFocusNpcForPrompt &&
-    (laneSideEffectPlan.requireFullEpistemic || epistemicRolloutFlags.enableEpistemicGuard);
-
-  if (shouldRunFullEpistemicForPrompt) {
-    const loreSlice = runtimeLorePacket ? mergeLorePacketSlices(runtimeLorePacket) : [];
-    const fromLore = loreFactsToKnowledgeFacts(loreSlice.slice(0, 96), nowIsoForEpistemic);
-    const fromSession = sessionMemoryRowToKnowledgeFacts(sessionMemory, nowIsoForEpistemic);
-    const mergedFacts = new Map<string, KnowledgeFact>();
-    for (const f of [...fromLore, ...fromSession]) mergedFacts.set(f.id, f);
-    allEpistemicFactsForPrompt = [...mergedFacts.values()];
-
-    const focusNpcId = resolveEpistemicTargetNpcId({
-      latestUserInput,
-      playerContext,
-      playerLocation: playerLocForEpistemic,
-      controlTarget: pipelineControl?.extracted_slots?.target ?? null,
-    });
-    focusNpcForPrompt = focusNpcId;
-    if (focusNpcId) {
-      const epistemicScene: EpistemicSceneContext = {
-        presentNpcIds: [...new Set([...presentNpcIdsForEpistemic, focusNpcId])],
-      };
-      epistemicProfileForPrompt = buildNpcEpistemicProfile(focusNpcId, {
-        overrides:
-          pipelineRule.in_dialogue_hint && focusNpcId !== XINLAN_NPC_ID
-            ? { remembersPlayerIdentity: "vague" }
-            : undefined,
-      });
-      epistemicAnomalyResult = detectCognitiveAnomaly({
-        npcId: focusNpcId,
-        playerInput: latestUserInput,
-        allFacts: allEpistemicFactsForPrompt,
-        scene: epistemicScene,
-        profile: epistemicProfileForPrompt,
-        nowIso: nowIsoForEpistemic,
-        maxRevealRank: maxRevealRankForMemory,
-        canonical: getNpcCanonicalIdentity(focusNpcId),
-      });
-      epistemicAlertAugmentation = buildNpcEpistemicAlertAugmentationBlock(epistemicAnomalyResult);
-      if (epistemicRolloutFlags.epistemicDebugLog && epistemicAnomalyResult.anomaly) {
-        epistemicDebugLog("anomaly_detected", {
-          npcId: focusNpcId,
-          severity: epistemicAnomalyResult.severity,
-          reactionStyle: epistemicAnomalyResult.reactionStyle,
-        });
-      }
-    }
-  } else if (shouldResolveFocusNpcForPrompt) {
-    const focusNpcId = resolveEpistemicTargetNpcId({
-      latestUserInput,
-      playerContext,
-      playerLocation: playerLocForEpistemic,
-      controlTarget: pipelineControl?.extracted_slots?.target ?? null,
-    });
-    focusNpcForPrompt = focusNpcId;
-    if (focusNpcId) {
-      epistemicProfileForPrompt = buildNpcEpistemicProfile(focusNpcId, {
-        overrides:
-          pipelineRule.in_dialogue_hint && focusNpcId !== XINLAN_NPC_ID
-            ? { remembersPlayerIdentity: "vague" }
-            : undefined,
-      });
-      epistemicAnomalyResult = null;
-      epistemicAlertAugmentation = "";
-    }
-  }
-
-  const dmMemForEpistemic = coerceRowToMemoryForDm(sessionMemory);
-
-  /**
-   * Phase-3: structured epistemic filter.
-   *
-   * This is the explicit, code-reviewable cognitive partition that downstream
-   * narrative rendering / post-generation validators consume. The final DM
-   * prompt is assembled from `buildEpistemicPromptContext` below; legacy
-   * string-layer memory is now telemetry-only for this route.
-   *
-   * Two views are computed per turn:
-   *   - `actorEpistemicFilter`: scoped to the focus NPC actor (or player-only
-   *     scene when no focus). Narrative rendering for this actor MUST NOT see
-   *     `dmOnlyFacts`.
-   *   - `dmEpistemicFilter`: DM-authoring view; used by validators / analytics
-   *     to detect leak candidates.
-   */
-  const actorEpistemicFilter: EpistemicFilterResult = buildEpistemicInput({
-    lorePacket: runtimeLorePacket,
-    sessionMemory,
-    presentNpcIds: presentNpcIdsForEpistemic,
-    focusNpcId: focusNpcForPrompt,
-    actorId: focusNpcForPrompt ?? PLAYER_ACTOR_ID,
-    maxRevealRank: maxRevealRankForMemory,
-    profile: epistemicProfileForPrompt,
-    nowIso: nowIsoForEpistemic,
-  });
-  const dmEpistemicFilter: EpistemicFilterResult = buildEpistemicInput({
-    lorePacket: runtimeLorePacket,
-    sessionMemory,
-    presentNpcIds: presentNpcIdsForEpistemic,
-    focusNpcId: focusNpcForPrompt,
-    actorId: null,
-    profile: null,
-    nowIso: nowIsoForEpistemic,
-  });
-  const npcKnowledgePacketForValidator = verseRollout.enableNpcBeliefGraph && focusNpcForPrompt
-    ? buildNpcKnowledgePacket({
-        speakerNpcId: focusNpcForPrompt,
-        presentNpcIds: presentNpcIdsForEpistemic,
-        location: playerLocForEpistemic,
-        floorId: null,
-        maxRevealRank: maxRevealRankForMemory,
-        playerKnownFactIds: actorEpistemicFilter.playerOnlyFacts.map((fact) => fact.id),
-        scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
-        activeTaskIds: [],
-      })
-    : null;
-  const factAuditFloorId = inferNpcKnowledgeFloorId(playerLocForEpistemic, null);
-  const allowedWorldFactIdsForValidator = verseRollout.enableWorldFactRegistry
-    ? [
-        ...new Set([
-          ...listWorldFacts(maxRevealRankForMemory).map((fact) => fact.factId),
-          ...(factAuditFloorId ? getFactsForFloor(factAuditFloorId, maxRevealRankForMemory).map((fact) => fact.factId) : []),
-          ...(focusNpcForPrompt ? getFactsForNpc(focusNpcForPrompt, maxRevealRankForMemory).map((fact) => fact.factId) : []),
-          ...actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
-          ...actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
-          ...(npcKnowledgePacketForValidator?.can_know_fact_ids ?? []),
-          ...(npcKnowledgePacketForValidator?.can_hint_fact_ids ?? []),
-        ]),
-      ]
-    : [];
-  const playerEchoCanonForPrompt = await playerEchoCanonPromise;
-  const playerEchoSelectedFragments = playerEchoCanonForPrompt
-    ? selectPlayerEchoFragments(playerEchoCanonForPrompt, {
-        activeNpcId: focusNpcForPrompt,
-        presentNpcIds: presentNpcIdsForEpistemic,
-        locationId: playerLocForEpistemic,
-        floorId: factAuditFloorId,
-        latestUserInput,
-        revealTier: maxRevealRankForMemory,
-        npcMemoryPrivilegeById: buildNpcMemoryPrivilegeMapForEcho([
-          ...(focusNpcForPrompt ? [focusNpcForPrompt] : []),
-          ...presentNpcIdsForEpistemic,
-        ]),
-      })
-    : [];
-  const playerEchoFirstEncounterPlan =
-    playerEchoCanonForPrompt && focusNpcForPrompt
-      ? computeNpcFirstEncounterEchoPlan({
-          canonIdentity: getNpcCanonicalIdentity(focusNpcForPrompt),
-          echoCanon: playerEchoCanonForPrompt,
-          activeNpcId: focusNpcForPrompt,
-          snapshot: extractRunSnapshotForEcho(clientState),
-          currentRunDiscovered: collectCurrentRunDiscoveredNpcIdsForEcho(clientState),
-          revealTier: maxRevealRankForMemory,
-        })
-      : null;
-  const playerEchoPromptBlock =
-    verseRollout.enablePlayerEchoCanon && verseRollout.enablePlayerEchoPromptPacket
-      ? buildPlayerEchoPromptBlock(playerEchoSelectedFragments, playerEchoFirstEncounterPlan)
-      : "";
-  const playerEchoPacketChars = playerEchoPromptBlock.length;
-  if (epistemicRolloutFlags.epistemicDebugLog) {
-    epistemicDebugLog("filter_result_built", {
-      requestId,
-      actorId: actorEpistemicFilter.telemetry.actorId,
-      bucket_counts: actorEpistemicFilter.telemetry.bucketCounts,
-      reveal_gated: actorEpistemicFilter.telemetry.revealGatedCount,
-      actor_is_xinlan: actorEpistemicFilter.telemetry.actorIsXinlanException,
-      dm_bucket_counts: dmEpistemicFilter.telemetry.bucketCounts,
-    });
-  }
-
-  const epistemicRuntimeCrossRef =
-    "同条 system 中的 npc_player_baseline_packet、npc_scene_authority_packet、key_npc_lore_packet、worldLorePacketsCompact（reveal_tier）";
-  const actorCanonOneLinerForMemory = focusNpcForPrompt?.trim()
-    ? getNpcCanonicalIdentity(focusNpcForPrompt).canonicalPublicRole.trim().slice(0, 120)
-    : undefined;
-  const epistemicResiduePlan = buildEpistemicResiduePerformancePlan({
-    focusNpcId: focusNpcForPrompt,
-    profile: epistemicProfileForPrompt,
-    anomalyResult: epistemicAnomalyResult,
-    mem: dmMemForEpistemic,
-    latestUserInput,
-    playerContext,
-    presentNpcIds: presentNpcIdsForEpistemic,
-    requestId,
-    nowIso: nowIsoForEpistemic,
+    playerEchoCanonPromise,
+    playerEchoReadFailed,
   });
 
-  const memoryCapsFinal =
-    contextMode === "minimal"
-      ? {
-          summaryMaxChars: 120,
-          playerStatusMaxChars: 80,
-          npcRelationsMaxChars: 60,
-          layerMaxChars: 80,
-          npcSnapshotsMaxChars: 60,
-          compact: true as const,
-        }
-      : { compact: false as const };
+  // Reassign mutable outer-scope state variables
+  runtimePacketChars = promptAssemblyResult.runtimePacketChars;
+  runtimePacketTokenEstimate = promptAssemblyResult.runtimePacketTokenEstimate;
+  memoryBlock = promptAssemblyResult.memoryBlock;
 
-  const scopedFinal = buildActorScopedEpistemicMemoryBlock({
-    mem: dmMemForEpistemic,
-    actorNpcId: focusNpcForPrompt,
-    presentNpcIds: presentNpcIdsForEpistemic,
-    allKnowledgeFacts: allEpistemicFactsForPrompt,
-    profile: epistemicProfileForPrompt,
-    anomalyResult: epistemicAnomalyResult,
-    residuePacket: epistemicResiduePlan.packet,
-    detectorRan: Boolean(focusNpcForPrompt && shouldRunFullEpistemicForPrompt),
-    options: memoryCapsFinal,
-    nowIso: nowIsoForEpistemic,
-    maxRevealRank: maxRevealRankForMemory,
-    runtimeCrossRefNote: epistemicRuntimeCrossRef,
-    actorCanonOneLiner: actorCanonOneLinerForMemory,
-    actorScopedEpistemicEnabled: epistemicRolloutFlags.enableActorScopedEpistemic,
-  });
-  const epistemicPromptMetrics = scopedFinal.metrics;
-  memoryBlock = "";
-
-  const controlAugmentation = buildControlAugmentationBlock({
-    control: pipelineControl,
-    rule: pipelineRule,
-    preflightFailed: pipelinePreflightFailed,
-  });
-
-  const controlAndLoreAugmentation = [
-    contextMode === "minimal" ? "" : controlAugmentation,
-    contextMode === "minimal" ? "" : serviceContextBlock,
-    contextMode === "minimal" ? "" : directorHintBlock,
-    npcTaskNarrativeBlock,
-    conspiracyNarrativeBlock,
-    epistemicAlertAugmentation,
-    epistemicResiduePlan.augmentationBlock,
-    socialWorldHintBlock,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
-  const shouldSkipRuntimePacketsForFastLane =
-    perfFlags.enableLightweightFastPath &&
-    perfFlags.fastLaneSkipRuntimePackets &&
-    laneSideEffectPlan.compactPrompt;
-  const runtimePacketMaxChars = contextMode === "minimal"
-    ? 900
-    : Math.max(2_400, Math.min(4_000, Math.trunc(envNumber("AI_CHAT_RUNTIME_PACKET_MAX_CHARS", 3_200))));
-
-  const runtimePackets = shouldSkipRuntimePacketsForFastLane
-    ? ""
-    : buildRuntimeContextPackets({
-        playerContext,
-        latestUserInput,
-        playerLocation: guessPlayerLocationFromContext(playerContext),
-        serviceState,
-        runtimeLoreCompact: "",
-        contextMode,
-        maxChars: runtimePacketMaxChars,
-        focusNpcId: focusNpcForPrompt,
-      });
-  runtimePacketChars = runtimePackets.length;
-  runtimePacketTokenEstimate = Math.ceil(runtimePacketChars / 4);
-  const npcConsistencyBoundaryFinal = buildNpcConsistencyBoundaryCompactBlock({
-    playerContext,
-    latestUserInput,
-    playerLocation: playerLocForEpistemic,
-    focusNpcId: focusNpcForPrompt,
-    maxRevealRank: maxRevealRankForMemory,
-    epistemic: {
-      actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
-      publicFactCount: epistemicPromptMetrics.publicFactCount,
-      forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
-    },
-    maxChars: contextMode === "minimal" ? 560 : 1600,
-    rollout: {
-      enableNpcCanonGuard: epistemicRolloutFlags.enableNpcCanonGuard,
-      enableNpcBaselineAttitude: epistemicRolloutFlags.enableNpcBaselineAttitude,
-      enableNpcSceneAuthority: epistemicRolloutFlags.enableNpcSceneAuthority,
-    },
-  });
-  const legacyStyleGuideBlock =
-    verseRollout.enableStyleGuidePacket &&
-    !(verseRollout.enablePromptPacketDedupV1 && verseRollout.enableNarrativeStyleBible) &&
-    !useFastLaneCompactDynamicPackets
-      ? buildStyleGuidePacketBlock()
-      : "";
-  const narrativeStyleBibleBlock =
-    verseRollout.enableNarrativeStyleBible && !useFastLaneCompactDynamicPackets
-      ? buildNarrativeStyleBiblePacketBlock({
-          rawAction: turnRawAction ?? latestUserInput,
-          maxChars: contextMode === "minimal" ? 720 : 1200,
-          includeExamples: contextMode !== "minimal",
-        })
-      : "";
-  const worldFactAuditBlock = !useFastLaneCompactDynamicPackets
-    && verseRollout.enableWorldFactRegistry
-    ? [
-        "## 【world_fact_audit_v1】",
-        JSON.stringify({
-          required_when_claiming_world_facts: ["factId", "source", "truthLevel", "revealTier"],
-          strong_fact_categories: [
-            "root_cause",
-            "relationship",
-            "location_transition",
-            "event_stage",
-            "item_acquisition",
-            "npc_identity_or_deep_role",
-            "task_completion",
-          ],
-          output_required_when_claiming_strong_facts: {
-            _narrative_audit: {
-              used_fact_ids: ["fact:..."],
-              mentioned_entity_ids: ["N-001", "location_or_item_id"],
-              speaker_npc_id: focusNpcForPrompt ?? undefined,
-              candidate_new_facts: [
-                {
-                  text: "未证实候选事实，不得写成确定世界事实",
-                  category: "root_cause|relationship|location_transition|event_stage|item_acquisition|npc_identity|task_completion",
-                  confidence: 0.2,
-                  proposed_source: "player_observed|npc_belief|world_engine",
-                },
-              ],
-            },
-          },
-          hard_rule: "Do not state apartment root, NPC relation, event stage, item ownership, floor anomaly, or key history as fact unless backed by a listed factId.",
-        }),
-      ].join("\n")
-    : "";
-  const styleGuideBlock = legacyStyleGuideBlock;
-  const narrativeContinuityBlock = buildNarrativeContinuityPacketBlock({
-    previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
-    rawAction: turnRawAction ?? latestUserInput,
-    dice: turnDice,
-    maxChars: contextMode === "minimal" ? 180 : 900,
-  });
-  const povBlock = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
-  const npcGenderPronounBlock = buildNpcGenderPronounPacketBlock({
-    focusNpcId: focusNpcForPrompt,
-    presentNpcIds: presentNpcIdsForEpistemic,
-    maxChars: contextMode === "minimal" ? 280 : 760,
-  });
-  const plannedTurnMode = inferPlannedTurnMode({
-    latestUserInput,
-    shouldApplyFirstActionConstraint,
-    clientState,
-    pipelineControl,
-  });
-
-  /**
-   * Phase-2: structured execution backbone.
-   *
-   * These three layers sit between "input is moderated/safe" and "prompt is
-   * assembled". They do NOT replace the legacy post-generation collapse path
-   * (resolveDmTurn + guards) — they are the explicit seam that downstream
-   * phases will eventually consume end-to-end.
-   *
-   * Today we treat `preStateDelta` as an *observer* input for runStreamFinalHooks;
-   * the authoritative state change still flows through applyDmChangeSetToDmRecord
-   * and resolveDmTurn. See `renderNarrativeFromDelta` for the hole-filling seam.
-   */
-  const epistemicPromptContext = buildEpistemicPromptContext(
-    actorEpistemicFilter,
-    focusNpcForPrompt ?? PLAYER_ACTOR_ID,
-    turnLaneDecision.lane,
-    {
-      compact: laneSideEffectPlan.requireFullEpistemic ? false : laneSideEffectPlan.compactPrompt || contextMode === "minimal",
-      maxPromptChars: laneSideEffectPlan.requireFullEpistemic ? 3200 : contextMode === "minimal" ? 900 : 1800,
-      maxFactChars: laneSideEffectPlan.requireFullEpistemic ? 180 : contextMode === "minimal" ? 80 : 120,
-    }
-  );
-  const narrativeBudget = resolveNarrativeBudget({
-    plannedTurnMode: `${plannedTurnMode.mode}:${plannedTurnMode.reason}`,
-    riskLane,
-    latestUserInput,
-    playerContext: playerContextForPrompt,
-    clientState,
-    isFirstAction: shouldApplyFirstActionConstraint,
-    currentLocation: playerLocForEpistemic,
-    presentNpcIds: presentNpcIdsForEpistemic,
-    recentNarrativeTail: extractLastAssistantNarrativeTail(rawChatMessages),
-    isEndgame: plannedTurnMode.reason.startsWith("time_endgame"),
-    isChapterClimax: directorBeatHint === "peak" || directorBeatHint === "climax" || (directorTension ?? 0) >= 95,
-    chapter: extractChapterNarrativeBudgetInput(clientState),
-  });
-  const narrativeBudgetBlock = laneSideEffectPlan.requirePacingValidation
-    ? buildNarrativeBudgetPacketBlock(narrativeBudget)
-    : "";
-  const narrativeBudgetTier = narrativeBudget.tier;
-  const narrativeBudgetTargetChars = narrativeBudget.targetChars;
-  const preStateDelta: StateDelta = computePreNarrativeDelta({
-    intent: normalizedIntent,
-    control: pipelineControl,
-    rule: pipelineRule,
-    inputFellBack: inputSafety.decision === "fallback",
-    antiCheatFallback: antiCheat.decision === "fallback",
-  });
-  const turnExecutionContext: TurnExecutionContext = {
-    requestId,
-    sessionId,
-    userId,
-    isFirstAction: Boolean(isFirstAction),
-    shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
-    clientPurpose,
-    clientState,
-    playerContext,
-    riskLane,
-    pipelineRule,
-    pipelineControl,
-    plannedTurnMode: plannedTurnMode.mode,
-    intent: normalizedIntent,
-    lane: turnLaneDecision,
-  };
-  void turnExecutionContext; // TODO(phase-3): pass through runStreamFinalHooks as single arg.
-
-  // Phase-5: emit lane decision and applied side-effect plan as formal
-  // analytics events. Non-blocking.
-  if (sessionId) {
-    const capturedSessionIdLane = sessionId;
-    void recordGenericAnalyticsEvent({
-      eventId: `${requestId}:turn_lane_decided`,
-      idempotencyKey: `${requestId}:turn_lane_decided`,
-      userId,
-      guestId: userId ? null : chatGuestId,
-      sessionId: capturedSessionIdLane,
-      eventName: "turn_lane_decided",
-      eventTime: new Date(),
-      page: "/play",
-      source: "chat",
-      platform,
-      tokenCost: 0,
-      playDurationDeltaSec: 0,
-      payload: {
-        requestId,
-        lane: turnLaneDecision.lane,
-        reasons: [...turnLaneDecision.reasons],
-        confidence: turnLaneDecision.confidence,
-        intentKind: normalizedIntent.kind,
-        isFirstAction: normalizedIntent.isFirstAction,
-        isSystemTransition: normalizedIntent.isSystemTransition,
-        riskLane,
-        sideEffectPlan: laneSideEffectPlan,
-        epistemicPromptContext: epistemicPromptContext.telemetry,
-      },
-    }).catch(() => {});
-    void recordGenericAnalyticsEvent({
-      eventId: `${requestId}:lane_side_effect_applied`,
-      idempotencyKey: `${requestId}:lane_side_effect_applied`,
-      userId,
-      guestId: userId ? null : chatGuestId,
-      sessionId: capturedSessionIdLane,
-      eventName: "lane_side_effect_applied",
-      eventTime: new Date(),
-      page: "/play",
-      source: "chat",
-      platform,
-      tokenCost: 0,
-      playDurationDeltaSec: 0,
-      payload: {
-        requestId,
-        lane: turnLaneDecision.lane,
-        riskLane,
-        reasons: [...turnLaneDecision.reasons],
-        sideEffectPlan: laneSideEffectPlan,
-        skipped_runtime_lore: laneSideEffectPlan.skipRuntimeLore,
-        full_epistemic_required: laneSideEffectPlan.requireFullEpistemic,
-        compactPrompt: laneSideEffectPlan.compactPrompt,
-        requireNarrativeSafetyHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
-      },
-    }).catch(() => {});
-  }
-
-  const turnModePolicyBlock =
-    !useFastLaneCompactDynamicPackets && (verseRollout.enableLongNarrativeMode || verseRollout.enableDecisionTurnMode)
-      ? buildTurnModePolicyPacketBlock({
-          plannedMode: plannedTurnMode.mode,
-          reason: plannedTurnMode.reason,
-          maxChars: contextMode === "minimal" ? 420 : 860,
-        })
-      : "";
-  const protagonistAnchorBlock = verseRollout.enableProtagonistAnchorPacket && !useFastLaneCompactDynamicPackets
-    ? buildProtagonistAnchorPacketBlock({
-        playerContext: playerContextForPrompt,
-        clientState,
-        maxChars: contextMode === "minimal" ? 420 : 980,
-      })
-    : "";
-  const realityConstraintBlock = verseRollout.enableRealityConstraintPacket && !useFastLaneCompactDynamicPackets
-    ? buildRealityConstraintPacketBlock({
-        playerContext: playerContextForPrompt,
-        latestUserInput,
-        playerLocationFallback: guessPlayerLocationFromContext(playerContext),
-        clientState,
-        maxChars: contextMode === "minimal" ? 520 : 1400,
-        dedupeStableRules: verseRollout.enablePromptPacketDedupV1,
-      })
-    : "";
-  // Phase-5: read due foreshadow entries for directive injection (fail-open, non-blocking)
-  let dueForeshadowEntries: Array<Record<string, unknown>> = [];
-  if (sessionId && verseRollout.enableNarrativeDirective) {
-    try {
-      const { readDueForeshadowEntries } = await import("@/lib/narrativeGovernance/foreshadowLedger");
-      dueForeshadowEntries = await readDueForeshadowEntries(sessionId, totalRounds);
-    } catch {
-      // fail-open: 指令中伏笔提示降级为空
-    }
-  }
-  const narrativeDirectiveBlock =
-    verseRollout.enableNarrativeDirective && !useFastLaneCompactDynamicPackets && directorBeatHint
-      ? buildNarrativeDirectiveBlock({
-          lane: turnLaneDecision.lane,
-          beatState: normalizeBeatState(directorBeatHint),
-          recentRegisters: undefined, // 账本读取留给未来优化
-          directorAgendaHint: null,
-          dueForeshadow: dueForeshadowEntries as any,
-        })
-      : "";
-  const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
-    languageInstruction,
-    memoryBlock,
-    epistemicPromptContextBlock: epistemicPromptContext.promptBlock,
-    playerContext: playerContextForPrompt,
-    isFirstAction: shouldApplyFirstActionConstraint,
-    runtimePackets,
-    controlAugmentation: controlAndLoreAugmentation,
-    protagonistAnchorBlock,
-    turnModePolicyBlock,
-    narrativeStyleBibleBlock: useFastLaneCompactDynamicPackets ? "" : narrativeStyleBibleBlock,
-    narrativeBudgetBlock,
-    playerEchoBlock: playerEchoPromptBlock,
-    worldFactAuditBlock,
-    realityConstraintBlock,
-    npcConsistencyBoundaryBlock: useFastLaneCompactDynamicPackets ? "" : npcConsistencyBoundaryFinal.text,
-    narrativeContinuityBlock: useFastLaneCompactDynamicPackets ? "" : narrativeContinuityBlock,
-    povBlock: useFastLaneCompactDynamicPackets ? "" : povBlock,
-    npcGenderPronounBlock: useFastLaneCompactDynamicPackets ? "" : npcGenderPronounBlock,
-    styleGuideBlock,
-    narrativeDirectiveBlock,
-    latestUserInput,
-  });
-  const aiEnvForSystem = resolveAiEnv();
-  const playerChatMaxTokensResolution = resolvePlayerChatMaxTokensForNarrativeBudget(
-    narrativeBudgetTier,
-    aiEnvForSystem.playerChatMaxTokensOverride
-  );
-  const playerChatMaxTokens = playerChatMaxTokensResolution.maxTokens;
+  // Destructure all other results
   const {
     safeMessages,
     stableCharLen,
@@ -2318,113 +1609,46 @@ async function postChatInternal(req: Request) {
     promptStablePrefixHash,
     stableTokenEstimate,
     dynamicTokenEstimate,
-  } = assemblePlayerChatPrompt({
-    stablePrefix: playerDmStablePrefix,
-    dynamicSuffix: dynamicSuffixFull,
-    splitDualSystem: aiEnvForSystem.splitPlayerChatDualSystem,
-    messagesToSend,
-  });
-  const promptComponentChars = {
-    stable_prefix: stableCharLen,
-    message_history: messagesToSend.reduce((sum, message) => sum + (typeof message.content === "string" ? message.content.length : 0), 0),
-    player_context: playerContextForPrompt.length,
-    runtime_packets: runtimePackets.length,
-    control_and_lore: controlAndLoreAugmentation.length,
-    epistemic_context: epistemicPromptContext.promptBlock.length,
-    npc_consistency: npcConsistencyBoundaryFinal.text.length,
-    narrative_style: narrativeStyleBibleBlock.length + styleGuideBlock.length,
-    narrative_continuity: narrativeContinuityBlock.length,
-    narrative_budget: narrativeBudgetBlock.length,
-    reality_constraint: realityConstraintBlock.length,
-    protagonist_anchor: protagonistAnchorBlock.length,
-    turn_mode_policy: turnModePolicyBlock.length,
-    pov_and_pronouns: povBlock.length + npcGenderPronounBlock.length,
-    fact_audit: worldFactAuditBlock.length,
-    player_echo: playerEchoPromptBlock.length,
-    narrative_directive: narrativeDirectiveBlock.length,
-    dynamic_total: dynamicCharLen,
-  };
-  recordPromptCharDelta(dynamicCharLen);
+    promptComponentChars,
+    preStateDelta,
+    plannedTurnMode,
+    epistemicPromptContext,
+    narrativeBudget,
+    narrativeBudgetTier,
+    narrativeBudgetTargetChars,
+    playerChatMaxTokens,
+    playerChatMaxTokensResolution,
+    actorEpistemicFilter,
+    _dmEpistemicFilter,
+    npcConsistencyBoundaryFinal,
+    npcKnowledgePacketForValidator,
+    allowedWorldFactIdsForValidator,
+    playerEchoPacketChars,
+    _playerEchoSelectedFragments,
+    focusNpcForPrompt,
+    aiEnvForSystem,
+    epistemicPromptMetrics,
+    epistemicResiduePlan,
+    socialProjectionTelemetry,
+    injectedDirectorAgendaIds,
+    injectedSocialEventIds,
+    dueDirectorAgendaForPrompt,
+    playerEchoFirstEncounterPlan,
+    allEpistemicFactsForPrompt,
+    presentNpcIdsForEpistemic,
+    nowIsoForEpistemic,
+    maxRevealRankForMemory,
+    epistemicProfileForPrompt,
+    directorDigestForPrompt,
+    socialWorldConfig,
+    worldDirectorConfig,
+  } = promptAssemblyResult;
+  // NOTE: let — epistemicAnomalyResult is mutated after post-generation detection.
+  let { epistemicAnomalyResult } = promptAssemblyResult;
 
   ttftProfile.promptBuildMs = elapsedMs(promptBuildStartAt);
 
   const telemetryPreferredModel = DEFAULT_PLAYER_ROLE_CHAIN[0];
-  void recordGenericAnalyticsEvent({
-    eventId: `${requestId}:chat_request_started`,
-    idempotencyKey: `${requestId}:chat_request_started`,
-    userId,
-    guestId: userId ? null : chatGuestId,
-    sessionId: sessionId ?? "unknown_session",
-    eventName: "chat_request_started",
-    eventTime: new Date(requestStartedAt),
-    page: "/play",
-    source: "chat",
-    platform,
-    tokenCost: 0,
-    playDurationDeltaSec: 0,
-    payload: {
-      requestId,
-      model: telemetryPreferredModel,
-      isFirstAction,
-      turnLane: turnLaneDecision.lane,
-      turnLaneReasons: [...turnLaneDecision.reasons],
-      laneSideEffectPlan,
-      skipped_runtime_lore: laneSideEffectPlan.skipRuntimeLore,
-      full_epistemic_required: laneSideEffectPlan.requireFullEpistemic,
-      controlPreflightBudgetHit,
-      preflightRan: preflightTurnMetrics.ran,
-      preflightSkippedReason: preflightTurnMetrics.skippedReason,
-      preflightCacheHit: preflightTurnMetrics.cacheHit,
-      preflightLatencyMs: preflightTurnMetrics.latencyMs,
-      preflightOk: preflightTurnMetrics.ok,
-      loreRetrievalLatencyMs,
-      loreCacheHit,
-      loreSourceCount,
-      loreTokenEstimate,
-      loreCompactChars: runtimeLoreCompact.length,
-      loreFallbackPath,
-      loreBudgetHit,
-      runtimePacketChars,
-      runtimePacketTokenEstimate,
-      socialWorldMode: socialProjectionTelemetry.socialWorldMode,
-      socialHintCount: socialProjectionTelemetry.socialHintCount,
-      socialHintChars: socialProjectionTelemetry.socialHintChars,
-      socialPromptChars: socialProjectionTelemetry.socialPromptChars,
-      socialQueryLatencyMs: socialProjectionTelemetry.socialQueryLatencyMs,
-      socialHintVisibilityCounts: socialProjectionTelemetry.socialHintVisibilityCounts,
-      socialEventsProjected: socialProjectionTelemetry.socialEventsProjected,
-      socialProjectionSkippedReason: socialProjectionTelemetry.socialProjectionSkippedReason,
-      promptVersion,
-      promptStablePrefixHash,
-      stableCharLen,
-      dynamicCharLen,
-      stableTokenEstimate,
-      dynamicTokenEstimate,
-      playerEchoPacketChars,
-      playerEchoSelectedCount: playerEchoSelectedFragments.length,
-      playerEchoReadFailed,
-      narrativeBudgetTier,
-      narrativeBudgetMinChars: narrativeBudget.minChars,
-      narrativeBudgetTargetChars,
-      narrativeBudgetMaxChars: narrativeBudget.maxChars,
-      playerChatMaxTokens,
-      playerChatMaxTokensSource: playerChatMaxTokensResolution.source,
-      playerChatMaxTokensClamped: playerChatMaxTokensResolution.clamped,
-      epistemicFactCount: epistemicPromptMetrics.epistemicFactCount,
-      actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
-      publicFactCount: epistemicPromptMetrics.publicFactCount,
-      forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
-      epistemicPromptContext: epistemicPromptContext.telemetry,
-      anomalySeverity: epistemicPromptMetrics.anomalySeverity,
-      validatorTriggered: epistemicPromptMetrics.validatorTriggered,
-      promptCharsDelta: epistemicPromptMetrics.promptCharsDelta,
-      promptCharDelta: epistemicPromptMetrics.promptCharsDelta,
-      actorScopedMemoryBlockChars: epistemicPromptMetrics.blockChars,
-      npcConsistencyBoundaryEnabled: npcConsistencyBoundaryFinal.npcConsistencyBoundaryEnabled,
-      npcConsistencyBoundaryChars: npcConsistencyBoundaryFinal.charCount,
-      epistemicRollout: epistemicRolloutFlags,
-    },
-  }).catch(() => {});
 
   /** 渚涚粓甯у啓鍏?global cache 鏃跺榻?world_revision锛堟柟妗?B锛歱reflight 鍚庤鍙栵級銆侾ool max=10锛屼粎鐭煡璇€?*/
   const kgCacheWorldRevision: { current: bigint | null } = { current: null };
@@ -2649,6 +1873,82 @@ async function postChatInternal(req: Request) {
   };
 
   const MIN_STREAM_OUTPUT_CHARS = 24;
+  /**
+   * Turn-level absolute watchdog. The per-read bounds below only cover the
+   * upstream read loop; the observed production wedge is a background stream
+   * task that dangles on some await with the event loop idle (25+ minutes, no
+   * timer), never closes the SSE writer, and therefore never releases the
+   * chat-queue execution ticket — every later turn then starves behind the
+   * queue. This watchdog fires regardless of where the task is stuck: it
+   * cancels the active upstream reader, emits the parseable site-failure
+   * fallback final frame, and closes the writer so the response body ends and
+   * the queue ticket is released. Cleared when the background task settles.
+   */
+  const turnWatchdogMs = Math.max(
+    60_000,
+    Math.min(900_000, envNumber("VC_CHAT_TURN_WATCHDOG_MS", 300_000))
+  );
+  let activeStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  const turnWatchdog = setTimeout(() => {
+    console.error("[api/chat] turn watchdog fired", { requestId, turnWatchdogMs });
+    void (async () => {
+      try {
+        await activeStreamReader?.cancel();
+      } catch {
+        /* best effort: reader may already be closed */
+      }
+      await closeWithFallback();
+    })();
+  }, turnWatchdogMs);
+  turnWatchdog.unref?.();
+  /**
+   * Upstream stream bounds. resilientFetch's timeout only covers the wait for
+   * response headers; a mid-stream stall (observed: a DeepSeek stream that
+   * stayed silent for 14.1 minutes) otherwise hangs this read forever, holds
+   * the chat-queue ticket, and wedges every later turn. Two bounds:
+   * - idle: no bytes at all for `streamIdleTimeoutMs` (pure silence);
+   * - hard cap: the whole stream round must finish within `streamHardCapMs`,
+   *   regardless of keep-alive ping bytes (a stalled stream can still trickle
+   *   SSE comments, which would defeat an idle-only watchdog).
+   * On either bound we throw into the existing stream catch path, which
+   * cancels the reader, attempts one bounded reconnect, and otherwise closes
+   * with the parseable site-failure fallback final frame.
+   */
+  const streamIdleTimeoutMs = Math.max(
+    10_000,
+    Math.min(300_000, envNumber("VC_CHAT_STREAM_IDLE_TIMEOUT_MS", 45_000))
+  );
+  const streamHardCapMs = Math.max(
+    30_000,
+    Math.min(600_000, envNumber("VC_CHAT_STREAM_HARD_CAP_MS", 90_000))
+  );
+  const readUpstreamBounded = (
+    streamReader: ReadableStreamDefaultReader<Uint8Array>,
+    deadlineAt: number
+  ): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      return Promise.reject(new Error(`stream_hard_cap_${streamHardCapMs}ms`));
+    }
+    const boundMs = Math.min(streamIdleTimeoutMs, remainingMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const bound = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              boundMs === remainingMs
+                ? `stream_hard_cap_${streamHardCapMs}ms`
+                : `stream_idle_timeout_${streamIdleTimeoutMs}ms`
+            )
+          ),
+        boundMs
+      );
+    });
+    return Promise.race([streamReader.read(), bound]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  };
   const enableStreamReconnectLimits = envBoolean("AI_CHAT_ENABLE_STREAM_RECONNECT_LIMITS", true);
   const MAX_STREAM_SOURCE_ROUNDS = enableStreamReconnectLimits ? 2 : 3;
   /**
@@ -2675,6 +1975,7 @@ async function postChatInternal(req: Request) {
   let streamReconnectCount = 0;
   let streamInterruptedCount = 0;
   let streamEmptyCount = 0;
+  let finalFrameWritten = false;
   let statusFrameCount = 0;
   let tokenUsageFlushedGlobal = false;
   let lastEnhanceAnalytics: EnhanceAfterMainStreamResult | null = null;
@@ -2690,10 +1991,206 @@ async function postChatInternal(req: Request) {
   let epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null = null;
   let narrativeLengthTelemetry: NarrativeLengthTelemetry | null = null;
   let narrativeExpansionTelemetry: NarrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry();
+  let provenanceVerifierTelemetry: any = null;
 
   (async () => {
     await writeStatusFrame("request_sent", "行动已送出", firstStatusFlushPaddingBytes);
     await writeStatusFrame("routing", "姝ｅ湪杩炴帴娣辨笂");
+
+    // ── DM Agent 路径（Feature Flag 控制：VERSECRAFT_ENABLE_DM_AGENT=true）──
+    const _dmAgentRollout = getVerseCraftRolloutFlags();
+    if (_dmAgentRollout.enableDmAgent && shouldAttemptDmAgent(latestUserInput)) {
+      const { tryRunDmAgentTurn, buildDmAgentDmJson } = await import(
+        "@/lib/ai/tools/dmAgentRouteIntegration"
+      );
+      await writeStatusFrame("generating", "DM 正在思考…");
+      const _dmInput = {
+        requestId,
+        sessionId: sessionId ?? "unknown",
+        userId,
+        playerLocation: (clientState as any)?.playerLocation ?? "1F_Lobby",
+        worldId: "dark_moon",
+        systemMessages: safeMessages.filter((m) => m.role === "system"),
+        userMessage: { role: "user" as const, content: latestUserInput },
+        signal: pipelineAbort.signal,
+        forceEnabled: true,
+        serverGameState: {
+          clientState: clientState ?? null,
+          sessionMemory: sessionMemory ?? null,
+          latestUserInput,
+          totalRounds,
+        },
+      } as any;
+      const _dmAgentResult = await tryRunDmAgentTurn(_dmInput);
+      if (_dmAgentResult.agentUsed && _dmAgentResult.result) {
+        const _turnResult = _dmAgentResult.result;
+        // 工具执行状态反馈
+        if (_turnResult.toolsUsed) {
+          const _toolLabelMap: Record<string, string> = {
+            get_player_state: "查阅状态中…", get_inventory: "检查背包中…",
+            get_active_quests: "查阅任务中…", get_world_context: "感知周围…",
+            get_combat_state: "评估战况…", inspect_forge_options: "检查锻造台…",
+            issue_quest: "创建任务中…", update_quest_progress: "更新任务中…",
+            forge_weapon: "锻造中…", consume_materials: "消耗材料中…",
+            grant_item: "获得物品中…", start_combat: "战斗开始…",
+            resolve_combat_action: "战斗判定中…", apply_world_event: "世界变化中…",
+          };
+          for (const _t of _turnResult.toolTrace) {
+            await writeStatusFrame("generating",
+              _toolLabelMap[_t.toolName] ?? (_t.ok ? "操作完成" : "操作失败"));
+          }
+        }
+        // 构建 DM JSON → normalize → resolveDmTurn → 完整 final chain（Phase 1 修复：不再绕过 NPC consistency / validator / commit / world tick）
+        // awarded_items 统一经 buildDmAgentDmJson 的注册表门禁（与主链路 guard 同一事实源）
+        const _dmJson: Record<string, unknown> = buildDmAgentDmJson(_turnResult);
+        const _dmNorm = normalizePlayerDmJson(_dmJson);
+        if (_dmNorm) {
+          // Phase 6: NPC consistency（DM Agent 路径缺少完整 epistemic context，使用最小化参数）
+          const _npcConsistencyResult = applyNpcConsistencyPostGeneration({
+            dmRecord: _dmNorm,
+            actorNpcId: null,
+            presentNpcIds: [],
+            allFacts: [],
+            profile: null,
+            anomalyResult: null,
+            nowIso: new Date().toISOString(),
+            maxRevealRank: 99,
+            canonical: null,
+            playerContext: "",
+            latestUserInput: latestUserInput,
+            playerEchoPacketPresent: false,
+            firstEncounterPlan: null,
+          });
+          const _postConsistency = _npcConsistencyResult.dmRecord;
+
+          // Phase 7: resolve
+          const _dmResolved = resolveDmTurn(_postConsistency);
+
+          // Phase 8.5: post-generation validator
+          const _agentStateDelta = {
+            isActionLegal: true,
+            sanityDamage: 0,
+            consumesTime: true,
+            isDeath: false,
+          };
+          const _validatorReport = validateNarrative({
+            dmRecord: _dmResolved as Record<string, unknown>,
+            delta: _agentStateDelta,
+            epistemicFilter: null,
+            intent: null,
+            sceneNpcIds: [],
+            riskTags: pipelineControl?.risk_tags ?? [],
+            npcConsistencyIssueCount: _npcConsistencyResult.telemetry?.rewriteTriggered ? 1 : 0,
+          });
+
+          // Phase 8.5: explicit commit
+          const _commitResult = commitTurn({
+            requestId: requestId,
+            sessionId: sessionId ?? null,
+            turnIndex: totalRounds,
+            candidateDmRecord: _dmResolved as Record<string, unknown>,
+            delta: _agentStateDelta,
+            validatorReport: _validatorReport,
+          });
+          const _committed = _commitResult.committedDmRecord;
+          const _commitControlledFields = [
+            ...COMMIT_STATE_CHANGING_FIELDS,
+            ...COMMIT_STATE_MIRROR_FIELDS,
+            "is_action_legal", "sanity_damage", "narrative", "is_death",
+            "consumes_time", "time_cost", "consumed_items", "currency_change",
+            "main_threat_updates", "weapon_updates", "weapon_bag_updates",
+            "options", "decision_options",
+          ] as const;
+          for (const _field of _commitControlledFields) {
+            if (_field in _committed) {
+              (_dmResolved as any)[_field] = _committed[_field];
+            }
+          }
+
+          // Phase 9: write FINAL（exactly once — 由 route.ts 统一控制，DM Agent 不自行写入）
+          await writeControlToStream(
+            sseText(`${VERSECRAFT_FINAL_PREFIX}${JSON.stringify(_dmResolved)}`)
+          );
+
+          // Non-blocking background world tick
+          if (sessionId) {
+            const _bgTick = scheduleBackgroundWorldTick({
+              requestId: requestId,
+              userId: userId,
+              sessionId: sessionId,
+              turnIndex: totalRounds,
+              latestUserInput: latestUserInput,
+              dmRecord: _dmResolved as Record<string, unknown>,
+              playerLocation: typeof (_dmResolved as any).player_location === "string"
+                ? (_dmResolved as any).player_location : null,
+              previousPlayerLocation: null,
+              npcLocationUpdateCount: 0,
+              minTriggerGapTurns: 999,
+              maxPendingAgenda: 99,
+              preflightRiskTags: pipelineControl?.risk_tags ?? [],
+              dmNarrativePreview: String((_dmResolved as any).narrative ?? ""),
+              commitSummary: _commitResult.summary,
+              enqueueFn: enqueueWorldEngineTick,
+              onSettled: ({ result: _tickResult }) => {
+                if (!_tickResult.enqueued) return;
+                void recordGenericAnalyticsEvent({
+                  eventId: `${requestId}:world_engine_enqueued`,
+                  idempotencyKey: `${requestId}:world_engine_enqueued`,
+                  userId, guestId: userId ? null : chatGuestId,
+                  sessionId: sessionId ?? "unknown_session",
+                  eventName: "world_engine_enqueued",
+                  eventTime: new Date(), page: "/play", source: "chat", platform,
+                  tokenCost: 0, playDurationDeltaSec: 0,
+                  payload: { requestId, source: "dm_agent" },
+                }).catch(() => {});
+              },
+            });
+            void _bgTick.pending;
+          }
+
+          // chat_request_finished analytics（统一口径）
+          try {
+            void recordGenericAnalyticsEvent({
+              eventId: `${requestId}:chat_request_finished`,
+              idempotencyKey: `${requestId}:chat_request_finished`,
+              userId, guestId: userId ? null : chatGuestId,
+              sessionId: sessionId ?? "unknown_session",
+              eventName: "chat_request_finished",
+              eventTime: new Date(), page: "/play", source: "chat", platform,
+              tokenCost: 0, playDurationDeltaSec: 0,
+              payload: {
+                requestId, success: true, source: "dm_agent",
+                toolsUsed: _turnResult.toolsUsed,
+                toolCount: _turnResult.toolTrace.length,
+                totalLatencyMs: _turnResult.totalLatencyMs,
+                commitFlags: _commitResult.summary.commitFlags,
+                validatorIssueCounts: _commitResult.summary.validatorIssueCounts,
+              },
+            });
+          } catch { /* analytics best-effort */ }
+
+          // dm_agent_turn_completed analytics（保留既有事件）
+          try {
+            void recordGenericAnalyticsEvent({
+              eventId: `${requestId}:dm_agent_turn_completed`,
+              idempotencyKey: `${requestId}:dm_agent_turn_completed`,
+              userId, guestId: userId ? null : chatGuestId,
+              sessionId: sessionId ?? "unknown_session",
+              eventName: "dm_agent_turn_completed" as any,
+              eventTime: new Date(), page: "/play", source: "chat", platform,
+              tokenCost: 0, playDurationDeltaSec: 0,
+              payload: { requestId, toolsUsed: _turnResult.toolsUsed,
+                toolCount: _turnResult.toolTrace.length,
+                totalLatencyMs: _turnResult.totalLatencyMs },
+            });
+          } catch { /* analytics best-effort */ }
+          try { await writer.close(); } catch { /* already closed */ }
+          return;
+        }
+      }
+      await writeStatusFrame("routing", "切换至标准模式");
+    }
+    // ── DM Agent 路径结束 ──
 
     const aiRuntimeEnvForTurn = resolveAiEnv();
     const TIMEOUT_MS =
@@ -2734,7 +2231,6 @@ async function postChatInternal(req: Request) {
           signal: ac.signal,
           timeoutMs: TIMEOUT_MS,
           skipRoles: args.skipRoles,
-          maxTokensOverride: playerChatMaxTokens,
         });
       } finally {
         clearTimeout(timeoutId);
@@ -3196,6 +2692,19 @@ async function postChatInternal(req: Request) {
       accumulatedText: string,
       blockedAuditSummary: string
     ): Promise<boolean> => {
+      // Inlined final-hooks closure — avoids 80-field ctx object + cross-module call
+      // Helper: extractPartialNarrativeForRepair
+      function extractPartialNarrativeForRepair(raw: string): string {
+        const text = String(raw ?? "");
+        const match = text.match(/"narrative"\s*:\s*"((?:\\.|[^"\\])*)"/);
+        if (!match?.[1]) return "";
+        try {
+          return JSON.parse(`"${match[1]}"`);
+        } catch {
+          return match[1].replace(/\\"/g, '"').replace(/\\n/g, "\n").trim();
+        }
+      }
+
       await writeStatusFrame("finalizing", "正在收束本回合");
 
       const verseRolloutSnapshot = getVerseCraftRolloutFlags();
@@ -3215,6 +2724,21 @@ async function postChatInternal(req: Request) {
         Math.max(0, Math.min(requestedMs, remainingFinalRepairBudgetMs()));
       const canRunFinalRepair = (minMs = 500) => remainingFinalRepairBudgetMs() >= minMs;
 
+      // Stashed condition values for the unified options regen decision.
+      // Each value is set at the original trigger point; the LLM call happens once later.
+      const optsRegenState = {
+        preResolveNarrativeOptCount: -1,
+        preResolveFreeze: false,
+        turnModeFilteredOptCount: -1,
+        turnModeFilteredDecCount: -1,
+        dedupedDecisionOptCount: -1,
+        postResolveSkipReason: "not_skipped" as string,
+        enableOptionsAutoRegenOnEmpty: false,
+        resolvedOptCount: -1,
+        validatorOverrideApplied: false,
+        validatorOverriddenOptCount: -1,
+      };
+
       /**
        * Turn-compiler phases (Phase-2 of the structural refactor).
        *
@@ -3222,7 +2746,7 @@ async function postChatInternal(req: Request) {
        *   parse/normalize -> guards -> validator -> resolveDmTurn -> commit side effects.
        *
        * Each phase is a local closure that reads the outer request state
-       * (requestId, playerContext, pipelineControl, ...) and returns the next
+       * (requestId: requestId, playerContext: playerContext, pipelineControl, ...) and returns the next
        * `dmRecord`. Analytics side-state (`finalJsonParseSuccess`,
        * `enhancePathDmParsed`, `lastEnhanceAnalytics`, `settlementGuardApplied`,
        * `settlementAwardPruned`, `epistemicPostValidatorTelemetry`) is still
@@ -3241,7 +2765,7 @@ async function postChatInternal(req: Request) {
         const rec = parsedRoot !== null ? normalizePlayerDmJson(parsedRoot) : null;
         finalJsonParseSuccess = rec !== null;
         if (!rec) return null;
-        return applyDmChangeSetToDmRecord(rec, { clientState, requestId });
+        return applyDmChangeSetToDmRecord(rec, { clientState: clientState, requestId: requestId });
       };
 
       const phaseRepairMalformedCandidate = async (): Promise<Record<string, unknown> | null> => {
@@ -3264,7 +2788,7 @@ async function postChatInternal(req: Request) {
           const repaired = await repairNarrativeOnly({
             originalNarrative: partialNarrative || latestUserInput,
             originalDmRecord: seedRecord,
-            latestUserInput,
+            latestUserInput: latestUserInput,
             playerContextSnapshot: playerContext,
             issues: [
               {
@@ -3279,9 +2803,9 @@ async function postChatInternal(req: Request) {
               "玩家输入若无法直接完成，就写成尝试、询问、呼喊、寻找或判断，再给出自然后果。",
             ],
             ctx: {
-              requestId,
-              userId,
-              sessionId,
+              requestId: requestId,
+              userId: userId,
+              sessionId: sessionId,
               path: "/api/chat",
               tags: { phase: "final_hooks", purpose: "malformed_dm_repair" },
             },
@@ -3295,12 +2819,12 @@ async function postChatInternal(req: Request) {
             const optionsRepairStartedAt = Date.now();
             const regen = await generateOptionsOnlyFallback({
               narrative: repaired.narrative,
-              latestUserInput,
-              playerContext,
+              latestUserInput: latestUserInput,
+              playerContext: playerContext,
               ctx: {
-                requestId,
-                userId,
-                sessionId,
+                requestId: requestId,
+                userId: userId,
+                sessionId: sessionId,
                 path: "/api/chat",
                 tags: { phase: "final_hooks", purpose: "malformed_dm_options_repair" },
               },
@@ -3319,7 +2843,7 @@ async function postChatInternal(req: Request) {
           });
           if (!repairedRecord) return null;
           fallbackUsedTelemetry = true;
-          return applyDmChangeSetToDmRecord(repairedRecord, { clientState, requestId });
+          return applyDmChangeSetToDmRecord(repairedRecord, { clientState: clientState, requestId: requestId });
         } catch (e) {
           console.warn("[api/chat] malformed DM model repair skipped", e);
           return null;
@@ -3333,44 +2857,44 @@ async function postChatInternal(req: Request) {
         let rec = dm;
         rec = applyB1ServiceExecutionGuard({
           dmRecord: rec,
-          latestUserInput,
-          playerContext,
-          clientState,
+          latestUserInput: latestUserInput,
+          playerContext: playerContext,
+          clientState: clientState,
         });
         rec = applyEquipmentExecutionGuard({
           dmRecord: rec,
-          latestUserInput,
-          playerContext,
-          clientState,
+          latestUserInput: latestUserInput,
+          playerContext: playerContext,
+          clientState: clientState,
         });
-        rec = applyWorldWeaponPickupGuard({ dmRecord: rec, latestUserInput, clientState });
+        rec = applyWorldWeaponPickupGuard({ dmRecord: rec, latestUserInput: latestUserInput, clientState: clientState });
         rec = applyAuthoredLocationMovementGuard({
           dmRecord: rec,
-          latestUserInput,
-          clientState,
+          latestUserInput: latestUserInput,
+          clientState: clientState,
           enableCanonicalLocationMovement: verseRolloutSnapshot.enableCanonicalLocationMovement,
         });
-        rec = applyDeadNpcContinuityGuard({ dmRecord: rec, latestUserInput, deadNpcIds: clientState?.deadNpcIds });
+        rec = applyDeadNpcContinuityGuard({ dmRecord: rec, latestUserInput: latestUserInput, deadNpcIds: clientState?.deadNpcIds });
         rec = applyB1SafetyGuard({
           dmRecord: rec,
           fallbackLocation: guessPlayerLocationFromContext(playerContext),
         });
-        rec = applyMainThreatUpdateGuard({ dmRecord: rec, playerContext });
+        rec = applyMainThreatUpdateGuard({ dmRecord: rec, playerContext: playerContext });
         rec = applyWeaponTacticalAdjudication({
           dmRecord: rec,
-          playerContext,
-          latestUserInput,
-          requestId,
-          clientState,
+          playerContext: playerContext,
+          latestUserInput: latestUserInput,
+          requestId: requestId,
+          clientState: clientState,
         });
         // Must run after tactical adjudication so authored threat/weapon deltas
         // are the final authority rather than being appended to model deltas.
-        rec = applyRegisteredMechanicsGuard({ dmRecord: rec, latestUserInput, clientState });
+        rec = applyRegisteredMechanicsGuard({ dmRecord: rec, latestUserInput: latestUserInput, clientState: clientState });
         rec = applyPhysicalInjuryNarrativeGuard(rec);
-        rec = applyPresentNpcObservationGuard({ dmRecord: rec, latestUserInput, clientState });
+        rec = applyPresentNpcObservationGuard({ dmRecord: rec, latestUserInput: latestUserInput, clientState: clientState });
         rec = normalizeDmTaskPayload(rec);
-        rec = ensure7FConspiracyTask(rec, { playerContext, latestUserInput });
-        rec = applyNpcProactiveGrantGuard({ dmRecord: rec, playerContext });
+        rec = ensure7FConspiracyTask(rec, { playerContext: playerContext, latestUserInput: latestUserInput });
+        rec = applyNpcProactiveGrantGuard({ dmRecord: rec, playerContext: playerContext });
         const npcGrantFallbackBlock = buildNpcGrantFallbackNarrativeBlock(rec);
         if (npcGrantFallbackBlock && typeof rec.narrative === "string") {
           const existing = String(rec.narrative ?? "");
@@ -3394,11 +2918,11 @@ async function postChatInternal(req: Request) {
             control: pipelineControl,
             rule: pipelineRule,
             mode: routingReport.operationMode,
-            baseCtx: { requestId, userId, sessionId, path: "/api/chat" },
+            baseCtx: { requestId: requestId, userId: userId, sessionId: sessionId, path: "/api/chat" },
             signal: pipelineAbort.signal,
-            isFirstAction,
-            playerContext,
-            latestUserInput,
+            isFirstAction: isFirstAction,
+            playerContext: playerContext,
+            latestUserInput: latestUserInput,
             enhanceBudgetMs: preflightEnv.narrativeEnhanceBudgetMs,
           });
           if (lastEnhanceAnalytics.kind === "applied") {
@@ -3432,12 +2956,12 @@ async function postChatInternal(req: Request) {
         // re-apply this pure narrative/state consistency guard at the final
         // post-generation boundary.
         dmRecord = applyPhysicalInjuryNarrativeGuard(dmRecord);
-        dmRecord = applyEquipmentNarrativeConsistencyGuard({ dmRecord, clientState });
-        dmRecord = applyPresentNpcNarrativeBoundaryGuard({ dmRecord, clientState });
+        dmRecord = applyEquipmentNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
+        dmRecord = applyPresentNpcNarrativeBoundaryGuard({ dmRecord, clientState: clientState });
         dmRecord = applyInternalIdNarrativeGuard(dmRecord);
         dmRecord = applyProfessionNarrativeCoherenceGuard(dmRecord);
         dmRecord = applyAnonymizationArtifactGuard(dmRecord);
-        dmRecord = applyLocationNarrativeConsistencyGuard({ dmRecord, clientState });
+        dmRecord = applyLocationNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
 
         // --- Phase 4: protocol validator (narrative contamination) ---
         /**
@@ -3462,27 +2986,27 @@ async function postChatInternal(req: Request) {
               protocol_guard_flags: sanitized.flags,
             };
             console.warn("[api/chat] narrative protocol leakage degraded", {
-              requestId,
-              sessionId,
-              userId,
+              requestId: requestId,
+              sessionId: sessionId,
+              userId: userId,
               flags: sanitized.flags,
               role: routingReport.actualLogicalRole ?? streamSource.logicalRole,
             });
             void recordGenericAnalyticsEvent({
               eventId: `${requestId}:narrative_protocol_leak`,
               idempotencyKey: `${requestId}:narrative_protocol_leak`,
-              userId,
+              userId: userId,
               guestId: userId ? null : chatGuestId,
               sessionId: sessionId ?? "unknown_session",
               eventName: "narrative_protocol_leak",
               eventTime: new Date(),
               page: "/play",
               source: "chat",
-              platform,
+              platform: platform,
               tokenCost: 0,
               playDurationDeltaSec: 0,
               payload: {
-                requestId,
+                requestId: requestId,
                 flags: sanitized.flags,
                 role: routingReport.actualLogicalRole ?? streamSource.logicalRole,
               },
@@ -3495,38 +3019,23 @@ async function postChatInternal(req: Request) {
         }
 
         // --- Phase 5: pre-resolve options regen (guard-level) ---
+        // Conditions are evaluated here; the actual LLM call is made once,
+        // after all conditions are known, in the unified options regen block.
         try {
           const rawOpts = Array.isArray((dmRecord as { options?: unknown }).options)
             ? ((dmRecord as { options?: unknown }).options as unknown[])
                 .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
             : [];
-          // Filter out non-narrative options (e.g. "查看灵感手记", "检查背包") before counting,
-          // so the regen triggers when the model only generated UI/menu-type options.
           const opts = filterNarrativeActionOptions(rawOpts, 4);
           const preResolveGuard =
             dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
               ? (dmRecord.security_meta as Record<string, unknown>)
               : null;
           const preResolveFreeze = preResolveGuard?.settlement_guard === "stage2_freeze_on_illegal_or_death";
-          if (opts.length < 2 && !preResolveFreeze && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
-            const repairStartedAt = Date.now();
-            const regen = await generateOptionsOnlyFallback({
-              narrative: String(dmRecord.narrative ?? ""),
-              latestUserInput,
-              playerContext,
-              ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks" } },
-              signal: pipelineAbort.signal,
-              outputLanguage: validated.language,
-              budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
-            });
-            optionsRepairUsedTelemetry = true;
-            optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
-            if (regen.ok) {
-              (dmRecord as Record<string, unknown>).options = regen.options;
-            }
-          }
+          optsRegenState.preResolveNarrativeOptCount = opts.length;
+          optsRegenState.preResolveFreeze = preResolveFreeze;
         } catch (e) {
-          console.warn("[api/chat] options regen skipped", e);
+          console.warn("[api/chat] options regen (pre-resolve) skipped", e);
         }
 
         // --- Phase 6: epistemic post-generation validator ---
@@ -3539,6 +3048,32 @@ async function postChatInternal(req: Request) {
         const prunedRaw = Number(guardMeta?.settlement_award_pruned ?? 0);
         settlementAwardPruned = Number.isFinite(prunedRaw) ? Math.max(0, Math.trunc(prunedRaw)) : 0;
 
+        // Opt3-Epistemic惰性化：pre-prompt 已跳过完整检测（lazy=true），
+        // 此处 post-generation 补跑完整 detectCognitiveAnomaly，
+        // 将结果注入 applyNpcConsistencyPostGeneration 与 analytics。
+        if (focusNpcForPrompt && epistemicProfileForPrompt) {
+          const epistemicSceneForDeferred: EpistemicSceneContext = {
+            presentNpcIds: [...new Set([...presentNpcIdsForEpistemic, focusNpcForPrompt])],
+          };
+          epistemicAnomalyResult = detectCognitiveAnomaly({
+            npcId: focusNpcForPrompt,
+            playerInput: latestUserInput,
+            allFacts: allEpistemicFactsForPrompt,
+            scene: epistemicSceneForDeferred,
+            profile: epistemicProfileForPrompt,
+            nowIso: nowIsoForEpistemic,
+            maxRevealRank: maxRevealRankForMemory,
+            canonical: getNpcCanonicalIdentity(focusNpcForPrompt),
+          });
+          if (epistemicRolloutFlags.epistemicDebugLog && epistemicAnomalyResult.anomaly) {
+            epistemicDebugLog("anomaly_detected_deferred", {
+              npcId: focusNpcForPrompt,
+              severity: epistemicAnomalyResult.severity,
+              reactionStyle: epistemicAnomalyResult.reactionStyle,
+            });
+          }
+        }
+
         const runEpistemicPostGuard = (rec: Record<string, unknown>): Record<string, unknown> => {
           const { dmRecord: next, telemetry } = applyNpcConsistencyPostGeneration({
             dmRecord: rec,
@@ -3550,8 +3085,8 @@ async function postChatInternal(req: Request) {
             nowIso: nowIsoForEpistemic,
             maxRevealRank: maxRevealRankForMemory,
             canonical: focusNpcForPrompt ? getNpcCanonicalIdentity(focusNpcForPrompt) : null,
-            playerContext,
-            latestUserInput,
+            playerContext: playerContext,
+            latestUserInput: latestUserInput,
             playerEchoPacketPresent: playerEchoPacketChars > 0,
             firstEncounterPlan: playerEchoFirstEncounterPlan,
           });
@@ -3566,7 +3101,7 @@ async function postChatInternal(req: Request) {
           const nar = String((dmRecord as Record<string, unknown>).narrative ?? "");
           const canonWarnings = validateCanonNames(nar, presentNpcIdsForEpistemic);
           if (canonWarnings.length > 0 && process.env.NODE_ENV !== "production") {
-            console.warn("[api/chat][canon_name_warning]", { requestId, canonWarnings });
+            console.warn("[api/chat][canon_name_warning]", { requestId: requestId, canonWarnings });
           }
         } catch { /* non-critical */ }
 
@@ -3602,32 +3137,11 @@ async function postChatInternal(req: Request) {
               decision.filter((x): x is string => typeof x === "string" && x.trim().length > 0),
               4
             ).length;
-            if (optCount < 2 && decCount < 2 && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
-              recordDecisionOptionsFixOutcome(false);
-              const repairStartedAt = Date.now();
-              const regen = await generateDecisionOptionsOnlyFallback({
-                narrative: String(dm.narrative ?? ""),
-                latestUserInput,
-                playerContext,
-                ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", purpose: "decision_options_fix" } },
-                signal: pipelineAbort.signal,
-                outputLanguage: validated.language,
-                budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
-              });
-              optionsRepairUsedTelemetry = true;
-              optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
-              if (regen.ok) {
-                recordDecisionOptionsFixOutcome(true);
-                dm.turn_mode = "decision_required";
-                dm.decision_required = true;
-                dm.decision_options = regen.decision_options;
-                // Backward-compatible: also mirror into legacy options for current UI.
-                dm.options = regen.decision_options;
-              }
-            } else {
-              dm.turn_mode = typeof dm.turn_mode === "string" ? dm.turn_mode : "decision_required";
-              dm.decision_required = true;
-            }
+            // Stash counts for later unified evaluation; the LLM call is deferred.
+            optsRegenState.turnModeFilteredOptCount = optCount;
+            optsRegenState.turnModeFilteredDecCount = decCount;
+            dm.turn_mode = typeof dm.turn_mode === "string" ? dm.turn_mode : "decision_required";
+            dm.decision_required = true;
           }
         } catch (e) {
           console.warn("[api/chat] turn mode correction skipped", e);
@@ -3652,13 +3166,13 @@ async function postChatInternal(req: Request) {
         dmRecord = rendered.dmRecord;
         if (rendered.notes.length > 0 && process.env.NODE_ENV === "development") {
           console.debug("[api/chat] renderNarrativeFromDelta filled", {
-            requestId,
+            requestId: requestId,
             notes: rendered.notes,
           });
         }
         if (rendered.epistemicFilterMeta && epistemicRolloutFlags.epistemicDebugLog) {
           epistemicDebugLog("render_filter_meta", {
-            requestId,
+            requestId: requestId,
             ...rendered.epistemicFilterMeta,
           });
         }
@@ -3692,39 +3206,19 @@ async function postChatInternal(req: Request) {
             (resolved as any).decision_options = deduped;
             (resolved as any).options = deduped; // keep legacy UI aligned
             (resolved as any).decision_required = true;
-            // If dedupe made it invalid, do the existing low-cost fix once.
-            if (deduped.length < 2 && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
-              recordDecisionOptionsFixOutcome(false);
-              const regen = await generateDecisionOptionsOnlyFallback({
-                narrative: String((resolved as any).narrative ?? ""),
-                latestUserInput,
-                playerContext,
-                ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "quality_gate", purpose: "decision_options_fix" } },
-                signal: pipelineAbort.signal,
-                outputLanguage: validated.language,
-                budgetMs: nextFinalRepairBudgetMs(1_800),
-              });
-              if (regen.ok) {
-                recordDecisionOptionsFixOutcome(true);
-                (resolved as any).decision_options = regen.decision_options;
-                (resolved as any).options = regen.decision_options;
-              }
-            }
+            // If dedupe made it invalid, the consolidated regen will handle it.
+            optsRegenState.dedupedDecisionOptCount = deduped.length;
           }
         } catch (e) {
           console.warn("[api/chat] decision option quality gate skipped", e);
         }
 
+        // --- Phase 4.5: post-resolve options regen gate (condition only) ---
+        // The LLM call is handled by the unified regen block later.
         try {
           const rollout = getVerseCraftRolloutFlags();
           const settlementFreeze =
             guardMeta?.settlement_guard === "stage2_freeze_on_illegal_or_death";
-          const shouldSkipRegen = shouldSkipPostResolveOptionsRegen({
-            clientPurpose: validated.clientPurpose,
-            shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
-            settlementFreeze,
-            resolved: { turn_mode: (resolved as any).turn_mode },
-          });
           const skipReason = getPostResolveOptionsRegenSkipReason({
             clientPurpose: validated.clientPurpose,
             shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
@@ -3733,50 +3227,17 @@ async function postChatInternal(req: Request) {
           });
           const resolvedOpts = Array.isArray((resolved as any).options) ? ((resolved as any).options as unknown[]) : [];
           const resolvedOptCount = resolvedOpts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
+          optsRegenState.postResolveSkipReason = skipReason;
+          optsRegenState.enableOptionsAutoRegenOnEmpty = rollout.enableOptionsAutoRegenOnEmpty;
+          optsRegenState.resolvedOptCount = resolvedOptCount;
           if (process.env.NODE_ENV === "development") {
             console.debug("[api/chat] options_regen_post_resolve_gate", {
-              requestId,
+              requestId: requestId,
               skipReason,
               turn_mode: (resolved as any).turn_mode,
               resolvedOptCount,
               enable: rollout.enableOptionsAutoRegenOnEmpty,
             });
-          }
-          if (
-            !shouldSkipRegen &&
-            rollout.enableOptionsAutoRegenOnEmpty &&
-            resolvedOptCount < 2 &&
-            canRunFinalRepair() &&
-            !deferPlayableOptsToSeparateRequest
-          ) {
-            if (resolvedOptCount === 0) incrEmptyOptionsTurnCount(1);
-            let regen = await generateOptionsOnlyFallback({
-              narrative: String((resolved as any).narrative ?? ""),
-              latestUserInput,
-              playerContext,
-              ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn" } },
-              signal: pipelineAbort.signal,
-              systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-              outputLanguage: validated.language,
-              budgetMs: nextFinalRepairBudgetMs(4_500),
-            });
-            if (!regen.ok && canRunFinalRepair()) {
-              regen = await generateOptionsOnlyFallback({
-                narrative: String((resolved as any).narrative ?? ""),
-                latestUserInput,
-                playerContext,
-                ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn", retryPass: true } },
-                signal: pipelineAbort.signal,
-                systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-                outputLanguage: validated.language,
-                budgetMs: nextFinalRepairBudgetMs(3_500),
-              });
-            }
-            if (regen.ok) {
-              (dmRecord as Record<string, unknown>).options = regen.options;
-              dmRecord = runEpistemicPostGuard(dmRecord);
-              resolved = resolveDmTurn(dmRecord);
-            }
           }
         } catch (e) {
           console.warn("[api/chat] options regen (post-resolve) skipped", e);
@@ -3806,7 +3267,7 @@ async function postChatInternal(req: Request) {
           const lengthResult = assessNarrativeLengthForTelemetry({
             narrative,
             budget: narrativeBudget ?? null,
-            playerChatMaxTokens,
+            playerChatMaxTokens: playerChatMaxTokens,
             plannedTurnMode: `${plannedTurnMode.mode}:${plannedTurnMode.reason}`,
             isActionLegal: (resolved as any).is_action_legal !== false,
             isDeath: (resolved as any).is_death === true,
@@ -3826,7 +3287,7 @@ async function postChatInternal(req: Request) {
           });
           if (lengthResult.assessmentError) {
             console.warn("[api/chat] narrative length assessment skipped", {
-              requestId,
+              requestId: requestId,
               message:
                 lengthResult.assessmentError instanceof Error
                   ? lengthResult.assessmentError.message
@@ -3837,7 +3298,7 @@ async function postChatInternal(req: Request) {
           const narrative = String((resolved as any).narrative ?? "");
           narrativeLengthTelemetry = buildNarrativeLengthTelemetry({
             budget: narrativeBudget ?? null,
-            playerChatMaxTokens,
+            playerChatMaxTokens: playerChatMaxTokens,
             actualNarrativeChars: Array.from(narrative.replace(/\s+/g, "")).length,
             status: "assessment_error",
           });
@@ -3846,7 +3307,7 @@ async function postChatInternal(req: Request) {
             assessmentError: true,
           });
           console.warn("[api/chat] narrative length assessment skipped", {
-            requestId,
+            requestId: requestId,
             message: e instanceof Error ? e.message : String(e),
           });
         }
@@ -3907,8 +3368,8 @@ async function postChatInternal(req: Request) {
             const expansionResult: NarrativeExpansionResult = await expandNarrativeOnly({
               originalNarrative: narrative,
               originalDmRecord: resolved as unknown as Record<string, unknown>,
-              narrativeBudget,
-              latestUserInput,
+              narrativeBudget: narrativeBudget,
+              latestUserInput: latestUserInput,
               playerContextSnapshot: playerContextForPrompt,
               recentNarrativeTail: extractLastAssistantNarrativeTail(rawChatMessages),
               constraints: [
@@ -3917,15 +3378,15 @@ async function postChatInternal(req: Request) {
                 "只补足动作反馈、感官细节、环境阻力、即时反应和悬疑节奏。",
               ],
               ctx: {
-                requestId,
-                userId,
-                sessionId,
+                requestId: requestId,
+                userId: userId,
+                sessionId: sessionId,
                 path: "/api/chat",
                 tags: {
                   phase: "final_hooks",
                   purpose: "narrative_expansion",
-                  narrativeBudgetTier,
-                  latestUserInput,
+                  narrativeBudgetTier: narrativeBudgetTier,
+                  latestUserInput: latestUserInput,
                 },
               },
               signal: pipelineAbort.signal,
@@ -3952,7 +3413,7 @@ async function postChatInternal(req: Request) {
             narrativeAfterChars: null,
           };
           console.warn("[api/chat] narrative expansion skipped", {
-            requestId,
+            requestId: requestId,
             message: e instanceof Error ? e.message : String(e),
           });
         }
@@ -3963,9 +3424,9 @@ async function postChatInternal(req: Request) {
           const awardedWarehouseLen = Array.isArray(resolved.awarded_warehouse_items) ? resolved.awarded_warehouse_items.length : 0;
           if (hasStrongAcquireSemantics(narrative) && awardedItemsLen === 0 && awardedWarehouseLen === 0) {
             console.warn("[api/chat] consistency: acquire semantics present but awards empty (resolved)", {
-              requestId,
-              sessionId,
-              userId,
+              requestId: requestId,
+              sessionId: sessionId,
+              userId: userId,
               downgraded: resolved.ui_hints?.consistency_flags?.includes("acquire_without_awards_downgraded") ?? false,
             });
           }
@@ -4196,14 +3657,14 @@ async function postChatInternal(req: Request) {
               const repaired = await repairNarrativeOnly({
                 originalNarrative: String(candidateRec.narrative ?? ""),
                 originalDmRecord: candidateRec,
-                latestUserInput,
+                latestUserInput: latestUserInput,
                 playerContextSnapshot: playerContext,
                 issues: repairIssues,
                 constraints,
                 ctx: {
-                  requestId,
-                  userId,
-                  sessionId,
+                  requestId: requestId,
+                  userId: userId,
+                  sessionId: sessionId,
                   path: "/api/chat",
                   tags: { phase: "post_validator", purpose: "narrative_repair" },
                 },
@@ -4295,8 +3756,8 @@ async function postChatInternal(req: Request) {
               })
             : null;
           const commitResult = commitTurn({
-            requestId,
-            sessionId,
+            requestId: requestId,
+            sessionId: sessionId,
             turnIndex: totalRounds,
             candidateDmRecord: candidateRec,
             delta: postStateDelta,
@@ -4341,54 +3802,131 @@ async function postChatInternal(req: Request) {
           // Reassert only authored, structured mechanics after that decision so
           // a registered task delivery or registered combat action cannot become
           // randomly non-playable because the model prose was repaired/blocked.
-          resolved = applyRegisteredMechanicsGuard({ dmRecord: resolved, latestUserInput, clientState });
+          resolved = applyRegisteredMechanicsGuard({ dmRecord: resolved, latestUserInput: latestUserInput, clientState: clientState });
           recordNarrativeGovernanceOutcome(commitResult.summary.narrativeGovernanceTelemetry);
           commitSummaryForAnalytics = commitResult.summary;
           void commitSummaryForAnalytics; // signal usage across try/catch for eslint dataflow
+
           if (effectiveValidatorReport.optionsOverride) {
             (resolved as any).options = [...effectiveValidatorReport.optionsOverride];
             if (Array.isArray((resolved as any).decision_options)) {
               (resolved as any).decision_options = [...effectiveValidatorReport.optionsOverride];
             }
-            // Phase 8.5 修复：validator 的 optionsOverride 现在只是“清空信号”，不再注入罐头短句。
-            // 若覆盖后 options 不足，立刻再调用一次大模型实时生成，确保玩家看到的是模型产物而非既定文案。
+            // Phase 8.5: validator cleared options for safety.
+            // The actual regen is deferred to the unified block below.
             const overriddenOpts = Array.isArray((resolved as any).options)
               ? ((resolved as any).options as unknown[]).filter(
                   (x): x is string => typeof x === "string" && x.trim().length > 0
                 )
               : [];
-            if (overriddenOpts.length < 2 && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
+            optsRegenState.validatorOverrideApplied = true;
+            optsRegenState.validatorOverriddenOptCount = overriddenOpts.length;
+          }
+
+          // --- Unified options regen ---
+          // Consolidates the 5 former LLM call sites (pre-resolve, turn-mode fix,
+          // quality gate, post-resolve, post-validator) into a single decision + one call.
+          if (canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
+            const rolloutNow = getVerseCraftRolloutFlags();
+            const regenDecision = evaluateUnifiedOptionsRegen({
+              preResolveNarrativeOptCount: optsRegenState.preResolveNarrativeOptCount,
+              preResolveFreeze: optsRegenState.preResolveFreeze,
+              plannedTurnMode: plannedTurnMode.mode,
+              turnModeFilteredOptCount: optsRegenState.turnModeFilteredOptCount,
+              turnModeFilteredDecCount: optsRegenState.turnModeFilteredDecCount,
+              enableDecisionOptionQualityGate: rolloutNow.enableDecisionOptionQualityGate,
+              resolvedTurnMode: String((resolved as any).turn_mode ?? ""),
+              dedupedDecisionOptCount: optsRegenState.dedupedDecisionOptCount,
+              postResolveSkipReason: optsRegenState.postResolveSkipReason,
+              enableOptionsAutoRegenOnEmpty: optsRegenState.enableOptionsAutoRegenOnEmpty,
+              resolvedOptCount: optsRegenState.resolvedOptCount,
+              validatorOverrideApplied: optsRegenState.validatorOverrideApplied,
+              validatorOverriddenOptCount: optsRegenState.validatorOverriddenOptCount,
+              canRunFinalRepair: true,
+              deferPlayableOptsToSeparateRequest: false,
+              budgetPreResolveMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
+              budgetDecisionFixMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
+              budgetQualityGateMs: nextFinalRepairBudgetMs(1_800),
+              budgetPostResolveMs: nextFinalRepairBudgetMs(4_500),
+              budgetValidatorMs: nextFinalRepairBudgetMs(4_500),
+            });
+
+            if (regenDecision.shouldRegen) {
+              const repairStartedAt = Date.now();
               try {
-                const rolloutForRegen = getVerseCraftRolloutFlags();
-                const regen = await generateOptionsOnlyFallback({
-                  narrative: String((resolved as any).narrative ?? ""),
-                  latestUserInput,
-                  playerContext,
-                  ctx: {
-                    requestId,
-                    userId,
-                    sessionId,
-                    path: "/api/chat",
-                    tags: { phase: "post_validator", purpose: "options_regen_after_override" },
-                  },
-                  signal: pipelineAbort.signal,
-                  systemExtra: rolloutForRegen.enableOptionsOnlyRegenPathV2
-                    ? buildOptionsOnlySystemPrompt()
-                    : "",
-                  outputLanguage: validated.language,
-                  budgetMs: nextFinalRepairBudgetMs(4_500),
-                });
-                if (regen.ok && regen.options.length >= 2) {
-                  (resolved as any).options = [...regen.options];
-                  if (Array.isArray((resolved as any).decision_options)) {
-                    (resolved as any).decision_options = [...regen.options];
+                if (regenDecision.regenType === "decision_options") {
+                  const regen = await generateDecisionOptionsOnlyFallback({
+                    narrative: String((resolved as any).narrative ?? ""),
+                    latestUserInput: latestUserInput,
+                    playerContext: playerContext,
+                    ctx: {
+                      requestId: requestId, userId: userId, sessionId: sessionId, path: "/api/chat",
+                      tags: { phase: "unified_regen", purpose: regenDecision.reason },
+                    },
+                    signal: pipelineAbort.signal,
+                    outputLanguage: validated.language,
+                    budgetMs: regenDecision.budgetMs,
+                  });
+                  optionsRepairUsedTelemetry = true;
+                  optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
+                  if (regen.ok) {
+                    recordDecisionOptionsFixOutcome(true);
+                    (resolved as any).decision_options = regen.decision_options;
+                    (resolved as any).options = regen.decision_options;
+                    (resolved as any).turn_mode = "decision_required";
+                    (resolved as any).decision_required = true;
+                  }
+                } else {
+                  let regen = await generateOptionsOnlyFallback({
+                    narrative: String((resolved as any).narrative ?? ""),
+                    latestUserInput: latestUserInput,
+                    playerContext: playerContext,
+                    ctx: {
+                      requestId: requestId, userId: userId, sessionId: sessionId, path: "/api/chat",
+                      tags: { phase: "unified_regen", purpose: regenDecision.reason },
+                    },
+                    signal: pipelineAbort.signal,
+                    systemExtra: rolloutNow.enableOptionsOnlyRegenPathV2
+                      ? buildOptionsOnlySystemPrompt()
+                      : "",
+                    outputLanguage: validated.language,
+                    budgetMs: regenDecision.budgetMs,
+                  });
+                  if (!regen.ok && canRunFinalRepair()) {
+                    regen = await generateOptionsOnlyFallback({
+                      narrative: String((resolved as any).narrative ?? ""),
+                      latestUserInput: latestUserInput,
+                      playerContext: playerContext,
+                      ctx: {
+                        requestId: requestId, userId: userId, sessionId: sessionId, path: "/api/chat",
+                        tags: { phase: "unified_regen", purpose: regenDecision.reason, retryPass: true },
+                      },
+                      signal: pipelineAbort.signal,
+                      systemExtra: rolloutNow.enableOptionsOnlyRegenPathV2
+                        ? buildOptionsOnlySystemPrompt()
+                        : "",
+                      outputLanguage: validated.language,
+                      budgetMs: nextFinalRepairBudgetMs(3_500),
+                    });
+                  }
+                  optionsRepairUsedTelemetry = true;
+                  optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
+                  if (regen.ok) {
+                    (resolved as any).options = regen.options;
+                    if (Array.isArray((resolved as any).decision_options)) {
+                      (resolved as any).decision_options = [...regen.options];
+                    }
+                    if (regenDecision.reason === "validator_override_cleared_options") {
+                      recordOptionsAutoRegenOutcome(true);
+                    }
                   }
                 }
               } catch (regenErr) {
-                console.warn("[api/chat] post-validator options regen skipped", regenErr);
+                console.warn("[api/chat] unified options regen failed", regenErr);
               }
             }
           }
+
           if (effectiveValidatorReport.narrativeOverride) {
             try {
               const parsedSafe = JSON.parse(effectiveValidatorReport.narrativeOverride) as Record<string, unknown>;
@@ -4415,7 +3953,7 @@ async function postChatInternal(req: Request) {
           }
           const narrativeLedgerOutput = buildRouteModelOutputFromResolvedTurn({
             resolved: resolved as unknown as Record<string, unknown>,
-            latestUserInput,
+            latestUserInput: latestUserInput,
           });
           const narrativeLedgerCheck = buildRouteNarrativeCheckResult({
             output: narrativeLedgerOutput,
@@ -4464,20 +4002,20 @@ async function postChatInternal(req: Request) {
           void (async () => {
             try {
               const dialogueContext = await buildDialogueContext({
-                requestId,
-                sessionId,
-                userId,
-                latestUserInput,
+                requestId: requestId,
+                sessionId: sessionId,
+                userId: userId,
+                latestUserInput: latestUserInput,
                 messages: rawChatMessages,
-                playerContext,
-                clientState,
-                clientPurpose,
+                playerContext: playerContext,
+                clientState: clientState,
+                clientPurpose: clientPurpose,
                 turnIndex: totalRounds,
                 worldId: "base_apartment",
                 sceneId: postStateDelta.playerLocation ?? null,
                 activeNpcId: focusNpcForPrompt,
                 revealTier: maxRevealRankForMemory,
-                sessionMemory,
+                sessionMemory: sessionMemory,
                 lorePacket: runtimeLorePacket,
                 recentlyEncounteredEntities: presentNpcIdsForEpistemic ?? [],
               });
@@ -4487,9 +4025,9 @@ async function postChatInternal(req: Request) {
                 legacyCommitSummary: commitResult.summary,
               });
               await logNarrativeRun({
-                requestId,
-                sessionId,
-                userId,
+                requestId: requestId,
+                sessionId: sessionId,
+                userId: userId,
                 turnIndex: totalRounds,
                 ttftMs:
                   ttftProfile.firstSseWriteAt !== null
@@ -4527,8 +4065,8 @@ async function postChatInternal(req: Request) {
           })();
           if (effectiveValidatorReport.telemetry.totalIssues > 0 && epistemicRolloutFlags.epistemicDebugLog) {
             epistemicDebugLog("narrative_validator_report", {
-              requestId,
-              sessionId,
+              requestId: requestId,
+              sessionId: sessionId,
               totalIssues: effectiveValidatorReport.telemetry.totalIssues,
               byCode: effectiveValidatorReport.telemetry.byCode,
               optionsOverrideApplied: effectiveValidatorReport.telemetry.optionsOverrideApplied,
@@ -4537,8 +4075,8 @@ async function postChatInternal(req: Request) {
           }
           if (epistemicRolloutFlags.epistemicDebugLog) {
             epistemicDebugLog("turn_commit_summary", {
-              requestId,
-              sessionId,
+              requestId: requestId,
+              sessionId: sessionId,
               turnIndex: totalRounds,
               degraded: commitResult.summary.degraded,
               optionsRewriteApplied: commitResult.summary.optionsRewriteApplied,
@@ -4561,18 +4099,18 @@ async function postChatInternal(req: Request) {
             void recordGenericAnalyticsEvent({
               eventId: `${requestId}:turn_commit_summary`,
               idempotencyKey: `${requestId}:turn_commit_summary`,
-              userId,
+              userId: userId,
               guestId: userId ? null : chatGuestId,
               sessionId: capturedSessionIdAnalytics,
               eventName: "turn_commit_summary",
               eventTime: new Date(),
               page: "/play",
               source: "chat",
-              platform,
+              platform: platform,
               tokenCost: 0,
               playDurationDeltaSec: 0,
               payload: {
-                requestId,
+                requestId: requestId,
                 turnIndex: totalRounds,
                 lane: turnLaneDecision.lane,
                 laneReasons: [...turnLaneDecision.reasons],
@@ -4603,7 +4141,7 @@ async function postChatInternal(req: Request) {
               },
             }).catch(() => {});
             const narrativeSafetyTelemetryEvents = buildNarrativeSafetyTelemetryEvents({
-              requestId,
+              requestId: requestId,
               sessionId: capturedSessionIdAnalytics,
               turnIndex: totalRounds,
               config: narrativeSafetyRuntime,
@@ -4621,14 +4159,14 @@ async function postChatInternal(req: Request) {
               void recordGenericAnalyticsEvent({
                 eventId: `${requestId}:${event.eventName}`,
                 idempotencyKey: `${requestId}:${event.eventName}`,
-                userId,
+                userId: userId,
                 guestId: userId ? null : chatGuestId,
                 sessionId: capturedSessionIdAnalytics,
                 eventName: asAnalyticsEventName(event.eventName),
                 eventTime: new Date(),
                 page: "/play",
                 source: "chat",
-                platform,
+                platform: platform,
                 tokenCost: 0,
                 playDurationDeltaSec: 0,
                 payload: event.payload,
@@ -4638,18 +4176,18 @@ async function postChatInternal(req: Request) {
               void recordGenericAnalyticsEvent({
                 eventId: `${requestId}:narrative_validator_issue`,
                 idempotencyKey: `${requestId}:narrative_validator_issue`,
-                userId,
+                userId: userId,
                 guestId: userId ? null : chatGuestId,
                 sessionId: capturedSessionIdAnalytics,
                 eventName: "narrative_validator_issue",
                 eventTime: new Date(),
                 page: "/play",
                 source: "chat",
-                platform,
+                platform: platform,
                 tokenCost: 0,
                 playDurationDeltaSec: 0,
                 payload: {
-                  requestId,
+                  requestId: requestId,
                   turnIndex: totalRounds,
                   lane: turnLaneDecision.lane,
                   totalIssues: effectiveValidatorReport.telemetry.totalIssues,
@@ -4727,8 +4265,8 @@ async function postChatInternal(req: Request) {
           let auditedResolved = resolveDmTurn(
             applyRegisteredMechanicsGuard({
               dmRecord,
-              latestUserInput,
-              clientState,
+              latestUserInput: latestUserInput,
+              clientState: clientState,
             })
           );
           if (!shouldSkipItemOptionInjection({ resolved: auditedResolved, clientPurpose: validated.clientPurpose })) {
@@ -4824,9 +4362,9 @@ async function postChatInternal(req: Request) {
               options: sourceOptions.filter((option): option is string => typeof option === "string"),
               language: validated.language,
               ctx: {
-                requestId,
-                userId,
-                sessionId,
+                requestId: requestId,
+                userId: userId,
+                sessionId: sessionId,
                 path: "/api/chat",
                 tags: { phase: "final_language_guard" },
               },
@@ -4871,11 +4409,11 @@ async function postChatInternal(req: Request) {
               validated.language
             );
 
-            recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
+            recordHighRisk({ ip: clientIp, sessionId: sessionId, userId: userId }, `output_reject:${reason}`);
             writeAuditTrail({
-              requestId,
-              sessionId,
-              userId,
+              requestId: requestId,
+              sessionId: sessionId,
+              userId: userId,
               ip: clientIp,
               stage: "final_output",
               riskLevel: "black",
@@ -4892,7 +4430,7 @@ async function postChatInternal(req: Request) {
                     action: "degrade",
                     stage: "final_output",
                     riskLevel: "black",
-                    requestId,
+                    requestId: requestId,
                     reason,
                   })
                 )
@@ -4901,7 +4439,7 @@ async function postChatInternal(req: Request) {
               return true;
             }
             console.warn("[api/chat] non-visible output reject recorded without narrative fallback", {
-              requestId,
+              requestId: requestId,
               reason,
             });
           }
@@ -4912,13 +4450,23 @@ async function postChatInternal(req: Request) {
         }
       }
 
+      if (finalizePayload && isLikelyValidDMJson(finalizePayload)) {
+        const guardedFinal = applyRegisteredMechanicsGuard({
+          dmRecord: JSON.parse(finalizePayload) as Record<string, unknown>,
+          latestUserInput,
+          clientState,
+        });
+        finalizePayload = JSON.stringify(guardedFinal);
+        moderationBody = finalizePayload;
+      }
+
       if (finalizePayload) {
         const finalModeration = await finalOutputModeration({
           input: moderationBody,
-          userId,
+          userId: userId,
           ip: clientIp,
           path: "/api/chat",
-          requestId,
+          requestId: requestId,
         });
 
         if (finalModeration.policy.blocked) {
@@ -4927,9 +4475,9 @@ async function postChatInternal(req: Request) {
             finalModeration.result.reason
           );
           writeAuditTrail({
-            requestId,
-            sessionId,
-            userId,
+            requestId: requestId,
+            sessionId: sessionId,
+            userId: userId,
             ip: clientIp,
             stage: "final_output",
             riskLevel: "black",
@@ -4951,7 +4499,7 @@ async function postChatInternal(req: Request) {
                   action: "degrade",
                   stage: "final_output",
                   riskLevel: "black",
-                  requestId,
+                  requestId: requestId,
                   reason: finalModeration.result.reason,
                 })
               )
@@ -4960,7 +4508,7 @@ async function postChatInternal(req: Request) {
             return true;
           }
           console.warn("[api/chat] non-visible final moderation block recorded without narrative fallback", {
-            requestId,
+            requestId: requestId,
             reason: finalModeration.result.reason,
           });
         }
@@ -4988,43 +4536,44 @@ async function postChatInternal(req: Request) {
           finalOptionsQualityPassTelemetry = false;
         }
         await writer.write(sse(`${VERSECRAFT_FINAL_PREFIX}${finalizePayload}`));
+        finalFrameWritten = true;
         const playerEchoFlags = getVerseCraftRolloutFlags();
         if (playerEchoFlags.enablePlayerEchoCanon && playerEchoFlags.enablePlayerEchoPersistence) {
           schedulePlayerEchoPersistFromTurn({
             flags: playerEchoFlags,
-            userId,
+            userId: userId,
             runId: sessionId,
             dmRecord: finalDmRecordForBackground ?? dmRecord,
             runSnapshotV2: null,
             turnCommitSummary: commitSummaryForAnalytics,
-            latestUserInput,
+            latestUserInput: latestUserInput,
             nowIso: new Date().toISOString(),
           });
         }
         if (sessionId && injectedDirectorAgendaIds.length > 0) {
           const capturedAgendaIds = [...injectedDirectorAgendaIds];
           void markDirectorAgendaInjected({
-            sessionId,
+            sessionId: sessionId,
             agendaIds: capturedAgendaIds,
             turnIndex: totalRounds,
-            requestId,
+            requestId: requestId,
           })
             .then(() =>
               recordGenericAnalyticsEvent({
                 eventId: `${requestId}:director_agenda_injected`,
                 idempotencyKey: `${requestId}:director_agenda_injected`,
-                userId,
+                userId: userId,
                 guestId: userId ? null : chatGuestId,
-                sessionId,
+                sessionId: sessionId,
                 eventName: "director_agenda_injected",
                 eventTime: new Date(),
                 page: "/play",
                 source: "chat",
-                platform,
+                platform: platform,
                 tokenCost: 0,
                 playDurationDeltaSec: 0,
                 payload: {
-                  requestId,
+                  requestId: requestId,
                   agendaIds: capturedAgendaIds,
                   agendaCount: capturedAgendaIds.length,
                   directorMode: worldDirectorConfig.mode,
@@ -5040,18 +4589,18 @@ async function postChatInternal(req: Request) {
               recordGenericAnalyticsEvent({
                 eventId: `${requestId}:social_world_hint_projected`,
                 idempotencyKey: `${requestId}:social_world_hint_projected`,
-                userId,
+                userId: userId,
                 guestId: userId ? null : chatGuestId,
-                sessionId,
+                sessionId: sessionId,
                 eventName: "social_world_hint_projected",
                 eventTime: new Date(),
                 page: "/play",
                 source: "chat",
-                platform,
+                platform: platform,
                 tokenCost: 0,
                 playDurationDeltaSec: 0,
                 payload: {
-                  requestId,
+                  requestId: requestId,
                   socialWorldMode: socialProjectionTelemetry.socialWorldMode,
                   socialHintCount: socialProjectionTelemetry.socialHintCount,
                   socialHintChars: socialProjectionTelemetry.socialHintChars,
@@ -5066,7 +4615,7 @@ async function postChatInternal(req: Request) {
             .catch(() => {});
         }
         if (sessionId && worldDirectorConfig.enabled) {
-          void expireStaleDirectorAgenda({ sessionId, turnIndex: totalRounds }).catch(() => {});
+          void expireStaleDirectorAgenda({ sessionId: sessionId, turnIndex: totalRounds }).catch(() => {});
         }
         if (
           epistemicResiduePlan.persistEntry &&
@@ -5081,8 +4630,7 @@ async function postChatInternal(req: Request) {
           if (nextDb) {
             void db
               .insert(gameSessionMemory)
-              .values({
-                userId,
+              .values({ userId: userId,
                 plotSummary: nextDb.plotSummary,
                 playerStatus: nextDb.playerStatus,
                 npcRelationships: nextDb.npcRelationships,
@@ -5121,25 +4669,25 @@ async function postChatInternal(req: Request) {
             }
           })();
           void persistTurnFacts({
-            requestId,
-            latestUserInput,
+            requestId: requestId,
+            latestUserInput: latestUserInput,
             dmRecord: dmForWriteback,
             sessionMemorySummary: sessionMemory?.plot_summary ?? null,
             ruleHits: preflightTurnMetrics.ran
               ? [`preflight:${preflightTurnMetrics.ok ? "ok" : "not_ok"}`]
               : ["preflight:skipped"],
-            userId,
-            sessionId,
+            userId: userId,
+            sessionId: sessionId,
             maxFacts: 10,
           })
             .then((writeback) => {
               logAiTelemetry({
-                requestId,
+                requestId: requestId,
                 task: "PLAYER_CHAT",
                 providerId: "oneapi",
                 logicalRole: "control",
                 phase: "success",
-                userId,
+                userId: userId,
                 factIngestionCount: writeback.extractedCount,
                 factConflictCount: writeback.rejectedCount,
               });
@@ -5147,9 +4695,9 @@ async function postChatInternal(req: Request) {
             .catch((error) => {
             const err = error as Error;
             console.warn("[api/chat] world writeback skipped", {
-              requestId,
-              userId,
-              sessionId,
+              requestId: requestId,
+              userId: userId,
+              sessionId: sessionId,
               message: err?.message,
             });
           });
@@ -5159,15 +4707,15 @@ async function postChatInternal(req: Request) {
           // triggers + enqueue and NEVER awaits inside the hot path.
           const capturedSessionId = sessionId;
           const { pending } = scheduleBackgroundWorldTick({
-            requestId,
-            userId,
-            sessionId,
+            requestId: requestId,
+            userId: userId,
+            sessionId: sessionId,
             turnIndex: totalRounds,
-            latestUserInput,
+            latestUserInput: latestUserInput,
             dmRecord,
             playerLocation:
               typeof dmRecord.player_location === "string" ? dmRecord.player_location : null,
-            previousPlayerLocation: playerLocForEpistemic,
+            previousPlayerLocation: playerLocEarly,
             npcLocationUpdateCount: Array.isArray(dmRecord.npc_location_updates)
               ? dmRecord.npc_location_updates.length
               : 0,
@@ -5182,18 +4730,18 @@ async function postChatInternal(req: Request) {
               void recordGenericAnalyticsEvent({
                 eventId: `${requestId}:world_engine_enqueued`,
                 idempotencyKey: `${requestId}:world_engine_enqueued`,
-                userId,
+                userId: userId,
                 guestId: userId ? null : chatGuestId,
                 sessionId: capturedSessionId,
                 eventName: "world_engine_enqueued",
                 eventTime: new Date(),
                 page: "/play",
                 source: "chat",
-                platform,
+                platform: platform,
                 tokenCost: 0,
                 playDurationDeltaSec: 0,
                 payload: {
-                  requestId,
+                  requestId: requestId,
                   dedupKey: result.dedupKey,
                   triggers: [...decision.triggers],
                   directorMode: worldDirectorConfig.mode,
@@ -5211,8 +4759,8 @@ async function postChatInternal(req: Request) {
         // Runs after commit so it has the final narrative. Fail-open on DB.
         if (dmRecord && sessionId && typeof dmRecord.narrative === "string" && dmRecord.narrative.length > 0) {
           insertPacingLedgerRow({
-            sessionId,
-            userId,
+            sessionId: sessionId,
+            userId: userId,
             turnIndex: totalRounds,
             narrative: String(dmRecord.narrative),
             beatState: capturedBeatForLedger,
@@ -5222,8 +4770,8 @@ async function postChatInternal(req: Request) {
         // Writes plant/payoff ops to DB; expires overdue entries. Fail-open on DB.
         if (dmRecord && sessionId && Array.isArray(dmRecord.foreshadow_ops) && dmRecord.foreshadow_ops.length > 0) {
           insertForeshadowLedgerRows({
-            sessionId,
-            userId,
+            sessionId: sessionId,
+            userId: userId,
             turnIndex: totalRounds,
             ops: dmRecord.foreshadow_ops as Array<Record<string, unknown>>,
           });
@@ -5257,18 +4805,18 @@ async function postChatInternal(req: Request) {
               void recordGenericAnalyticsEvent({
                 eventId: `${requestId}:kg_cache_write`,
                 idempotencyKey: `${requestId}:kg_cache_write`,
-                userId,
+                userId: userId,
                 guestId: userId ? null : chatGuestId,
                 sessionId: sessionId ?? "unknown_session",
                 eventName: "kg_cache_write",
                 eventTime: new Date(),
                 page: "/play",
                 source: "chat",
-                platform,
+                platform: platform,
                 tokenCost: 0,
                 playDurationDeltaSec: 0,
                 payload: {
-                  requestId,
+                  requestId: requestId,
                   scope: "global",
                   worldRevision: wr.toString(),
                 },
@@ -5292,6 +4840,8 @@ async function postChatInternal(req: Request) {
       latestStreamUsage = null;
       latestStreamFinishReason = null;
       const reader = streamSource.response.body!.getReader();
+      activeStreamReader = reader;
+      const streamRoundDeadlineAt = Date.now() + streamHardCapMs;
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let accumulated = "";
@@ -5342,7 +4892,16 @@ async function postChatInternal(req: Request) {
 
     try {
       while (true) {
-        const { value, done } = await reader.read();
+        const { value, done } = await readUpstreamBounded(reader, streamRoundDeadlineAt);
+        // Synchronous hard-cap check after every resolved read: under a
+        // socket flood the event loop keeps prioritizing readable events and
+        // setTimeout callbacks can be starved, so the timer-based bound alone
+        // is not sufficient. Cancelling here throws into the stream catch
+        // path, which reconnects once or closes with the fallback final.
+        if (Date.now() > streamRoundDeadlineAt) {
+          try { await reader.cancel(); } catch { /* best effort */ }
+          throw new Error(`stream_hard_cap_${streamHardCapMs}ms`);
+        }
         if (done) {
           if (
             !streamBlocked &&
@@ -5368,9 +4927,11 @@ async function postChatInternal(req: Request) {
           pushAiRoutingReport(routingReport);
           await flushThisRound();
           if (!closedByFinalHooks) {
-            await closeWithFallback();
-          } else {
-            await writer.close();
+            if (finalFrameWritten) {
+              await writer.close();
+            } else {
+              await closeWithFallback();
+            }
           }
           return;
         }
@@ -5438,9 +4999,11 @@ async function postChatInternal(req: Request) {
             pushAiRoutingReport(routingReport);
             await flushThisRound();
             if (!closedByFinalHooksDone) {
-              await closeWithFallback();
-            } else {
-              await writer.close();
+              if (finalFrameWritten) {
+                await writer.close();
+              } else {
+                await closeWithFallback();
+              }
             }
             return;
           }
@@ -5634,20 +5197,9 @@ async function postChatInternal(req: Request) {
         error,
       }
     );
-    try {
-      await writer.write(`${VERSECRAFT_FINAL_PREFIX}${fallbackPayload}`);
-    } catch {
-      /* stream may already be closed or errored */
-    }
-    try {
-      await writer.close();
-    } catch {
-      try {
-        await writer.abort(err);
-      } catch {
-        /* ignore */
-      }
-    }
+    await closeWithFallback();
+  }).finally(() => {
+    clearTimeout(turnWatchdog);
   });
 
   const sseHeadersOut: Record<string, string> = { ...SSE_HEADERS, "X-Accel-Buffering": "no" };
@@ -5683,62 +5235,6 @@ async function loadPlayerEchoCanonForPrompt(
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function buildNpcMemoryPrivilegeMapForEcho(
-  npcIds: readonly string[]
-): Record<string, ReturnType<typeof getNpcCanonicalIdentity>["memoryPrivilege"]> {
-  const out: Record<string, ReturnType<typeof getNpcCanonicalIdentity>["memoryPrivilege"]> = {};
-  for (const raw of npcIds) {
-    const id = typeof raw === "string" ? raw.trim() : "";
-    if (!id || out[id]) continue;
-    out[id] = getNpcCanonicalIdentity(id).memoryPrivilege;
-  }
-  return out;
-}
-
-function collectCurrentRunDiscoveredNpcIdsForEcho(clientState: unknown): string[] {
-  const state = asPlainRecordForEcho(clientState);
-  if (!state) return [];
-  const out = new Set<string>();
-  const add = (value: unknown) => {
-    if (typeof value !== "string") return;
-    const id = value.trim();
-    if (/^N-\d{3}$/i.test(id)) out.add(id.toUpperCase());
-  };
-  for (const id of Object.keys(asPlainRecordForEcho(state.codex) ?? {})) add(id);
-  for (const id of Object.keys(asPlainRecordForEcho(state.npcCodex) ?? {})) add(id);
-  const snapshot = asPlainRecordForEcho(state.runSnapshotV2);
-  const player = asPlainRecordForEcho(snapshot?.player);
-  for (const id of Object.keys(asPlainRecordForEcho(player?.codex) ?? {})) add(id);
-  const discovered = Array.isArray(state.discoveredNpcIds) ? state.discoveredNpcIds : [];
-  for (const id of discovered) add(id);
-  return [...out].slice(0, 80);
-}
-
-function extractRunSnapshotForEcho(clientState: unknown): RunSnapshotV2 | null {
-  const state = asPlainRecordForEcho(clientState);
-  if (!state) return null;
-  if (looksLikeRunSnapshotForEcho(state.runSnapshotV2)) return state.runSnapshotV2;
-  const slotId = typeof state.currentSaveSlot === "string" ? state.currentSaveSlot : null;
-  const saveSlots = asPlainRecordForEcho(state.saveSlots);
-  const currentSlot = slotId ? asPlainRecordForEcho(saveSlots?.[slotId]) : null;
-  const slotSnapshot = currentSlot?.runSnapshotV2;
-  return looksLikeRunSnapshotForEcho(slotSnapshot) ? slotSnapshot : null;
-}
-
-function looksLikeRunSnapshotForEcho(value: unknown): value is RunSnapshotV2 {
-  const snapshot = asPlainRecordForEcho(value);
-  return Boolean(
-    snapshot &&
-      snapshot.schemaVersion === 2 &&
-      asPlainRecordForEcho(snapshot.player) &&
-      asPlainRecordForEcho(snapshot.npcs)
-  );
-}
-
-function asPlainRecordForEcho(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 /** IVFFlat 榛樿 probes=5锛涘悜閲忕淮 256銆傚嬁鎻愰珮 @/db pool max锛堝綋鍓?10锛夛紝缂撳瓨璺緞浠呯煭浜嬪姟銆?*/
@@ -5841,4 +5337,3 @@ async function tryServeCodexFromGlobalCache(args: {
     headers,
   });
 }
-

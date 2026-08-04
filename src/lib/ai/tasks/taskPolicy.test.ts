@@ -17,6 +17,7 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     gatewayProvider: "oneapi",
     gatewayBaseUrl: "https://x/v1/chat/completions",
     gatewayApiKey: "k",
+    playerGameplayModel: "",
     modelsByRole: { main: "m-main", control: "m-control", enhance: "m-enhance", reasoner: "m-reasoner" },
     playerRoleFallbackChain: ["main", "control"],
     memoryPrimaryRole: "main",
@@ -67,6 +68,22 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
   };
 }
 
+// Kimi Code CLI 运行时注入的环境变量。测试期间需清除。
+const KIMI_INJECTED_VARS = [
+  "VC_AI_DIRECT_BASE_URL",
+  "VC_AI_DIRECT_API_KEY",
+  "VC_AI_DIRECT_MODEL",
+  "VC_AI_DIRECT_MODEL_MAIN",
+  "VC_AI_DIRECT_MODEL_CONTROL",
+  "VC_AI_DIRECT_MODEL_ENHANCE",
+  "VC_AI_DIRECT_MODEL_REASONER",
+  "VC_AI_DIRECT_PLAYER_MODEL",
+  "KIMI_MODEL_PROVIDER_TYPE",
+  "KIMI_MODEL_BASE_URL",
+  "KIMI_MODEL_API_KEY",
+  "KIMI_MODEL_NAME",
+];
+
 function withEnv(patch: Record<string, string | undefined>, fn: () => void): void {
   const prev: Record<string, string | undefined> = {};
   for (const key of Object.keys(patch)) {
@@ -74,6 +91,12 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void): voi
     const value = patch[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
+  }
+  for (const k of KIMI_INJECTED_VARS) {
+    if (!(k in patch)) {
+      prev[k] = process.env[k];
+      delete process.env[k];
+    }
   }
   try {
     fn();
@@ -83,18 +106,29 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void): voi
       if (old === undefined) delete process.env[key];
       else process.env[key] = old;
     }
+    for (const k of KIMI_INJECTED_VARS) {
+      if (!(k in patch)) {
+        const old = prev[k];
+        if (old === undefined) delete process.env[k];
+        else process.env[k] = old;
+      }
+    }
   }
 }
 
-test("PLAYER_CHAT primary role is main", () => {
-  assert.equal(getTaskBinding("PLAYER_CHAT").primaryRole, "main");
+test("PLAYER_CHAT primary role is writer (main as fallback)", () => {
+  assert.equal(getTaskBinding("PLAYER_CHAT").primaryRole, "writer");
 });
 
-test("PLAYER_CHAT maxTokens aligned with full DM JSON budget", () => {
+test("PLAYER_CHAT uses streaming transport required by the /api/chat SSE parser", () => {
+  assert.equal(getTaskBinding("PLAYER_CHAT").stream, true);
+});
+
+test("PLAYER_CHAT default leaves enough room for a complete DM JSON object", () => {
   assert.equal(getTaskBinding("PLAYER_CHAT").maxTokens, 2304);
 });
 
-test("PLAYER_CHAT narrative budget tiers resolve dynamic maxTokens", () => {
+test("PLAYER_CHAT narrative budget tiers never regress to the truncating 896-token cap", () => {
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("micro").maxTokens, 2048);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("short").maxTokens, 2048);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("standard").maxTokens, 2304);
@@ -168,9 +202,10 @@ test("NARRATIVE_EXPANSION uses bounded non-stream json enhance policy", () => {
 
 test("EVAL_JUDGE allows a full bounded offline verdict window", () => {
   const b = getTaskBinding("EVAL_JUDGE");
-  assert.equal(b.primaryRole, "control");
-  assert.deepEqual(b.fallbackRoles, ["main"]);
-  assert.equal(b.timeoutMs, 30_000);
+  assert.equal(b.primaryRole, "reasoner");
+  assert.deepEqual(b.fallbackRoles, []);
+  assert.equal(b.maxTokens, 8192);
+  assert.equal(b.timeoutMs, 180_000);
   assert.equal(b.budgetLevel, "medium");
   assert.equal(b.responseFormatJsonObject, true);
 });
@@ -178,6 +213,8 @@ test("EVAL_JUDGE allows a full bounded offline verdict window", () => {
 test("WORLDBUILD_OFFLINE uses reasoner primary and forbids enhance", () => {
   const b = getTaskBinding("WORLDBUILD_OFFLINE");
   assert.equal(b.primaryRole, "reasoner");
+  assert.equal(b.maxTokens, 8192);
+  assert.equal(b.timeoutMs, 180_000);
   assert.equal(isModelForbiddenForTask("WORLDBUILD_OFFLINE", "enhance"), true);
 });
 
@@ -197,13 +234,17 @@ test("production role policy keeps enhance and reasoner on their intended lanes"
   assert.deepEqual(resolveOrderedRoleChain("PLAYER_CHAT", env, "full"), ["main", "control"]);
 });
 
-test("DIRECTOR_PLAN_CRITIC is a control gate and never uses reasoner", () => {
+test("DIRECTOR_PLAN_CRITIC stays on the Pro reasoner lane", () => {
   const b = getTaskBinding("DIRECTOR_PLAN_CRITIC");
-  assert.equal(b.primaryRole, "control");
-  assert.deepEqual(b.fallbackRoles, ["main"]);
+  assert.equal(b.primaryRole, "reasoner");
+  assert.deepEqual(b.fallbackRoles, []);
   assert.equal(b.stream, false);
+  assert.equal(b.maxTokens, 8192);
+  assert.equal(b.timeoutMs, 180_000);
   assert.equal(b.responseFormatJsonObject, true);
-  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "reasoner"), true);
+  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "reasoner"), false);
+  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "main"), true);
+  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "control"), true);
   assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "enhance"), true);
 });
 

@@ -29,7 +29,7 @@ test.describe("Admin dashboard partial API failure", () => {
       });
     });
 
-    const url = new URL(baseURL ?? "http://127.0.0.1:666");
+    const url = new URL(baseURL ?? "http://[::1]:666");
     await context.addCookies([
       {
         name: ADMIN_COOKIE,

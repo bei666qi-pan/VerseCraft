@@ -186,16 +186,55 @@ function parseLlmJudgeResponse(content: string): ModelJudgeOutput | null {
 }
 
 function toModelJudgePrompt(transcript: PlaythroughTranscript): { system: string; user: string } {
+  const stateView = (state: PlaythroughTranscript["initialState"]): Record<string, unknown> => ({
+    location: state.playerLocation,
+    hp: state.hp,
+    sanity: state.sanity,
+    originium: state.originium,
+    profession: state.profession,
+    equippedWeapon: state.equippedWeapon,
+    weaponStability: state.weaponStability,
+    weaponContamination: state.weaponContamination,
+    inventoryItemIds: state.inventoryItemIds,
+    activeTaskIds: state.activeTaskIds,
+    completedTaskIds: state.completedTaskIds,
+    presentNpcIds: state.presentNpcIds,
+    deadNpcIds: state.deadNpcIds,
+    activeThreatIds: state.activeThreatIds,
+    isDeath: state.isDeath,
+    reachedEnding: state.reachedEnding,
+  });
+  const deltaView = (dmJson: Record<string, unknown>): Record<string, unknown> => {
+    const keys = [
+      "player_location", "currency_change", "awarded_items", "consumed_items",
+      "task_updates", "new_tasks", "relationship_updates", "npc_location_updates",
+      "weapon_updates", "weapon_bag_updates", "profession", "profession_trial_result",
+      "main_threat_updates", "conflict_outcome", "ending_finale", "is_death", "reached_ending",
+    ];
+    return Object.fromEntries(keys.flatMap((key) => key in dmJson ? [[key, dmJson[key]]] : []));
+  };
   const transcriptSummary = transcript.steps
-    .map((s) => `[第${s.stepIndex}步]\n玩家: ${s.playerAction}\nDM: ${s.narrative.slice(0, 300)}`)
+    .map((s, index) => {
+      const before = index === 0 ? transcript.initialState : transcript.steps[index - 1]!.stateAfter;
+      return `[第${s.stepIndex}步]\n行动: ${s.playerAction}\n叙事: ${s.narrative.slice(0, 320)}\n回合前: ${JSON.stringify(stateView(before))}\n提交字段: ${JSON.stringify(deltaView(s.dmJson)).slice(0, 1200)}\n回合后: ${JSON.stringify(stateView(s.stateAfter))}`;
+    })
     .join("\n\n---\n\n");
+  const boundedTranscriptSummary = transcriptSummary.length <= 32_000
+    ? transcriptSummary
+    : `${transcriptSummary.slice(0, 16_000)}\n\n--- 中间回合因长度限制省略 ---\n\n${transcriptSummary.slice(-16_000)}`;
 
-  const systemPrompt = `你是一位严格的互动叙事一致性审查专家。
-你需要基于给定 transcript 识别叙事一致性问题。你必须在 JSON 中只输出结构化结果，不得输出解释性文字。`;
+  const systemPrompt = `你是独立的 VerseCraft 游戏 QA 裁判，不扮演玩家或 DM。
+只能根据权威初始状态、逐回合玩家动作、最终叙事、提交字段和提交后状态判断。
+不得把猜测当成缺陷；每个问题必须引用具体回合和玩家可见证据。
+叙事声称发生但权威状态没有对应提交，属于状态矛盾。
+内部字段没有进入最终叙事或最终状态时，不算玩家可见问题。
+你必须只输出符合要求的 JSON，不得输出 Markdown 或额外解释。`;
 
-  const userPrompt = `请检查以下 complete transcript（完整内容已截断为摘要）：
+  const userPrompt = `请检查以下 playthrough trace：
 
-${transcriptSummary.slice(0, 8000)}
+权威初始状态：${JSON.stringify(stateView(transcript.initialState))}
+
+${boundedTranscriptSummary}
 
 请按 JSON 输出以下字段，不要加 Markdown：
 {
@@ -214,6 +253,16 @@ ${transcriptSummary.slice(0, 8000)}
 4) world_inconsistency：世界观约束冲突
 5) fact_hallucination：不符合既有事实
 6) position_teleport：无依据的位置突变
+
+必须重点检查：
+- NPC 是否在场、是否被错误复活、是否凭空知道未揭示事实；
+- 物品、武器、原石是否凭空出现、重复扣除或只在叙事中变化；
+- 锻造报价与执行是否混淆，扣费、材料消耗、武器更新是否一致；
+- 转职是否绕过任务、证据、地点或签发者前置，是否被重复认证；
+- 战斗、伤势、位置、任务完成、死亡和结局是否与提交状态一致；
+- 是否出现循环、无有效反馈、伪进展或玩家行动被无依据替代。
+
+证据不足时不要报告问题。多个相同问题应合并，只保留最早且最清晰的复现证据。
 
 请用 0-1 区间给出 judgeConfidence（越高越置信）。`;
 

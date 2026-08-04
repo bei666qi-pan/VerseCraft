@@ -27,14 +27,14 @@ const meta: DetectorMeta = {
 
 // ── 场景辅助类型 ────────────────────────────────────────
 
-interface Scenario {
+interface _Scenario {
   name: string;
   dmJson: Record<string, unknown>;
   expectedPass: boolean;
   expectedWarning?: boolean;
 }
 
-function makeDmJson(overrides: Partial<Record<string, unknown>>): Record<string, unknown> {
+function _makeDmJson(overrides: Partial<Record<string, unknown>>): Record<string, unknown> {
   return {
     is_action_legal: true,
     sanity_damage: 0,

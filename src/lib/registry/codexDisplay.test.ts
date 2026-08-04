@@ -30,7 +30,6 @@ describe("codexDisplay", () => {
   });
 
   it("computeRelationshipLabel follows default rules", () => {
-    assert.equal(computeRelationshipLabel({ type: "npc", romanceStage: "bonded" }), "恋人");
     assert.equal(computeRelationshipLabel({ type: "npc", favorability: -30 }), "敌人");
     assert.equal(computeRelationshipLabel({ type: "npc", fear: 45 }), "敌人");
     assert.equal(computeRelationshipLabel({ type: "npc", betrayalFlags: ["x"] }), "敌人");
@@ -40,4 +39,3 @@ describe("codexDisplay", () => {
     assert.equal(computeRelationshipLabel({ type: "anomaly" }), "暂无");
   });
 });
-

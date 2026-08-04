@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   __resetStablePlayerDmPrefixMemoForTests,
   buildDynamicPlayerDmSystemSuffix,
+  buildStablePlayerDmSystemLines,
   getCompactStablePlayerDmSystemPrefix,
   getStablePlayerDmSystemPrefix,
   shouldUseCompactStablePrompt,
@@ -215,4 +216,105 @@ test("stable prefix keeps concrete narrative budget packet data out of the cache
   assert.equal(s.includes('"schema":"narrative_budget_v1"'), false);
   assert.equal(s.includes('"targetChars"'), false);
   assert.equal(s.includes('"reasonCodes"'), false);
+});
+
+import { assemblePlayerChatPrompt } from "@/lib/turnEngine/promptAssembly";
+
+const STABLE_SECTION_GLUE = "\n\n## 【本回合动态上下文】";
+
+test("benchmark: assemblePlayerChatPrompt cache impact — 100 iterations", () => {
+  __resetStablePlayerDmPrefixMemoForTests();
+
+  const messagesToSend = [
+    { role: "user" as const, content: "我沿着走廊继续前进，留意四周的动静。" },
+  ];
+  const dynamicSuffix =
+    "【动态上下文】\n当前玩家状态：位置=3F_Corridor | 理智=85 | 生命=100\nruntimePackets: {}";
+
+  // Pre-compute prefix string for content verification
+  const rebuiltPrefix = buildStablePlayerDmSystemLines().join("\n") + STABLE_SECTION_GLUE;
+  const cachedPrefix = getStablePlayerDmSystemPrefix();
+
+  // Verify cached and rebuilt prefixes are equivalent (content, not identity)
+  assert.equal(
+    cachedPrefix,
+    rebuiltPrefix,
+    "cached and rebuilt stable prefixes should be content-equal"
+  );
+
+  // Verify the cached result returns the same object reference (identity stability)
+  const a = getStablePlayerDmSystemPrefix();
+  const b = getStablePlayerDmSystemPrefix();
+  assert.strictEqual(a, b, "cached prefix should return identical object reference");
+
+  // --- with cache: use pre-computed module-level prefix ---
+  // Total batch time avoids per-iteration performance.now() overhead
+  const tCached0 = performance.now();
+  for (let i = 0; i < 100; i += 1) {
+    const stablePrefix = getStablePlayerDmSystemPrefix();
+    assemblePlayerChatPrompt({
+      stablePrefix,
+      dynamicSuffix,
+      splitDualSystem: false,
+      messagesToSend,
+    });
+  }
+  const tCached1 = performance.now();
+
+  // --- without cache: rebuild prefix from scratch each iteration ---
+  // Each iteration: clear LRU cache + rebuild via buildStablePlayerDmSystemLines()
+  // (~175-line array allocation + join, ~10 KB string). This is the cost the
+  // module-level _STABLE_PREFIX_VALUE constant avoids on every turn.
+  const tUncached0 = performance.now();
+  for (let i = 0; i < 100; i += 1) {
+    __resetStablePlayerDmPrefixMemoForTests();
+    const stablePrefix = buildStablePlayerDmSystemLines().join("\n") + STABLE_SECTION_GLUE;
+    assemblePlayerChatPrompt({
+      stablePrefix,
+      dynamicSuffix,
+      splitDualSystem: false,
+      messagesToSend,
+    });
+  }
+  const tUncached1 = performance.now();
+
+  const cachedTotal = tCached1 - tCached0;
+  const uncachedTotal = tUncached1 - tUncached0;
+  const cachedAvg = cachedTotal / 100;
+  const uncachedAvg = uncachedTotal / 100;
+  const timeSavedAvg = uncachedAvg - cachedAvg;
+
+  // --- output ---
+  console.log("=== Prompt Cache Benchmark (assemblePlayerChatPrompt × 100) ===");
+  console.log(`Stable prefix: ${cachedPrefix.length} chars (~${Math.ceil(cachedPrefix.length / 4)} tokens)`);
+  console.log(`With cache    avg: ${cachedAvg.toFixed(4)}ms   total: ${cachedTotal.toFixed(3)}ms (100 calls)`);
+  console.log(`Without cache avg: ${uncachedAvg.toFixed(4)}ms   total: ${uncachedTotal.toFixed(3)}ms (100 calls)`);
+  console.log(`Time saved    avg: ${timeSavedAvg.toFixed(4)}ms   total: ${(uncachedTotal - cachedTotal).toFixed(4)}ms`);
+  if (timeSavedAvg > 0) {
+    console.log(`Speedup: ${(uncachedAvg / Math.max(cachedAvg, 0.0001)).toFixed(1)}×`);
+  }
+
+  // Verify both paths produce equivalent assemble results
+  const withCacheResult = assemblePlayerChatPrompt({
+    stablePrefix: cachedPrefix,
+    dynamicSuffix,
+    splitDualSystem: false,
+    messagesToSend,
+  });
+  const withoutCacheResult = assemblePlayerChatPrompt({
+    stablePrefix: rebuiltPrefix,
+    dynamicSuffix,
+    splitDualSystem: false,
+    messagesToSend,
+  });
+  assert.equal(
+    withCacheResult.promptStablePrefixHash,
+    withoutCacheResult.promptStablePrefixHash,
+    "hash should be identical for equivalent prefixes"
+  );
+  assert.equal(withCacheResult.stableCharLen, withoutCacheResult.stableCharLen);
+  assert.equal(withCacheResult.dynamicCharLen, withoutCacheResult.dynamicCharLen);
+
+  // Cleanup
+  __resetStablePlayerDmPrefixMemoForTests();
 });

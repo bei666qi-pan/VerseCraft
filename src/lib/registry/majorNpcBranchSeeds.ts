@@ -35,7 +35,7 @@ function finalizeBranchSeed(t: SeedTemplate): MajorNpcBranchSeed {
   if (!relatedQuestHook) {
     throw new Error(`majorNpcBranchSeeds: ${t.npcId} missing questHooks[${idx}]`);
   }
-  const { profileHookIndex: _idx, ...base } = t;
+  const { profileHookIndex: __idx, ...base } = t;
   return { ...base, relatedQuestHook };
 }
 

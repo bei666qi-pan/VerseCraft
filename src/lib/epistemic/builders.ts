@@ -36,7 +36,7 @@ export function buildNpcEpistemicProfile(
 ): NpcEpistemicProfile {
   void _runtimeContext;
   const o = deps?.overrides;
-  const { npcId: _nid, isXinlanException: _ix, ...memoryOverrides } = (o ?? {}) as Partial<NpcEpistemicProfile>;
+  const { npcId: __nid, isXinlanException: __ix, ...memoryOverrides } = (o ?? {}) as Partial<NpcEpistemicProfile>;
   const base = buildNpcEpistemicProfileFromPolicy(npcId, memoryOverrides);
   return applyEpistemicRolloutToProfile(base);
 }
@@ -97,7 +97,7 @@ export function buildEpistemicContextForActor(args: {
 }): EpistemicContext {
   const nowIso = args.nowIso ?? new Date().toISOString();
   const { actorId, allFacts, scene, refs } = args;
-  const allowed = filterFactsForActor(allFacts, actorId, scene, { nowIso });
+  const __allowed = filterFactsForActor(allFacts, actorId, scene, { nowIso });
   const forbidden = forbiddenFactsForActor(allFacts, actorId, scene, { nowIso });
 
   const playerKnown = filterFactsForActor(allFacts, PLAYER_ACTOR_ID, scene, { nowIso });

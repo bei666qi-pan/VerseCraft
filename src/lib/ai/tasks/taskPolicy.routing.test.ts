@@ -32,7 +32,7 @@ test("PLAYER_CHAT role chain never includes reasoner", () => {
     () => {
       const chain = resolveOrderedRoleChain("PLAYER_CHAT");
       assert.equal(chain.includes("reasoner"), false);
-      assert.equal(chain[0], "main");
+      assert.equal(chain[0], "writer");
     }
   );
 });

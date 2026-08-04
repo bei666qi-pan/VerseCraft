@@ -17,6 +17,7 @@ function canonicalLocation(value: string): string {
 }
 
 function isMovementAction(action: string): boolean {
+  if (/(?:聊聊|聊天|交谈|谈谈|对话|说话|询问|问问|搭话|沟通)/.test(action)) return false;
   return /(?:前往|进入|走到|走向|移动到|回到|离开.*去|下楼|上楼|下到|上到|穿过|沿着.*楼梯)/.test(action);
 }
 
