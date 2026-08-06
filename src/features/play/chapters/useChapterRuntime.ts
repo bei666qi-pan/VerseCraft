@@ -18,7 +18,7 @@ import { useGameStore } from "@/store/useGameStore";
 
 export function useChapterRuntime() {
   const rawChapterState = useGameStore((s) => s.chapterState);
-  const language = useGameStore((s) => s.language);
+  const language = useGameStore((s) => s.language ?? "zh-CN");
   const enterNextChapterAction = useGameStore((s) => s.enterNextChapter);
   const reviewChapterAction = useGameStore((s) => s.reviewChapter);
   const returnToActiveChapterAction = useGameStore((s) => s.returnToActiveChapter);

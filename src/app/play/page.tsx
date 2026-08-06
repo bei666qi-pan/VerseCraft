@@ -608,12 +608,12 @@ function PlayContent() {
   // ---- Derived memos (use batched values now) ----
 
   const currentOptions = useMemo(
-    () => filterNarrativeActionOptions(currentOptionsFromStore, 4),
+    () => (Array.isArray(currentOptionsFromStore) ? filterNarrativeActionOptions(currentOptionsFromStore, 4) : []),
     [currentOptionsFromStore]
   );
 
   const hasUnreadCodex = useMemo(
-    () => getMobileCodexUnreadCount(codex, viewedCodexIds) > 0,
+    () => (codex && typeof codex === "object" ? getMobileCodexUnreadCount(codex, viewedCodexIds) > 0 : false),
     [codex, viewedCodexIds]
   );
 
@@ -1081,6 +1081,7 @@ function PlayContent() {
         }
       }, 500);
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emitEndingTelemetryEvent, endgameState.active, evaluateEndingAfterTurn, pendingProfessionChoice.enabled, scheduleSettlementRedirect]);
 
   const streamTailDrain = useMemo<SmoothStreamTailDrainConfig | null>(() => {
@@ -1253,7 +1254,7 @@ function PlayContent() {
     // 终局不再自动扣理智/跳结算：仅作为氛围层，在终局态展示。
     if (endgameState.active && !showApocalypseOverlay) setShowApocalypseOverlay(true);
     if (!endgameState.active && showApocalypseOverlay) setShowApocalypseOverlay(false);
-  }, [isHydrated, showApocalypseOverlay]);
+  }, [isHydrated, showApocalypseOverlay, endgameState.active]);
 
   useEffect(() => {
     if (streamPhase === "idle") {
@@ -1648,7 +1649,7 @@ function PlayContent() {
     const ending = useGameStore.getState().endingState;
     if (ending?.phase && ending.phase !== "playing") return;
     void sendActionRef.current(ENDGAME_SYSTEM_PROMPT, true, false, true);
-  }, [endgameState.awaitingEnding, streamPhase]);
+  }, [endgameState.awaitingEnding, streamPhase, ENDGAME_SYSTEM_PROMPT]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -1734,6 +1735,7 @@ function PlayContent() {
       setLiveNarrative("");
     }, 400);
     return () => clearInterval(tick);
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHydrated, setCurrentOptions]);
 
   // 兜底：仅在「冷开场」从存档恢复 options。对局中主笔若本轮未返回 options，内存已清空，
@@ -1814,6 +1816,7 @@ function PlayContent() {
         void requestFreshOptions("auto_switch");
       }
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     currentOptions.length,
     hasModelChoiceOptions,
