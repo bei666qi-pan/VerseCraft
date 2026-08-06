@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 
 /** 旧 PNG 资源路径：favicon / OG 图等静态场景仍可引用 */
 export const VERSECRAFT_LOGO_SRC = "/assets/brand/versecraft-logo.png";
@@ -11,10 +11,8 @@ export const VERSECRAFT_LOGO_TILE_SRC = "/assets/brand/versecraft-logo-tile.png"
  *   放在任何背景上都露出底色
  * - 外围 r≈237 圆弧：右下/左上为实线，左下/右上为虚线，两枚圆点位于弧上
  * - 髮丝十字线以 clipPath 限制在星形内部
- * 同页多实例时 defs id 重复无害：内容完全相同，浏览器取首个定义。
+ * 使用 useId() 为每个实例生成唯一 SVG ID，避免同页多实例时的渐变/裁剪路径引用错误。
  */
-const INK_GRAD_ID = "vc-logo-ink-grad";
-const HAIR_CLIP_ID = "vc-logo-hair-clip";
 
 /** 主星 + 新月镂空 + 中心星芒镂空（evenodd） */
 /** 四芒星/星芒生成器：rx/ry 为臂长，k 控制臂的丰腴度 */
@@ -55,6 +53,9 @@ export function VerseCraftLogoMark({
   const hasHeight = /\b(?:h-|size-)/.test(className);
   const hasWidth = /\b(?:w-|size-)/.test(className);
 
+  const inkGradId = useId();
+  const hairClipId = useId();
+
   return (
     <span
       aria-hidden={decorative ? true : undefined}
@@ -71,12 +72,12 @@ export function VerseCraftLogoMark({
         className={`absolute inset-0 h-full w-full select-none ${imageClassName}`}
       >
         <defs>
-          <linearGradient id={INK_GRAD_ID} x1="386.5" y1="104" x2="386.5" y2="663" gradientUnits="userSpaceOnUse">
+          <linearGradient id={inkGradId} x1="386.5" y1="104" x2="386.5" y2="663" gradientUnits="userSpaceOnUse">
             <stop offset="0" stopColor="#427473" />
             <stop offset="0.45" stopColor="#2b5d5c" />
             <stop offset="1" stopColor="#113f42" />
           </linearGradient>
-          <clipPath id={HAIR_CLIP_ID} clipRule="evenodd">
+          <clipPath id={hairClipId} clipRule="evenodd">
             <path d={STAR_PATH} />
           </clipPath>
         </defs>
@@ -98,14 +99,14 @@ export function VerseCraftLogoMark({
         {/* 主星（含新月与星芒镂空）；同色细描边补偿栅格化收缩，贴合原 PNG 边缘 */}
         <path
           d={STAR_PATH}
-          fill={`url(#${INK_GRAD_ID})`}
+          fill={`url(#${inkGradId})`}
           fillRule="evenodd"
-          stroke={`url(#${INK_GRAD_ID})`}
+          stroke={`url(#${inkGradId})`}
           strokeWidth="2"
         />
 
         {/* 髮丝十字线（限制在星形内部） */}
-        <g clipPath={`url(#${HAIR_CLIP_ID})`} stroke="#fbf2e9" strokeOpacity="0.16" strokeWidth="1.6">
+        <g clipPath={`url(#${hairClipId})`} stroke="#fbf2e9" strokeOpacity="0.16" strokeWidth="1.6">
           <line x1="386.5" y1="150" x2="386.5" y2="620" />
           <line x1="150" y1="388" x2="620" y2="388" />
         </g>

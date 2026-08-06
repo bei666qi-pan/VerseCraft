@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ensureStorageReady, notifyStorageDegraded } from "@/lib/resilientStorage";
 import { migrateLegacyVersecraftGameStateVolume } from "@/lib/migrateLegacyGameState";
 import { useGameStore } from "@/store/useGameStore";
@@ -86,12 +86,29 @@ export default function HydrationProvider({
     };
   }, [setHydrated, setStorageMode]);
 
+  // 追踪 hydration 是否超过硬 deadline 仍未完成（用于展示重试按钮）
+  const [showRetry, setShowRetry] = useState(false);
+
+  useEffect(() => {
+    if (isHydrated) return;
+    const id = window.setTimeout(() => setShowRetry(true), HYDRATION_HARD_DEADLINE_MS + 2000);
+    return () => window.clearTimeout(id);
+  }, [isHydrated]);
+
   if (!isHydrated) {
     return (
       <div className="flex min-h-[calc(var(--vc-vh,1svh)_*_100)] flex-col items-center justify-center gap-4 bg-background text-foreground">
         <div className="h-10 w-56 animate-pulse rounded-xl bg-[#e5ded3]" />
         <div className="h-4 w-36 animate-pulse rounded-lg bg-white/5" />
         <p className="text-sm text-slate-400">读取世界线中...</p>
+        {showRetry && (
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-lg bg-[#4a3f35] px-5 py-2 text-sm font-medium text-[#f6f2ec] shadow-sm transition active:scale-95"
+          >
+            加载超时，点此刷新
+          </button>
+        )}
       </div>
     );
   }
