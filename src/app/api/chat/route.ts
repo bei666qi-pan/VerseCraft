@@ -659,14 +659,9 @@ export async function POST(req: Request) {
           if (!outerStreamClosed) {
             let reason = `early_status_invalid_content_type(status=${inner.status},ct=${innerContentType || "none"})`;
             try {
-              if (inner.body) {
-                const reader = inner.body.getReader();
-                const { value } = await reader.read();
-                if (value) {
-                  const text = new TextDecoder().decode(value.slice(0, 500));
-                  reason += `,body=${text}`;
-                }
-                reader.releaseLock();
+              const errorText = await inner.clone().text();
+              if (errorText) {
+                reason += `,body=${errorText.slice(0, 300)}`;
               }
             } catch {
               // best-effort
