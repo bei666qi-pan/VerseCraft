@@ -657,12 +657,26 @@ export async function POST(req: Request) {
         } else {
           // 既不是 text/event-stream，也不是成功的流式 body → 降级
           if (!outerStreamClosed) {
+            let reason = `early_status_invalid_content_type(status=${inner.status},ct=${innerContentType || "none"})`;
+            try {
+              if (inner.body) {
+                const reader = inner.body.getReader();
+                const { value } = await reader.read();
+                if (value) {
+                  const text = new TextDecoder().decode(value.slice(0, 500));
+                  reason += `,body=${text}`;
+                }
+                reader.releaseLock();
+              }
+            } catch {
+              // best-effort
+            }
             controller.enqueue(
               sse(
                 `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
                   kind: "site_unavailable",
                   requestId,
-                  reason: `early_status_invalid_content_type(status=${inner.status},ct=${innerContentType || "none"})`,
+                  reason,
                   language: outputLanguage,
                 })}`
               )
