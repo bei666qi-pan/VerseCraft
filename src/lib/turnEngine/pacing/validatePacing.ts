@@ -439,10 +439,12 @@ export function validatePacing(input: PacingInput): PacingValidationReport {
 
   const deduped = dedupeIssues(issues);
   const maxSeverity = maxSeverityOf(deduped);
+  const ok = maxSeverity !== "high" && maxSeverity !== "medium";
   return {
-    ok: maxSeverity !== "high" && maxSeverity !== "medium",
+    ok,
     issues: deduped,
     maxSeverity,
+    needsRevalidate: !ok,
     telemetry: buildTelemetry({
       input,
       issues: deduped,

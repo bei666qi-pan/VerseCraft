@@ -48,6 +48,25 @@ import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString, repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 import { buildPlayerDmJsonSchemaRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
+import type { AiCostRecord } from "@/lib/ai/telemetry/log";
+
+/**
+ * Lazy-load Langfuse generation instrumentation.
+ * Uses dynamic import to avoid pulling server-only / @langfuse/* into test/CI contexts.
+ * Failures are silently ignored — Langfuse observability is best-effort.
+ */
+function recordGeneration(rec: AiCostRecord): void {
+  void (async () => {
+    try {
+      const { recordAiGenerationMetric } = await import(
+        "@/lib/observability/langfuse/generation"
+      );
+      recordAiGenerationMetric(rec);
+    } catch {
+      // Fail-open: Langfuse errors never propagate
+    }
+  })();
+}
 
 const MOCK_SCENARIO_RE = /\[mock_scenario:([a-z0-9_]+)\]/i;
 
@@ -356,6 +375,15 @@ export async function executePlayerChatStream(params: {
         phase: "circuit_skip",
         errorCode: "CIRCUIT_SKIP",
       });
+      recordGeneration({
+        requestId: params.ctx.requestId,
+        task: params.ctx.task,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
+        phase: "circuit_skip",
+        errorCode: "CIRCUIT_SKIP",
+      });
       continue;
     }
 
@@ -370,6 +398,15 @@ export async function executePlayerChatStream(params: {
         message: "missing_api_key",
       });
       logAiTelemetry({
+        requestId: params.ctx.requestId,
+        task: params.ctx.task,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
+        phase: "fallback",
+        message: "missing_api_key",
+      });
+      recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
         providerId: PROVIDER_ID,
@@ -422,6 +459,21 @@ export async function executePlayerChatStream(params: {
       bodyBuildMs,
       providerInitMs,
       userId: params.ctx.userId,
+    });
+
+    recordGeneration({
+      requestId: params.ctx.requestId,
+      task: params.ctx.task,
+      providerId: PROVIDER_ID,
+      logicalRole: role,
+      gatewayModel,
+      phase: "start",
+      attempt: 0,
+      stream: true,
+      bodyBuildMs,
+      providerInitMs,
+      userId: params.ctx.userId,
+      inputSnapshot: body as unknown,
     });
 
     try {
@@ -485,6 +537,23 @@ export async function executePlayerChatStream(params: {
           failureScope: "online",
           userId: params.ctx.userId,
         });
+        recordGeneration({
+          requestId: params.ctx.requestId,
+          task: params.ctx.task,
+          providerId: PROVIDER_ID,
+          logicalRole: role,
+          gatewayModel,
+          phase: "success",
+          latencyMs: Date.now() - t0,
+          httpStatus: res.status,
+          stream: true,
+          bodyBuildMs,
+          providerInitMs,
+          fallbackCount: countFallbacks(attempts),
+          retryCount,
+          failureScope: "online",
+          userId: params.ctx.userId,
+        });
         return {
           ok: true,
           response: res,
@@ -516,6 +585,25 @@ export async function executePlayerChatStream(params: {
         recordModelFailure(role, PROVIDER_ID, { providerScope: "online", countProvider: true });
       }
       logAiTelemetry({
+        requestId: params.ctx.requestId,
+        task: params.ctx.task,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
+        phase: "error",
+        latencyMs: Date.now() - t0,
+        httpStatus: res.status,
+        errorCode: kind,
+        message: errText.slice(0, 500),
+        stream: true,
+        bodyBuildMs,
+        providerInitMs,
+        fallbackCount: countFallbacks(attempts),
+        retryCount,
+        failureScope: "online",
+        userId: params.ctx.userId,
+      });
+      recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
         providerId: PROVIDER_ID,
@@ -588,6 +676,23 @@ export async function executePlayerChatStream(params: {
         recordModelFailure(role, PROVIDER_ID, { providerScope: "online", countProvider: true });
       }
       logAiTelemetry({
+        requestId: params.ctx.requestId,
+        task: params.ctx.task,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
+        phase: "error",
+        latencyMs: Date.now() - t0,
+        errorCode: kind,
+        message: e instanceof Error ? e.message : String(e),
+        stream: true,
+        bodyBuildMs,
+        providerInitMs,
+        fallbackCount: countFallbacks(attempts),
+        failureScope: "online",
+        userId: params.ctx.userId,
+      });
+      recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
         providerId: PROVIDER_ID,
@@ -726,6 +831,21 @@ export async function executeChatCompletion(params: {
         estCostUsd: est,
         userId: params.ctx.userId,
       });
+      recordGeneration({
+        requestId: params.ctx.requestId,
+        task: params.ctx.task,
+        providerId: cached.providerId,
+        logicalRole: cached.logicalRole,
+        gatewayModel: cached.gatewayModel,
+        phase: "success",
+        latencyMs: 0,
+        usage: cached.usage,
+        stream: false,
+        cacheHit: true,
+        fallbackCount: 0,
+        estCostUsd: est,
+        userId: params.ctx.userId,
+      });
       return {
         ok: true,
         providerId: cached.providerId,
@@ -828,6 +948,17 @@ export async function executeChatCompletion(params: {
     const t0 = Date.now();
 
     logAiTelemetry({
+      requestId: params.ctx.requestId,
+      task: params.ctx.task,
+      providerId: PROVIDER_ID,
+      logicalRole: role,
+      gatewayModel,
+      phase: "start",
+      stream: false,
+      userId: params.ctx.userId,
+    });
+
+    recordGeneration({
       requestId: params.ctx.requestId,
       task: params.ctx.task,
       providerId: PROVIDER_ID,
@@ -948,6 +1079,26 @@ export async function executeChatCompletion(params: {
 
       const estOk = estimateUsdForUsage(role, usage);
       logAiTelemetry({
+        requestId: params.ctx.requestId,
+        task: params.ctx.task,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
+        phase: "success",
+        latencyMs: Date.now() - t0,
+        httpStatus: res.status,
+        usage,
+        stream: false,
+        cacheHit: false,
+        fallbackCount: countFallbacks(attempts),
+        retryCount,
+        failureScope,
+        jsonSanitized,
+        estCostUsd: estOk,
+        userId: params.ctx.userId,
+        ...(hasToolCalls ? { toolCallCount: toolCalls.length } : {}),
+      });
+      recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
         providerId: PROVIDER_ID,

@@ -175,6 +175,16 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
   // successful agenda write. Mixed plans retain their independently safe items.
   const accepted = !planLevelReject && (scheduledCandidateCount === 0 || acceptedCandidateCount > 0);
 
+  // 诊断日志：模型提议了事件但全部被 validator 拒绝，记录拒绝原因供 production 排查。
+  if (scheduledCandidateCount > 0 && acceptedCandidateCount === 0) {
+    console.debug("[worldEngine] validator rejected all candidate events", {
+      scheduledCandidateCount,
+      acceptedCandidateCount,
+      planLevelReject,
+      rejectionReasons: issues.map((i) => ({ code: i.code, message: i.message, severity: i.severity, eventCode: i.eventCode })),
+    });
+  }
+
   return {
     accepted,
     acceptedEventCodes: planLevelReject ? [] : acceptedEventCodes,

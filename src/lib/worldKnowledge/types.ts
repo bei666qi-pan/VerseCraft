@@ -108,6 +108,12 @@ export interface RetrievalPlan {
   scenePressure?: string | null;
   playerKnownFactIds: string[];
   ftsQuery: string;
+  /** Expanded semantic query for vector embedding search */
+  semanticQuery: string;
+  /** Entity-only query for exact/keyword match layer */
+  entityQuery: string;
+  /** Composite fallback query */
+  compositeQuery: string;
   scope: RuntimeWorldScope[];
   tokenBudget: number;
   retrievalBudget: RetrievalBudget;
@@ -148,7 +154,7 @@ export interface RetrievalCandidate {
   fact: LoreFact;
   score: number;
   debug?: {
-    from?: "key" | "tag" | "fts" | "vector";
+    from?: "exact" | "tag" | "fts" | "vector";
     similarity?: number;
   };
 }

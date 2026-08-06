@@ -7,15 +7,15 @@
 export const WORLD_KNOWLEDGE_EMBED_DIM = 256;
 
 /**
- * 预算默认值：对齐现有 KG semanticCache 的语义（probes=5, k=5, minSimilarity=0.78）。
- * 注意：本阶段不会接入任何业务逻辑，仅提供可落地的默认预算。
+ * 预算默认值：提高各层召回量以供给 MMR 多样性重排更多候选（fusion topK=14）。
+ * 降低 minSimilarity 让更多向量候选通过，质量由 MMR 后续过滤。
  */
 export const DEFAULT_RETRIEVAL_BUDGET = {
-  keyTopN: 5,
-  ftsTopN: 6,
-  vectorTopN: 5,
-  maxFacts: 14,
-  minSimilarity: 0.78,
+  keyTopN: 6,
+  ftsTopN: 8,
+  vectorTopN: 7,
+  maxFacts: 16,
+  minSimilarity: 0.72,
   probes: 5,
   k: 5,
 } as const;
@@ -30,6 +30,12 @@ export const WORLD_KNOWLEDGE_CACHE_VERSION = "v1";
 export const WORLD_KNOWLEDGE_MAX_DB_ROUND_TRIPS = 6;
 export const DEFAULT_RUNTIME_LORE_TOKEN_BUDGET = 420;
 export const DEFAULT_RUNTIME_LORE_CHAR_BUDGET = 1800;
+/**
+ * Safety cap applied in buildLorePacket as the final .slice(0, N) on candidates.
+ * In practice the effective limit is tighter: hybridFusion topK defaults to 14
+ * (VERSECRAFT_HYBRID_TOP_K), so this 18 is a secondary ceiling that only matters
+ * if fusion's topK is raised above it or if candidates bypass fusion entirely.
+ */
 export const WORLD_KNOWLEDGE_MAX_RETRIEVED_FACTS = 18;
 export const WORLD_KNOWLEDGE_MAX_PACKET_CHARS = 2200;
 export const WORLD_KNOWLEDGE_MAX_WRITEBACK_FACTS = 12;

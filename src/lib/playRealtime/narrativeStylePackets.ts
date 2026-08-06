@@ -45,38 +45,18 @@ export function buildNarrativeContinuityPacketBlock(args: {
   maxChars?: number;
 }): string {
   const focus = inferContinuityFocus(args.rawAction ?? "");
+  // Absorption / forbidden-pattern / merge-style / meta-guard rules are
+  // covered by the stable prefix (承接玩家输入 block). Only per-turn
+  // anchors remain: previous turn tail, action type, and dice bias.
   const packet = {
-    schema: "narrative_continuity_v1",
+    schema: "narrative_continuity_v2",
     previous_tail_summary: clamp(args.previousTail ?? "", 140),
     continuity_focus: focus,
-    action_absorption_rule:
-      "把玩家输入当作本段里已经发生或正在发生的一瞬，写后果、反应、阻力和细节，禁止先复述动作再给结果。",
-    repetition_forbidden_patterns: [
-      "玩家输入",
-      "用户输入",
-      "写作要求",
-      "系统暗示",
-      "你刚才",
-      "你做了",
-      "你试图",
-      "翻译",
-      "总结",
-      "解释",
-      "作为系统",
-      "作为AI",
-      "客服",
-    ],
-    allowed_action_merge_styles: [
-      "后果先行：先写触感/视线/停顿/对方反应，再把动作融进去。",
-      "交错展开：动作片段与即时反馈交错，不一口气讲完动作。",
-      "对白落地：用中文引号写对白，不用“玩家说/你说”标签。",
-    ],
     dice_bias: diceBand(args.dice ?? null),
-    meta_guard:
-      "narrative 只输出小说正文，禁止解释机制，禁止复述玩家输入原句或近义改写开头句。",
   };
-  const text = `## 【narrative_continuity_packet】\n${JSON.stringify(packet)}`;
-  const maxChars = Math.max(220, Math.min(1400, args.maxChars ?? 900));
+  const text = `## 【narrative_continuity_packet】
+${JSON.stringify(packet)}`;
+  const maxChars = Math.max(140, Math.min(600, args.maxChars ?? 300));
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }
 

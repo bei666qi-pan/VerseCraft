@@ -93,7 +93,7 @@ describe("Orchestrator — Abort Handling", () => {
 describe("Orchestrator — Tool Serialization", () => {
   it("只读工具定义正确", () => {
     const readonlyDefs = getReadonlyDmToolDefinitions();
-    assert.strictEqual(readonlyDefs.length, 6);
+    assert.strictEqual(readonlyDefs.length, 8);
 
     const readonlyNames = readonlyDefs.map((d) => d.function.name);
     const writeToolNames = [

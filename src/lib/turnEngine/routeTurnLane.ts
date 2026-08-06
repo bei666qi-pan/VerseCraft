@@ -121,7 +121,7 @@ export function routeTurnLane(args: RouteArgs): TurnLaneDecision {
   }
 
   // 3. explicit reveal intent in text → REVEAL
-  if (EXPLICIT_REVEAL_RE.test(intent.rawText)) {
+  if (EXPLICIT_REVEAL_RE.test(intent.rawText.trim())) {
     reasons.push("explicit_reveal_intent");
     if (args.epistemicEnabled) {
       return makeDecision("REVEAL", reasons);

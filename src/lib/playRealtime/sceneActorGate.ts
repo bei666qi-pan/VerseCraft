@@ -215,6 +215,33 @@ export function buildSceneActorGate(args: {
   };
 }
 
+/**
+ * Micro mode (maxChars ~400): only focusNpcId + presentNpcIds.
+ * Used in fast-lane turns (contextMode=minimal) to save ~800 chars.
+ */
+export function compactSceneActorGatePacketMicro(
+  gate: SceneActorGateResult,
+): CompactSceneActorGatePacket {
+  const maxPresent = 6;
+  const packet: CompactSceneActorGatePacket = {
+    f: gate.focusNpcId,
+    loc: null,
+    p: gate.presentNpcIds.slice(0, maxPresent),
+    s: [],
+    m: {},
+    amb: gate.ambiguity.multiPresentNoFocus ? 1 : 0,
+    rule: "micro",
+  };
+  // Safety fallback: if still over 400, cut presentNpcIds further
+  if (JSON.stringify(packet).length > 400) {
+    for (let n = maxPresent - 1; n >= 2; n--) {
+      packet.p = gate.presentNpcIds.slice(0, n);
+      if (JSON.stringify(packet).length <= 400) break;
+    }
+  }
+  return packet;
+}
+
 export function compactSceneActorGatePacket(
   gate: SceneActorGateResult,
   maxChars = 1000

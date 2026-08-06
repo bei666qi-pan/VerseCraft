@@ -98,6 +98,7 @@ export const ANALYTICS_EVENT_TAXONOMY = {
   settlement_restart_clicked: c("settlement_restart_clicked", "gameplay", "Settlement restart action clicked.", sessionIdentity, ["outcome"], ["runId"], "gameplay"),
   settlement_submitted: c("settlement_submitted", "gameplay", "Legacy settlement submit marker.", sessionIdentity, ["outcome"], ["runId", "source"], "gameplay"),
   game_settlement: c("game_settlement", "gameplay", "Server-side game settlement record created.", sessionIdentity, ["settlementId"], ["outcome", "runId"], "gameplay"),
+  game_record_submitted: c("game_record_submitted", "gameplay", "Game record submitted to database.", sessionIdentity, ["settlementId"], ["outcome", "runId"], "gameplay"),
 
   ending_eligible_detected: c("ending_eligible_detected", "gameplay", "Ending eligibility detected in play.", sessionIdentity, ["runId", "endingPhase"], ["outcome", "reasons", "blockers"], "gameplay"),
   ending_final_choice_shown: c("ending_final_choice_shown", "gameplay", "Final ending choice UI shown.", sessionIdentity, ["runId", "endingPhase"], ["outcome", "source"], "gameplay"),
@@ -163,6 +164,9 @@ export const ANALYTICS_EVENT_TAXONOMY = {
 
   session_heartbeat: c("session_heartbeat", "health", "Client/session heartbeat for presence and playtime.", sessionIdentity, [], ["kind", "visibility", "onlineSec", "activePlaySec", "readSec", "idleSec"], "analytics"),
   presence_flaky: c("presence_flaky", "health", "Presence degraded or flaky.", sessionIdentity, ["reason"], ["backend"], "analytics"),
+  memory_compression_completed: c("memory_compression_completed", "health", "Memory compression completed successfully.", sessionIdentity, [], ["totalRounds", "compressedCount", "newPlotSummaryChars", "newPlayerStatusChars", "newNpcRelationsChars"], "ai-platform"),
+  narrative_expansion_skipped: c("narrative_expansion_skipped", "health", "Narrative expansion was skipped due to performance budget exhaustion.", sessionIdentity, ["skippedReason", "performanceBudgetMs"], ["elapsedMs"], "ai-platform"),
+  storage_degraded: c("storage_degraded", "health", "Client storage degraded from IDB → localStorage → memory.", systemIdentity, [], ["message", "source"], "analytics"),
 
   kg_cache_hit: c("kg_cache_hit", "health", "Knowledge cache hit.", systemIdentity, ["cacheKey"], ["source"], "kg"),
   kg_cache_miss: c("kg_cache_miss", "health", "Knowledge cache miss.", systemIdentity, ["cacheKey"], ["source"], "kg"),
@@ -172,16 +176,18 @@ export const ANALYTICS_EVENT_TAXONOMY = {
   kg_job_failed: c("kg_job_failed", "health", "KG worker failed a job.", systemIdentity, ["jobId", "jobType", "attempts"], ["durationMs", "errorKind"], "kg"),
 
   world_engine_enqueued: c("world_engine_enqueued", "content_quality", "Background world engine tick was enqueued.", sessionIdentity, ["requestId", "jobId"], ["triggerCodes"], "world-engine"),
-  world_engine_reasoner_failed: c("world_engine_reasoner_failed", "content_quality", "World engine reasoner API call failed.", sessionIdentity, ["requestId"], ["code", "triggerSignals"], "world-engine"),
-  world_engine_parse_failed: c("world_engine_parse_failed", "content_quality", "World engine reasoner JSON parse failed.", sessionIdentity, ["requestId"], ["triggerSignals"], "world-engine"),
-  world_engine_validation_failed: c("world_engine_validation_failed", "content_quality", "World engine deterministic validation rejected all events.", sessionIdentity, ["requestId"], ["triggerSignals", "rejectedEventCodes"], "world-engine"),
+  world_engine_reasoner_failed: c("world_engine_reasoner_failed", "content_quality", "World engine reasoner API call failed.", sessionIdentity, ["requestId"], ["reason", "durationMs", "mode", "hasSocialTick", "code", "triggerSignals"], "world-engine"),
+  world_engine_parse_failed: c("world_engine_parse_failed", "content_quality", "World engine reasoner JSON parse failed.", sessionIdentity, ["requestId"], ["reason", "durationMs", "mode", "hasSocialTick", "contentPreview", "triggerSignals"], "world-engine"),
+  world_engine_validation_failed: c("world_engine_validation_failed", "content_quality", "World engine deterministic validation rejected all events.", sessionIdentity, ["requestId"], ["reason", "durationMs", "mode", "hasSocialTick", "issues", "rejectedEventCodes", "triggerSignals"], "world-engine"),
   social_world_hint_projected: c("social_world_hint_projected", "content_quality", "Social world hints were projected into runtime.", sessionIdentity, ["requestId", "projectedCount"], ["socialWorldMode"], "world-engine"),
   turn_lane_decided: c("turn_lane_decided", "gameplay", "Turn lane routing decision.", sessionIdentity, ["requestId", "lane", "reasons"], ["confidence", "riskLane"], "turn-engine"),
   lane_side_effect_applied: c("lane_side_effect_applied", "gameplay", "Turn lane side-effect policy applied.", sessionIdentity, ["requestId", "lane"], ["riskLane", "sideEffectPlan"], "turn-engine"),
   director_agenda_injected: c("director_agenda_injected", "content_quality", "Director agenda items were injected into the turn.", sessionIdentity, ["requestId", "agendaCount"], ["agendaIds", "directorMode"], "world-engine"),
+  director_hint_adoption: c("director_hint_adoption", "gameplay", "Director hint adoption was detected in the generated narrative.", sessionIdentity, [], ["agendaCount", "adoptedCount", "adoptionRate", "missedItems", "directorMode"], "world-engine"),
   turn_commit_summary: c("turn_commit_summary", "content_quality", "Turn commit summary emitted after validation.", sessionIdentity, ["requestId"], ["deltaSummary", "commitFlags", "blockedCommitFields"], "turn-engine"),
   narrative_validator_issue: c("narrative_validator_issue", "content_quality", "Post-generation narrative validator issue.", sessionIdentity, ["requestId", "issueCodes"], ["byCode", "severity"], "content-safety"),
   narrative_protocol_leak: c("narrative_protocol_leak", "content_quality", "Narrative protocol leak detected.", sessionIdentity, ["requestId", "issueCode"], ["snippetHash"], "content-safety"),
+  world_engine_langgraph_node: c("world_engine_langgraph_node", "health", "World engine LangGraph node execution tracked.", sessionIdentity, [], [], "analytics"),
 
   narrative_safety_issue: c("narrative_safety_issue", "content_quality", "Narrative safety issue detected.", sessionIdentity, ["requestId", "issueCodes"], ["byCode", "bySeverity"], "content-safety"),
   narrative_safety_commit: c("narrative_safety_commit", "content_quality", "Narrative safety decision committed.", sessionIdentity, ["requestId", "decision"], ["mode", "fallbackApplied"], "content-safety"),
@@ -190,6 +196,7 @@ export const ANALYTICS_EVENT_TAXONOMY = {
   safety_fallback_used: c("safety_fallback_used", "content_quality", "Safety fallback was applied.", sessionIdentity, ["requestId", "decision"], ["fallbackApplied"], "content-safety"),
   unknown_entity_blocked: c("unknown_entity_blocked", "content_quality", "Unknown entity write or claim was blocked.", sessionIdentity, ["requestId", "issueCodes"], ["blockedCommitFields"], "content-safety"),
   prompt_injection_blocked: c("prompt_injection_blocked", "content_quality", "Prompt-injection attempt was blocked.", sessionIdentity, ["requestId", "issueCodes"], ["mode"], "content-safety"),
+  prompt_assembly_completed: c("prompt_assembly_completed", "ai", "System prompt assembled with token reduction metrics.", sessionIdentity, ["requestId"], ["stablePrefixChars", "dynamicSuffixChars", "totalSystemPromptChars", "estimatedTokens", "promptVersion", "promptStablePrefixHash"], "ai-platform"),
 } as const satisfies Record<AnalyticsEventName, AnalyticsEventContract>;
 
 export const ANALYTICS_EVENT_NAMES = Object.keys(ANALYTICS_EVENT_TAXONOMY) as AnalyticsEventName[];

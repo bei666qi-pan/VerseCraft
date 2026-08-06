@@ -14,9 +14,10 @@
  *   the privileged actor's own enriched residue remains attached to *that*
  *   actor; it never propagates into other NPCs' buckets.
  * - Reveal tier: facts referenced by `reveal_tier_sensitive_facts` below the
- *   current `maxRevealRank` are downgraded from actor-scoped to "gated" (i.e.
- *   dropped from `actorScopedFacts`, counted in `revealGatedCount`). They
- *   still remain in `dmOnlyFacts` because the DM can author around them.
+ *   current `maxRevealRank` are downgraded to "gated" (i.e. dropped from
+ *   `actorScopedFacts` / `scenePublicFacts`, counted in `revealGatedCount`).
+ *   World-truth and public/scene gated facts remain in `dmOnlyFacts` so the
+ *   DM can author around them; NPC-private gated facts are fully suppressed.
  */
 import {
   canActorKnowFact,
@@ -170,8 +171,14 @@ export function filterEpistemicFacts(args: FilterFactsArgs): EpistemicFilterResu
       revealGatedCount += 1;
       bumpReason(rejectedReasons, "reveal_tier_below_threshold");
       // DM view still keeps the world-shaped version, so the editor can
-      // reason about it.
-      if (f.scope === "world" || f.sourceType === "system_canon") {
+      // reason about it.  Tier-gated public/scene facts are also retained
+      // in dmOnly so the DM can author around them.
+      if (
+        f.scope === "world" ||
+        f.sourceType === "system_canon" ||
+        f.scope === "public" ||
+        f.scope === "shared_scene"
+      ) {
         dmOnly.push(brandAs<typeof f, "world_truth">(f));
       }
       continue;
@@ -187,6 +194,15 @@ export function filterEpistemicFacts(args: FilterFactsArgs): EpistemicFilterResu
     // 3. Scene public: accessible to anyone present. Classify first so we do
     //    not double-count it in actor buckets below.
     if (f.scope === "public" || f.scope === "shared_scene") {
+      // Defense-in-depth: re-check reveal tier before exposing to the scene
+      // bucket, even when the fact was not caught by the primary reveal gate
+      // above (e.g. the `revealTierGatedFacts` list was stale or incomplete).
+      const minRankForPublic = gatedIds.get(f.id);
+      if (typeof minRankForPublic === "number" && args.maxRevealRank < minRankForPublic) {
+        dmOnly.push(brandAs<typeof f, "world_truth">(f));
+        bumpReason(rejectedReasons, "reveal_tier_below_threshold");
+        continue;
+      }
       // Still respect canActorKnowFact so a non-present actor does not get
       // `shared_scene` facts it was never present for.
       if (actorId === null || canActorKnowFact(f, actorId, args.scene, { nowIso })) {
@@ -210,7 +226,7 @@ export function filterEpistemicFacts(args: FilterFactsArgs): EpistemicFilterResu
       continue;
     }
 
-    // 5. NPC-scoped: only that NPC (the owner) may see it.
+    // 5. NPC-scoped: owner may see it; inferableByOthers also grants access to present NPCs.
     if (f.scope === "npc") {
       const owner = typeof f.ownerId === "string" ? f.ownerId.trim() : "";
       if (owner && actorId === owner) {
@@ -225,6 +241,13 @@ export function filterEpistemicFacts(args: FilterFactsArgs): EpistemicFilterResu
           ownerActorId: owner || actorId,
         } as ActorScopedFact);
         bumpReason(rejectedReasons, sharedReasonForFact(f));
+      } else if (f.inferableByOthers && actorId && args.scene.presentNpcIds.includes(actorId)) {
+        // inferableByOthers: 在场 NPC 可推断私域片段（置信度较低）
+        actorScoped.push({
+          ...brandAs<typeof f, "actor_scoped">(f),
+          ownerActorId: owner || actorId,
+        } as ActorScopedFact);
+        bumpReason(rejectedReasons, "scope_shared_scene_ok_to_infer");
       } else if (owner && isXinlanNpcId(owner) && !isXinlanNpcId(actorId ?? "")) {
         // Xinlan-owned private memory must not propagate to other NPCs.
         bumpReason(rejectedReasons, "xinlan_exception_not_propagated");

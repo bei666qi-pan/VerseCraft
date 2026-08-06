@@ -1,6 +1,7 @@
 // src/app/api/chat/route.ts
 import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
+import { createTracingAdapter, startTurnTrace, endTurnTrace, getLangfuseTraceId, recordAiGenerationMetric, ensureLangfuseSdk } from "@/lib/observability/langfuse";
 import { eq, sql } from "drizzle-orm";
 import { auth } from "../../../../auth";
 import { db } from "@/db";
@@ -64,6 +65,7 @@ import {
 } from "@/lib/observability/versecraftRolloutMetrics";
 import { logChatGenerationMetrics } from "@/lib/observability/chatGenerationMetrics";
 import { persistTurnFacts } from "@/lib/worldKnowledge/ingestion/persistTurnFacts";
+import { uploadSelfHealingScores } from "@/lib/worldKnowledge/observability/selfHealingScores";
 import {
   normalizePlayerDmJson,
   parseAccumulatedPlayerDmJson,
@@ -119,10 +121,12 @@ import { ingestUserKnowledge } from "@/lib/kg/ingest";
 import { routeUserInput, type RouteResult } from "@/lib/kg/routing";
 import { getWorldRevision, touchSemanticCacheHit, tryGetSemanticCache } from "@/lib/kg/semanticCache";
 import { enqueueWorldEngineTick } from "@/lib/worldEngine/queue";
+import { loadDirectorState } from "@/lib/worldEngine/directorState";
 import { applyB1SafetyGuard, extractPresentNpcIds, guessPlayerLocationFromContext } from "@/lib/playRealtime/b1Safety";
 import { buildDeterministicServiceTurn } from "@/lib/playRealtime/deterministicServiceTurn";
 import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
 import { markDirectorAgendaInjected, expireStaleDirectorAgenda } from "@/lib/worldEngine/agenda";
+import { detectDirectorHintAdoption } from "@/lib/storyDirector/serverHint";
 import { markSocialEventsProjected } from "@/lib/socialWorld/persistence";
 import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
 import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
@@ -256,13 +260,15 @@ import { buildDialogueContext } from "@/lib/narrativeEngine/contextBuilder";
 import { computePostNarrativeDelta } from "@/lib/turnEngine/computeStateDelta";
 import { renderNarrativeFromDelta } from "@/lib/turnEngine/renderNarrative";
 import { applyNpcConsistencyPostGeneration, validateNarrative, type NarrativeValidationReport } from "@/lib/narrativeEngine/checker";
-import { COMMIT_STATE_CHANGING_FIELDS, COMMIT_STATE_MIRROR_FIELDS, commitNarrativeEvents, commitTurn, type TurnCommitSummary } from "@/lib/narrativeEngine/committer";
+import { COMMIT_RECORD_OVERRIDE_FIELDS, COMMIT_STATE_CHANGING_FIELDS, COMMIT_STATE_MIRROR_FIELDS, commitNarrativeEvents, commitTurn, type TurnCommitSummary } from "@/lib/narrativeEngine/committer";
 import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
 import { extractChineseNames, isHighConfidenceUnregisteredPersonName, redactHighConfidenceUnregisteredPersonNames } from "@/lib/narrative/extractChineseNames";
 import { NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
 import { NPCS } from "@/lib/registry/npcs";
 import { buildRouteModelOutputFromResolvedTurn, buildRouteNarrativeCheckResult } from "@/lib/narrativeEngine/routeAdapter";
 import { buildPacingCandidateFromDmRecord, normalizeBeatState, validatePacing } from "@/lib/turnEngine/pacing";
+import { detectPersonaMixup } from "@/lib/npcConsistency/personaMixupValidator";
+import { findOffscreenNpcDialogueViolations } from "@/lib/npcConsistency/validator";
 import { insertPacingLedgerRow } from "@/lib/turnEngine/pacing/pacingLedger";
 import { insertForeshadowLedgerRows, expireOverdueForeshadows } from "@/lib/narrativeGovernance/foreshadowLedger";
 import { shouldAttemptDmAgent } from "@/lib/ai/tools/dmMechanicsIntentRouter";
@@ -786,6 +792,26 @@ async function postChatInternal(req: Request) {
   ttftProfile.authSessionMs = elapsedMs(authStartAt);
   const userId = session?.user?.id ?? null;
 
+  // Langfuse tracing: create per-request adapter and start trace
+  // Preload Langfuse SDK before trace creation — with 2s deadline.
+  // Ensures startGeneration can create observations synchronously.
+  await Promise.race([
+    ensureLangfuseSdk(),
+    new Promise<void>((r) => setTimeout(r, 2000)),
+  ]).catch(() => {});
+  createTracingAdapter();
+  startTurnTrace({
+    requestId,
+    userIdHash: userId ?? undefined,
+    sessionIdHash: sessionId ?? undefined,
+    task: "PLAYER_CHAT",
+    environment: process.env.NODE_ENV ?? "development",
+    clientPurpose,
+    riskLane: undefined, // set after lane decision
+    isFirstAction,
+    operationMode: validated.clientPurpose ?? "normal",
+  });
+
   // --- Options-only fast path (never mutates world state) ---
   // This helper request is triggered by the UI button that asks the DM to refresh choices.
   // It must not share the main story action risk-control / repeat-input moderation path,
@@ -1055,6 +1081,27 @@ async function postChatInternal(req: Request) {
   ttftProfile.lane = riskLane;
   const shouldRunHeavyPreInput = riskLane === "slow";
 
+  // chat_request_started analytics（请求开始处理，在 AI 调用之前）
+  void recordGenericAnalyticsEvent({
+    eventId: `${requestId}:chat_request_started`,
+    idempotencyKey: `${requestId}:chat_request_started`,
+    userId,
+    guestId: userId ? null : chatGuestId,
+    sessionId: sessionId ?? "unknown_session",
+    eventName: "chat_request_started",
+    eventTime: new Date(),
+    page: "/play",
+    source: "chat",
+    platform,
+    tokenCost: 0,
+    playDurationDeltaSec: 0,
+    payload: {
+      requestId,
+      riskLane: riskLane === "fast" ? "fast" : "slow",
+      isFirstAction: isFirstAction ? true : false,
+    },
+  }).catch(() => {});
+
   if (shouldRunHeavyPreInput) {
     const preInputStartAt = nowMs();
     const preCheck = await preInputModeration({
@@ -1212,7 +1259,14 @@ async function postChatInternal(req: Request) {
   let preflightTurnMetrics = createDefaultPreflightMetrics();
 
   if (isFirstAction && userId) {
-    void db.delete(gameSessionMemory).where(eq(gameSessionMemory.userId, userId)).catch(() => {});
+    db.delete(gameSessionMemory)
+      .where(eq(gameSessionMemory.userId, userId))
+      .catch((e: unknown) => {
+        console.warn("[api/chat][session_memory_cleanup_failed]", {
+          userId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      });
   }
 
   const runControlPreflightP = runControlPreflightStage({
@@ -1384,6 +1438,7 @@ async function postChatInternal(req: Request) {
       forbiddenFactCount: earlyScoped.metrics.forbiddenFactCount,
     },
     maxChars: contextMode === "minimal" ? 560 : 1600,
+    microSceneActorGate: contextMode === "minimal",
   });
   const playerContextForPrompt =
     contextMode === "minimal"
@@ -1512,6 +1567,27 @@ async function postChatInternal(req: Request) {
                 npcRelationships: dbRow.npcRelationships,
               },
             });
+          void recordGenericAnalyticsEvent({
+            eventId: `${requestId}:memory_compression_completed`,
+            idempotencyKey: `${requestId}:memory_compression_completed`,
+            userId,
+            guestId: null,
+            sessionId: sessionId ?? "unknown_session",
+            eventName: "memory_compression_completed",
+            eventTime: new Date(),
+            page: "/play",
+            source: "chat",
+            platform,
+            tokenCost: 0,
+            playDurationDeltaSec: 0,
+            payload: {
+              totalRounds,
+              compressedCount: toCompress.length,
+              newPlotSummaryChars: typeof dbRow.plotSummary === "string" ? dbRow.plotSummary.length : 0,
+              newPlayerStatusChars: JSON.stringify(dbRow.playerStatus ?? {}).length,
+              newNpcRelationsChars: JSON.stringify(dbRow.npcRelationships ?? {}).length,
+            },
+          }).catch(() => {});
         }
       } catch (e) {
         console.error("[api/chat] async memory compress failed", e);
@@ -1642,6 +1718,7 @@ async function postChatInternal(req: Request) {
     directorDigestForPrompt,
     socialWorldConfig,
     worldDirectorConfig,
+    totalSystemPromptChars,
   } = promptAssemblyResult;
   // NOTE: let — epistemicAnomalyResult is mutated after post-generation detection.
   let { epistemicAnomalyResult } = promptAssemblyResult;
@@ -1889,13 +1966,17 @@ async function postChatInternal(req: Request) {
     Math.min(900_000, envNumber("VC_CHAT_TURN_WATCHDOG_MS", 300_000))
   );
   let activeStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let readerAlreadyCancelled = false;
   const turnWatchdog = setTimeout(() => {
     console.error("[api/chat] turn watchdog fired", { requestId, turnWatchdogMs });
     void (async () => {
-      try {
-        await activeStreamReader?.cancel();
-      } catch {
-        /* best effort: reader may already be closed */
+      if (!readerAlreadyCancelled) {
+        readerAlreadyCancelled = true;
+        try {
+          await activeStreamReader?.cancel();
+        } catch {
+          /* best effort: reader may already be closed */
+        }
       }
       await closeWithFallback();
     })();
@@ -1990,6 +2071,11 @@ async function postChatInternal(req: Request) {
   let fallbackUsedTelemetry = false;
   let epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null = null;
   let narrativeLengthTelemetry: NarrativeLengthTelemetry | null = null;
+  let directorAdoptionTelemetry: {
+    adoptedCount: number;
+    adoptionRate: number;
+    directorAgendaCount: number;
+  } | null = null;
   let narrativeExpansionTelemetry: NarrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry();
   let provenanceVerifierTelemetry: any = null;
 
@@ -2045,18 +2131,24 @@ async function postChatInternal(req: Request) {
         const _dmJson: Record<string, unknown> = buildDmAgentDmJson(_turnResult);
         const _dmNorm = normalizePlayerDmJson(_dmJson);
         if (_dmNorm) {
-          // Phase 6: NPC consistency（DM Agent 路径缺少完整 epistemic context，使用最小化参数）
+          // Phase 6: NPC consistency（DM Agent 路径提取在场 NPC ID 以启用量 tier-1 检查）
+          const _dmAgentPresentNpcIds: string[] = [
+            ...new Set([
+              ...presentNpcIdsEarly,
+              ...((clientState as any)?.presentNpcIds ?? []),
+            ]),
+          ];
           const _npcConsistencyResult = applyNpcConsistencyPostGeneration({
             dmRecord: _dmNorm,
             actorNpcId: null,
-            presentNpcIds: [],
+            presentNpcIds: _dmAgentPresentNpcIds,
             allFacts: [],
             profile: null,
             anomalyResult: null,
             nowIso: new Date().toISOString(),
             maxRevealRank: 99,
             canonical: null,
-            playerContext: "",
+            playerContext: playerContext ?? "",
             latestUserInput: latestUserInput,
             playerEchoPacketPresent: false,
             firstEncounterPlan: null,
@@ -2091,20 +2183,24 @@ async function postChatInternal(req: Request) {
             candidateDmRecord: _dmResolved as Record<string, unknown>,
             delta: _agentStateDelta,
             validatorReport: _validatorReport,
+            gameLanguage: validated.language,
           });
           const _committed = _commitResult.committedDmRecord;
           const _commitControlledFields = [
             ...COMMIT_STATE_CHANGING_FIELDS,
             ...COMMIT_STATE_MIRROR_FIELDS,
-            "is_action_legal", "sanity_damage", "narrative", "is_death",
-            "consumes_time", "time_cost", "consumed_items", "currency_change",
-            "main_threat_updates", "weapon_updates", "weapon_bag_updates",
-            "options", "decision_options",
+            ...COMMIT_RECORD_OVERRIDE_FIELDS,
           ] as const;
           for (const _field of _commitControlledFields) {
             if (_field in _committed) {
               (_dmResolved as any)[_field] = _committed[_field];
             }
+          }
+
+          // Inject Langfuse trace ID for downstream calibration/score upload
+          const lfTraceId = getLangfuseTraceId(requestId);
+          if (lfTraceId) {
+            (_dmResolved as Record<string, unknown>)._langfuse_trace_id = lfTraceId;
           }
 
           // Phase 9: write FINAL（exactly once — 由 route.ts 统一控制，DM Agent 不自行写入）
@@ -2149,6 +2245,8 @@ async function postChatInternal(req: Request) {
           }
 
           // chat_request_finished analytics（统一口径）
+          const _dmAgentTokenEstimate =
+            Math.max(100, Math.ceil((_turnResult.narrative || "").length / 2.5));
           try {
             void recordGenericAnalyticsEvent({
               eventId: `${requestId}:chat_request_finished`,
@@ -2157,7 +2255,7 @@ async function postChatInternal(req: Request) {
               sessionId: sessionId ?? "unknown_session",
               eventName: "chat_request_finished",
               eventTime: new Date(), page: "/play", source: "chat", platform,
-              tokenCost: 0, playDurationDeltaSec: 0,
+              tokenCost: _dmAgentTokenEstimate, playDurationDeltaSec: 0,
               payload: {
                 requestId, success: true, source: "dm_agent",
                 toolsUsed: _turnResult.toolsUsed,
@@ -2178,7 +2276,7 @@ async function postChatInternal(req: Request) {
               sessionId: sessionId ?? "unknown_session",
               eventName: "dm_agent_turn_completed" as any,
               eventTime: new Date(), page: "/play", source: "chat", platform,
-              tokenCost: 0, playDurationDeltaSec: 0,
+              tokenCost: _dmAgentTokenEstimate, playDurationDeltaSec: 0,
               payload: { requestId, toolsUsed: _turnResult.toolsUsed,
                 toolCount: _turnResult.toolTrace.length,
                 totalLatencyMs: _turnResult.totalLatencyMs },
@@ -2384,12 +2482,16 @@ async function postChatInternal(req: Request) {
       tokenUsageFlushedGlobal = true;
       const { latestTotalTokens, accumulated } = args;
       const expansionTokens = Math.max(0, narrativeExpansionTelemetry.totalTokens ?? 0);
+      const enhanceTokens =
+        lastEnhanceAnalytics?.kind === "applied"
+          ? Math.max(0, lastEnhanceAnalytics.usage?.totalTokens ?? 0)
+          : 0;
       const toPersist =
         latestTotalTokens > 0
-          ? latestTotalTokens + expansionTokens
+          ? latestTotalTokens + expansionTokens + enhanceTokens
           : accumulated.length > 0
-            ? Math.max(100, Math.ceil(accumulated.length / 2.5)) + expansionTokens
-            : 0;
+            ? Math.max(100, Math.ceil(accumulated.length / 2.5)) + expansionTokens + enhanceTokens
+            : enhanceTokens;
       await persistTokenUsage(userId, toPersist);
       if (userId && toPersist > 0) {
         await incrementQuota(userId, toPersist).catch((error) => {
@@ -2686,6 +2788,23 @@ async function postChatInternal(req: Request) {
         stream: true,
         userId,
       });
+
+      // Also record usage to Langfuse generation observation
+      recordAiGenerationMetric({
+        requestId,
+        task: "PLAYER_CHAT",
+        providerId: streamSource.providerId,
+        logicalRole: args.streamRole,
+        gatewayModel: args.gatewayModel,
+        phase: "stream_complete",
+        latencyMs: finishedAt - requestStartedAt,
+        usage: args.latestUsage,
+        finishReason: args.latestFinishReason,
+        ttftMs: args.firstChunkAt > 0 ? args.firstChunkAt - requestStartedAt : undefined,
+        stream: true,
+        userId,
+        outputSnapshot: args.accumulated,
+      });
     };
 
     const runStreamFinalHooks = async (
@@ -2958,9 +3077,37 @@ async function postChatInternal(req: Request) {
         dmRecord = applyPhysicalInjuryNarrativeGuard(dmRecord);
         dmRecord = applyEquipmentNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
         dmRecord = applyPresentNpcNarrativeBoundaryGuard({ dmRecord, clientState: clientState });
-        dmRecord = applyInternalIdNarrativeGuard(dmRecord);
-        dmRecord = applyProfessionNarrativeCoherenceGuard(dmRecord);
-        dmRecord = applyAnonymizationArtifactGuard(dmRecord);
+        // --- Parallel: compose non-overlapping narrative regex guards ---
+        // applyInternalIdNarrativeGuard, applyProfessionNarrativeCoherenceGuard, and
+        // applyAnonymizationArtifactGuard are pure CPU-only regex transforms. Each
+        // operates on distinct, non-overlapping text patterns in dmRecord.narrative:
+        //   - internalId: replaces leaked registry IDs (e.g. {prof_trial_lampkeeper})
+        //   - profession:  repairs model word-substitution errors (e.g. 烛台的陌生人)
+        //   - anonymization: fixes anonymization artifacts (e.g. 大堂的陌生人在头顶)
+        // None reads clientState or any dmRecord field beyond `narrative`, and their
+        // regex patterns target different artifact classes with zero overlap. Running
+        // all three on the same input snapshot in parallel is semantically equivalent
+        // to sequential application. The reduce below chains narrative modifications
+        // (any guard that didn't change the text returns the original dnRecord ref)
+        // and merges all _commit_flags into a deduplicated set.
+        const [postInternalId, postProfession, postAnonymization] = await Promise.all([
+          Promise.resolve().then(() => applyInternalIdNarrativeGuard(dmRecord)),
+          Promise.resolve().then(() => applyProfessionNarrativeCoherenceGuard(dmRecord)),
+          Promise.resolve().then(() => applyAnonymizationArtifactGuard(dmRecord)),
+        ]);
+        dmRecord = [postInternalId, postProfession, postAnonymization].reduce((rec, next) => {
+          if (next === rec) return rec;
+          return {
+            ...rec,
+            narrative: typeof next.narrative === "string" ? next.narrative : rec.narrative,
+            _commit_flags: [
+              ...new Set([
+                ...(Array.isArray(rec._commit_flags) ? (rec._commit_flags as string[]) : []),
+                ...(Array.isArray(next._commit_flags) ? (next._commit_flags as string[]) : []),
+              ]),
+            ],
+          };
+        }, dmRecord);
         dmRecord = applyLocationNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
 
         // --- Phase 4: protocol validator (narrative contamination) ---
@@ -3342,6 +3489,27 @@ async function postChatInternal(req: Request) {
 
           if (!expansionDecision.trigger) {
             narrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry(expansionDecision.skippedReason);
+            if (expansionDecision.skippedReason === "performance_budget_exhausted") {
+              void recordGenericAnalyticsEvent({
+                eventId: `${requestId}:narrative_expansion_skipped`,
+                idempotencyKey: `${requestId}:narrative_expansion_skipped`,
+                userId,
+                guestId: userId ? null : chatGuestId,
+                sessionId: sessionId ?? "unknown_session",
+                eventName: "narrative_expansion_skipped",
+                eventTime: new Date(),
+                page: "/play",
+                source: "chat",
+                platform,
+                tokenCost: 0,
+                playDurationDeltaSec: 0,
+                payload: {
+                  skippedReason: expansionDecision.skippedReason,
+                  performanceBudgetMs: Math.max(0, Math.trunc(performanceBudgetMs)),
+                  elapsedMs: requestStartedAt ? Date.now() - requestStartedAt : null,
+                },
+              });
+            }
           } else {
             const configuredExpansionBudgetMs = Math.max(
               0,
@@ -3358,12 +3526,38 @@ async function postChatInternal(req: Request) {
               0,
               CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms - (Date.now() - requestStartedAt) - 500
             );
+            const ABSOLUTE_EXPANSION_CAP_MS = 8_000;
             const expansionBudgetMs = Math.max(
               0,
-              Math.min(configuredExpansionBudgetMs, performanceBudgetMs - 250, finalP95RemainingMs)
+              Math.min(
+                configuredExpansionBudgetMs,
+                performanceBudgetMs - 250,
+                finalP95RemainingMs,
+                ABSOLUTE_EXPANSION_CAP_MS
+              )
             );
             if (expansionBudgetMs < 1_500) {
               narrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry("performance_budget_exhausted");
+              void recordGenericAnalyticsEvent({
+                eventId: `${requestId}:narrative_expansion_skipped`,
+                idempotencyKey: `${requestId}:narrative_expansion_skipped`,
+                userId,
+                guestId: userId ? null : chatGuestId,
+                sessionId: sessionId ?? "unknown_session",
+                eventName: "narrative_expansion_skipped",
+                eventTime: new Date(),
+                page: "/play",
+                source: "chat",
+                platform,
+                tokenCost: 0,
+                playDurationDeltaSec: 0,
+                payload: {
+                  skippedReason: "performance_budget_exhausted",
+                  expansionBudgetMs: Math.max(0, Math.trunc(expansionBudgetMs)),
+                  performanceBudgetMs: Math.max(0, Math.trunc(performanceBudgetMs)),
+                  elapsedMs: requestStartedAt ? Date.now() - requestStartedAt : null,
+                },
+              });
             } else {
             const expansionResult: NarrativeExpansionResult = await expandNarrativeOnly({
               originalNarrative: narrative,
@@ -3571,6 +3765,59 @@ async function postChatInternal(req: Request) {
                 directorDueAgendaHint: directorDueAgendaHintForPacing,
               })
             : null;
+          // When a pacing budget breach is detected, re-run lightweight NPC consistency
+          // checks (persona mixup + offscreen dialogue) on the current narrative.
+          // An over-budget turn is more likely to have rushed/inconsistent NPC behaviour.
+          const pacingRecheckIssues: Array<{
+            code: string;
+            severity: "low" | "medium" | "high";
+            source: string;
+            detail?: string;
+            invariant?: string;
+          }> = [];
+          if (pacingReport?.needsRevalidate) {
+            const narrativeForRecheck = typeof candidateRec.narrative === "string" ? candidateRec.narrative : "";
+            if (narrativeForRecheck && presentNpcIdsForEpistemic.length > 0) {
+              try {
+                const personaResult = detectPersonaMixup({
+                  narrative: narrativeForRecheck,
+                  presentNpcIds: presentNpcIdsForEpistemic,
+                  focusNpcId: focusNpcForPrompt?.trim() || null,
+                });
+                if (personaResult.hits.length > 0) {
+                  pacingRecheckIssues.push({
+                    code: "npc_status_forbidden_direct_speech",
+                    severity: "medium",
+                    source: "pacing",
+                    detail: `persona_mixup_recheck:${personaResult.hits
+                      .slice(0, 3)
+                      .map((h) => `${h.victimNpcId}<=${h.leakedFromNpcId}:${h.token}`)
+                      .join("|")}`,
+                    invariant: "pacing_budget_breach",
+                  });
+                }
+              } catch (e) {
+                console.warn("[pacing_recheck] persona mixup check skipped", e);
+              }
+              try {
+                const offscreenViolations = findOffscreenNpcDialogueViolations(
+                  narrativeForRecheck,
+                  presentNpcIdsForEpistemic
+                );
+                for (const v of offscreenViolations) {
+                  pacingRecheckIssues.push({
+                    code: "offscreen_npc_direct_speech",
+                    severity: "medium",
+                    source: "pacing",
+                    detail: v,
+                    invariant: "offscreen_npc_direct_speech",
+                  });
+                }
+              } catch (e) {
+                console.warn("[pacing_recheck] offscreen dialogue check skipped", e);
+              }
+            }
+          }
           const optionsForSafety = Array.isArray(candidateRec.options)
             ? candidateRec.options.filter((value): value is string => typeof value === "string")
             : [];
@@ -3605,6 +3852,36 @@ async function postChatInternal(req: Request) {
                 sessionCommittedEntityIds: sessionCommittedEntityIdsForSafety,
               })
             : null;
+          // Merge any pacing-triggered NPC consistency recheck issues into the safety report.
+          if (pacingRecheckIssues.length > 0 && narrativeSafetyReport) {
+            const mergedIssues = [
+              ...narrativeSafetyReport.issues,
+              ...pacingRecheckIssues.map((issue) => ({
+                code: issue.code as NarrativeSafetyReport["issues"][number]["code"],
+                severity: issue.severity,
+                source: issue.source as NarrativeSafetyReport["issues"][number]["source"],
+                ...(issue.detail ? { detail: issue.detail } : {}),
+                ...(issue.invariant ? { invariant: issue.invariant as any } : {}),
+              })),
+            ];
+            const newInvariants = [
+              ...new Set([
+                ...narrativeSafetyReport.invariantsViolated,
+                ...pacingRecheckIssues.map((i) => i.invariant).filter((v): v is string => Boolean(v)),
+              ]),
+            ];
+            narrativeSafetyReport = {
+              ...narrativeSafetyReport,
+              ok: false,
+              decision: narrativeSafetyReport.decision === "pass" ? "repair" : narrativeSafetyReport.decision,
+              issues: mergedIssues,
+              maxSeverity:
+                narrativeSafetyReport.maxSeverity === "high" || narrativeSafetyReport.maxSeverity === "medium"
+                  ? narrativeSafetyReport.maxSeverity
+                  : "medium",
+              invariantsViolated: newInvariants,
+            };
+          }
           // 检测 [mock_scenario:...] 标记：benchmark/eval --mode mock 注入。
           // 标记存在时禁用 entity hard gate，避免 mock 叙事被兜底文案替换。
           const isMockScenarioRequest = /\[mock_scenario:[a-z0-9_]+\]/i.test(String(latestUserInput ?? ""));
@@ -3772,24 +4049,13 @@ async function postChatInternal(req: Request) {
               laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
             },
             factCommitGateResult,
+            gameLanguage: validated.language,
           });
           const committedRecord = commitResult.committedDmRecord;
           const commitControlledFields = [
             ...COMMIT_STATE_CHANGING_FIELDS,
             ...COMMIT_STATE_MIRROR_FIELDS,
-            "is_action_legal",
-            "sanity_damage",
-            "narrative",
-            "is_death",
-            "consumes_time",
-            "time_cost",
-            "consumed_items",
-            "currency_change",
-            "main_threat_updates",
-            "weapon_updates",
-            "weapon_bag_updates",
-            "options",
-            "decision_options",
+            ...COMMIT_RECORD_OVERRIDE_FIELDS,
           ] as const;
           for (const field of commitControlledFields) {
             if (field in committedRecord) {
@@ -4535,6 +4801,42 @@ async function postChatInternal(req: Request) {
           finalOptionsCountTelemetry = 0;
           finalOptionsQualityPassTelemetry = false;
         }
+        // Inject Langfuse trace ID into main path FINAL JSON (for calibration/score upload)
+        try {
+          const lfFinal = JSON.parse(finalizePayload);
+          const lfTraceId = getLangfuseTraceId(requestId);
+          if (lfTraceId) {
+            lfFinal._langfuse_trace_id = lfTraceId;
+            finalizePayload = JSON.stringify(lfFinal);
+          }
+        } catch { /* best-effort */ }
+        // Bridge: inject server world-engine director state so the client
+        // StoryDirector can reconcile its local beat/tension against the
+        // server's computed pacing signals.
+        if (sessionId && worldDirectorConfig.enabled) {
+          try {
+            const serverDirector = await loadDirectorState(sessionId);
+            if (serverDirector) {
+              const payloadObj = JSON.parse(finalizePayload) as Record<string, unknown>;
+              payloadObj.server_director_state = {
+                directorIntent: serverDirector.recentDirectorIntent,
+                currentPhase: serverDirector.phase,
+                pacingSummary: {
+                  tension: serverDirector.pacing.tension,
+                  mystery: serverDirector.pacing.mystery,
+                  fatigue: serverDirector.pacing.fatigue,
+                  progress: serverDirector.pacing.progress,
+                  agency_health: serverDirector.pacing.agency_health,
+                  reveal_pressure: serverDirector.pacing.reveal_pressure,
+                },
+                turnIndex: serverDirector.turnIndex,
+              };
+              finalizePayload = JSON.stringify(payloadObj);
+            }
+          } catch {
+            // best-effort: never block the online turn on a director-state read
+          }
+        }
         await writer.write(sse(`${VERSECRAFT_FINAL_PREFIX}${finalizePayload}`));
         finalFrameWritten = true;
         const playerEchoFlags = getVerseCraftRolloutFlags();
@@ -4581,6 +4883,39 @@ async function postChatInternal(req: Request) {
               })
             )
             .catch(() => {});
+        }
+        if (sessionId && dueDirectorAgendaForPrompt.length > 0 && typeof dmRecord.narrative === "string") {
+          const adoption = detectDirectorHintAdoption(
+            String(dmRecord.narrative),
+            dueDirectorAgendaForPrompt
+          );
+          directorAdoptionTelemetry = {
+            adoptedCount: adoption.adoptedCount,
+            adoptionRate: adoption.adoptionRate,
+            directorAgendaCount: dueDirectorAgendaForPrompt.length,
+          };
+          void recordGenericAnalyticsEvent({
+            eventId: `${requestId}:director_hint_adoption`,
+            idempotencyKey: `${requestId}:director_hint_adoption`,
+            userId: userId,
+            guestId: userId ? null : chatGuestId,
+            sessionId: sessionId,
+            eventName: "director_hint_adoption",
+            eventTime: new Date(),
+            page: "/play",
+            source: "chat",
+            platform: platform,
+            tokenCost: 0,
+            playDurationDeltaSec: 0,
+            payload: {
+              requestId: requestId,
+              agendaCount: dueDirectorAgendaForPrompt.length,
+              adoptedCount: adoption.adoptedCount,
+              adoptionRate: adoption.adoptionRate,
+              missedItems: adoption.missedItems,
+              directorMode: worldDirectorConfig.mode,
+            },
+          }).catch(() => {});
         }
         if (sessionId && injectedSocialEventIds.length > 0) {
           const capturedSocialEventIds = [...injectedSocialEventIds];
@@ -5162,10 +5497,13 @@ async function postChatInternal(req: Request) {
         `\x1b[31m[api/chat] stream pipe failed\x1b[0m`,
         { logicalRole, message: err?.message, cause, stack: err?.stack, error }
       );
-      try {
-        await reader.cancel();
-      } catch {
-        // ignore
+      if (!readerAlreadyCancelled) {
+        readerAlreadyCancelled = true;
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
       }
       if (
         accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
@@ -5211,6 +5549,56 @@ async function postChatInternal(req: Request) {
     };
     sseHeadersOut["X-AI-Routing-Http-Snapshot"] = Buffer.from(JSON.stringify(snap), "utf8").toString("base64url");
   }
+
+  try {
+    endTurnTrace({
+      finalJsonParsed: true,
+      turnCommitted: true,
+      narrativeCharLen: 0,
+      optionsCount: 0,
+      fallbackUsed: false,
+      degradedMode: false,
+      validatorIssueCount: 0,
+      npcConsistencyIssueCount: 0,
+      firstStatusMs: undefined,
+      firstVisibleTextMs: undefined,
+      finalMs: undefined,
+    });
+  } catch { /* tracing is non-critical */ }
+
+  try {
+    uploadSelfHealingScores({
+      requestId,
+      loreSourceCount,
+      loreFallbackPath: loreFallbackPath ?? "none",
+      loreCacheHit,
+      retrievalSourceCounts: { database: loreSourceCount },
+      privateFactHitCount: 0,
+      lorePacketChars: runtimePacketChars ?? 0,
+      npcConsistencyIssueCount: epistemicPostValidatorTelemetry?.violationTypes?.length ?? 0,
+      npcConsistencyViolationTypes: epistemicPostValidatorTelemetry?.violationTypes ?? [],
+      narrativeRewriteTriggered: epistemicPostValidatorTelemetry?.rewriteTriggered ?? false,
+      unsupportedFactCount: 0,
+      validatorIssueCount: epistemicPostValidatorTelemetry?.validatorTriggered ? 1 : 0,
+      validatorIssueCodes: epistemicPostValidatorTelemetry?.involvedFields ?? [],
+      fallbackUsed: fallbackUsedTelemetry,
+      turnCommitted: finalJsonParseSuccess,
+      finalJsonParsed: finalJsonParseSuccess,
+      optionsQualityPass: finalOptionsQualityPassTelemetry || undefined,
+      narrativeCharLen: narrativeLengthTelemetry?.actualNarrativeChars ?? 0,
+      optionsCount: finalOptionsCountTelemetry,
+      firstStatusMs: ttftProfile.firstSseWriteAt != null
+        ? Math.max(0, ttftProfile.firstSseWriteAt - requestStartedAt)
+        : undefined,
+      gameLanguage: validated.language,
+      taskType: "PLAYER_CHAT",
+      directorAgendaCount: directorAdoptionTelemetry?.directorAgendaCount ?? injectedDirectorAgendaIds.length,
+      directorAgendaAdoptedCount: directorAdoptionTelemetry?.adoptedCount ?? 0,
+      promptMetrics: totalSystemPromptChars != null
+        ? { totalSystemPromptChars }
+        : undefined,
+    });
+  } catch { /* self-healing scores are non-critical */ }
 
   return new Response(readable, {
     status: 200,

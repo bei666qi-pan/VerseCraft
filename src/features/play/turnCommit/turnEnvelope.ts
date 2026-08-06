@@ -167,4 +167,23 @@ export type TurnEnvelope = {
 
   /** 回合提交标记（审计/安全/合规标签），缺省 [] */
   _commit_flags?: string[];
+
+  /**
+   * 服务端世界引擎导演状态（可选）。
+   * 字段由服务端 world engine 后台 tick 计算并保存，
+   * 在线回合从 DB 加载后注入响应，供客户端 StoryDirector 对账。
+   */
+  server_director_state?: {
+    directorIntent: string | null;
+    currentPhase: string;
+    pacingSummary: {
+      tension: number;
+      mystery: number;
+      fatigue: number;
+      progress: number;
+      agency_health: number;
+      reveal_pressure: number;
+    };
+    turnIndex: number;
+  };
 };

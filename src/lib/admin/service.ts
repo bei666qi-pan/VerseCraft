@@ -251,47 +251,52 @@ export async function getDashboardTableData() {
   }
 
   const { ids: onlineIds } = await getOnlineUsersFromPresence().catch(() => ({ ids: [], count: 0 }));
-  // 避免全表拉取后在内存去重：改为 DISTINCT ON 每用户一条最新记录。
-  const latestFeedbackRowsRaw = await db.execute(sql`
-    SELECT DISTINCT ON (user_id)
-      user_id AS "userId",
-      content,
-      created_at AS "createdAt"
-    FROM feedbacks
-    ORDER BY user_id, created_at DESC
-  `);
-  const latestGuestFeedbackRowsRaw = await db
+  // 避免全表拉取后在内存去重：将 user/guest 查询合并为一个 CTE，
+  // 使用 ROW_NUMBER() 分区去重以减少数据库往返次数。
+  const latestFeedbackRowsRaw = await db
     .execute(sql`
-      SELECT DISTINCT ON (guest_id)
+      WITH ranked AS (
+        SELECT
+          user_id,
+          guest_id,
+          content,
+          created_at,
+          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS user_rn,
+          ROW_NUMBER() OVER (PARTITION BY guest_id ORDER BY created_at DESC) AS guest_rn
+        FROM feedbacks
+      )
+      SELECT
+        user_id AS "userId",
         guest_id AS "guestId",
         content,
         created_at AS "createdAt"
-      FROM feedbacks
-      WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-      ORDER BY guest_id, created_at DESC
+      FROM ranked
+      WHERE (user_id IS NOT NULL AND user_rn = 1)
+         OR (guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL AND guest_rn = 1)
     `)
     .catch((error) => {
-      // 旧库可能还没有 guest_id 字段（42703）；此时后台降级为无游客反馈，不阻断页面。
-      console.warn("[admin][getDashboardTableData] guest feedback query failed, fallback empty", error);
+      console.warn("[admin][getDashboardTableData] merged feedback query failed, fallback empty", error);
       return { rows: [] };
     });
-  const latestSurveyRowsRaw = await db.execute(sql`
-    SELECT DISTINCT ON (user_id)
-      user_id AS "userId",
-      survey_key AS "surveyKey",
-      survey_version AS "surveyVersion",
-      answers,
-      free_text AS "freeText",
-      overall_rating AS "overallRating",
-      recommend_score AS "recommendScore",
-      created_at AS "createdAt"
-    FROM survey_responses
-    WHERE user_id IS NOT NULL
-    ORDER BY user_id, created_at DESC
-  `);
-  const latestGuestSurveyRowsRaw = await db
+  const latestSurveyRowsRaw = await db
     .execute(sql`
-      SELECT DISTINCT ON (guest_id)
+      WITH ranked AS (
+        SELECT
+          user_id,
+          guest_id,
+          survey_key,
+          survey_version,
+          answers,
+          free_text,
+          overall_rating,
+          recommend_score,
+          created_at,
+          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS user_rn,
+          ROW_NUMBER() OVER (PARTITION BY guest_id ORDER BY created_at DESC) AS guest_rn
+        FROM survey_responses
+      )
+      SELECT
+        user_id AS "userId",
         guest_id AS "guestId",
         survey_key AS "surveyKey",
         survey_version AS "surveyVersion",
@@ -300,12 +305,12 @@ export async function getDashboardTableData() {
         overall_rating AS "overallRating",
         recommend_score AS "recommendScore",
         created_at AS "createdAt"
-      FROM survey_responses
-      WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-      ORDER BY guest_id, created_at DESC
+      FROM ranked
+      WHERE (user_id IS NOT NULL AND user_rn = 1)
+         OR (guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL AND guest_rn = 1)
     `)
     .catch((error) => {
-      console.warn("[admin][getDashboardTableData] guest survey query failed, fallback empty", error);
+      console.warn("[admin][getDashboardTableData] merged survey query failed, fallback empty", error);
       return { rows: [] };
     });
 
@@ -325,86 +330,53 @@ export async function getDashboardTableData() {
       return { rows: [] };
     });
 
+  // 合并查询返回的 rows 同时包含 user 和 guest 行，
+  // 根据 userId/guestId 非空分流到对应 map。
   const latestFeedbackRows = normalizeExecuteRows(latestFeedbackRowsRaw);
-  const latestGuestFeedbackRows = normalizeExecuteRows(latestGuestFeedbackRowsRaw);
+  const latestSurveyRows = normalizeExecuteRows(latestSurveyRowsRaw);
   const latestGameRows = normalizeExecuteRows(latestGameRowsRaw);
 
   const latestFeedbackMap = new Map<string, { content: string; createdAt: Date | null }>();
+  const latestGuestFeedbackMap = new Map<string, { content: string; createdAt: Date | null }>();
   for (const row of latestFeedbackRows) {
     const userId = String(row.userId ?? "");
-    if (!userId) continue;
-    latestFeedbackMap.set(userId, {
-      content: String(row.content ?? ""),
-      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
-    });
-  }
-  const latestGuestFeedbackMap = new Map<string, { content: string; createdAt: Date | null }>();
-  for (const row of latestGuestFeedbackRows) {
     const guestId = String(row.guestId ?? "");
-    if (!guestId) continue;
-    latestGuestFeedbackMap.set(guestId, {
-      content: String(row.content ?? ""),
-      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
-    });
-  }
-  const latestSurveyMap = new Map<
-    string,
-    {
-      surveyKey: string;
-      surveyVersion: string;
-      answers: Record<string, unknown>;
-      freeText: string | null;
-      overallRating: number | null;
-      recommendScore: number | null;
-      createdAt: Date | null;
+    if (userId) {
+      latestFeedbackMap.set(userId, {
+        content: String(row.content ?? ""),
+        createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+      });
+    } else if (guestId) {
+      latestGuestFeedbackMap.set(guestId, {
+        content: String(row.content ?? ""),
+        createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+      });
     }
-  >();
-  const latestSurveyRows = normalizeExecuteRows(latestSurveyRowsRaw);
-  for (const row of latestSurveyRows) {
-    const userId = String(row.userId ?? "");
-    if (!userId || latestSurveyMap.has(userId)) continue;
-    latestSurveyMap.set(userId, {
-      surveyKey: String(row.surveyKey ?? ""),
-      surveyVersion: String(row.surveyVersion ?? ""),
-      answers:
-        row.answers && typeof row.answers === "object" && !Array.isArray(row.answers)
-          ? (row.answers as Record<string, unknown>)
-          : {},
-      freeText: row.freeText ? String(row.freeText) : null,
-      overallRating: Number.isFinite(Number(row.overallRating)) ? Number(row.overallRating) : null,
-      recommendScore: Number.isFinite(Number(row.recommendScore)) ? Number(row.recommendScore) : null,
-      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
-    });
   }
 
-  const latestGuestSurveyMap = new Map<
-    string,
-    {
-      surveyKey: string;
-      surveyVersion: string;
-      answers: Record<string, unknown>;
-      freeText: string | null;
-      overallRating: number | null;
-      recommendScore: number | null;
-      createdAt: Date | null;
-    }
-  >();
-  const latestGuestSurveyRows = normalizeExecuteRows(latestGuestSurveyRowsRaw);
-  for (const row of latestGuestSurveyRows) {
+  const makeSurveyValue = (row: Record<string, unknown>) => ({
+    surveyKey: String(row.surveyKey ?? ""),
+    surveyVersion: String(row.surveyVersion ?? ""),
+    answers:
+      row.answers && typeof row.answers === "object" && !Array.isArray(row.answers)
+        ? (row.answers as Record<string, unknown>)
+        : {} as Record<string, unknown>,
+    freeText: row.freeText ? String(row.freeText) : null,
+    overallRating: Number.isFinite(Number(row.overallRating)) ? Number(row.overallRating) : null,
+    recommendScore: Number.isFinite(Number(row.recommendScore)) ? Number(row.recommendScore) : null,
+    createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+  });
+
+  const latestSurveyMap = new Map<string, ReturnType<typeof makeSurveyValue>>();
+  const latestGuestSurveyMap = new Map<string, ReturnType<typeof makeSurveyValue>>();
+  for (const row of latestSurveyRows) {
+    const userId = String(row.userId ?? "");
     const guestId = String(row.guestId ?? "");
-    if (!guestId || latestGuestSurveyMap.has(guestId)) continue;
-    latestGuestSurveyMap.set(guestId, {
-      surveyKey: String(row.surveyKey ?? ""),
-      surveyVersion: String(row.surveyVersion ?? ""),
-      answers:
-        row.answers && typeof row.answers === "object" && !Array.isArray(row.answers)
-          ? (row.answers as Record<string, unknown>)
-          : {},
-      freeText: row.freeText ? String(row.freeText) : null,
-      overallRating: Number.isFinite(Number(row.overallRating)) ? Number(row.overallRating) : null,
-      recommendScore: Number.isFinite(Number(row.recommendScore)) ? Number(row.recommendScore) : null,
-      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
-    });
+    if (userId && !latestSurveyMap.has(userId)) {
+      latestSurveyMap.set(userId, makeSurveyValue(row));
+    } else if (guestId && !latestGuestSurveyMap.has(guestId)) {
+      latestGuestSurveyMap.set(guestId, makeSurveyValue(row));
+    }
   }
   const latestGameMap = new Map<string, { maxFloorScore: number; survivalTimeSeconds: number; createdAt: Date | null }>();
   for (const row of latestGameRows) {

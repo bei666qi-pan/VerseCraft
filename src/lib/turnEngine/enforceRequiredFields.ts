@@ -11,6 +11,16 @@
  */
 
 import type { NormalizedPlayerIntent } from "./types";
+import { NPCS } from "@/lib/registry/npcs";
+import { MAP_ROOMS } from "@/lib/registry/world";
+
+// ── Registry-derived lookup tables ─────────────────────────────────
+
+/** All NPC display names from the registry, used for narrative-to-codex extraction. */
+const ALL_NPC_NAMES: readonly string[] = NPCS.map((n) => n.name);
+
+/** All traversable room codes from the world registry, used for location extraction. */
+const ALL_LOCATIONS: readonly string[] = Object.values(MAP_ROOMS).flat();
 
 // ── Intent → 必填字段映射 ────────────────────────────────────────
 
@@ -299,12 +309,8 @@ const LOCATION_VERB_RE =
   /(?:走进|踏入|推开|来到|回到|进入|走向|跑到|爬上|下到|挤进|跨进|返回|穿过|绕到|钻进|迈入|朝|向|往)\s*(.{2,10}?)(?:[，。！？；、\s]|$)/g;
 
 function extractLocationFromText(text: string): string | null {
-  // Re-use the known locations from enrichGameState
-  const KNOWN = [
-    "3F_Hallway", "3F_Stairwell", "3F_Room302", "3F_CorridorEnd",
-    "B1_PowerRoom", "B1_Storage", "4F_CorridorEnd", "4F_Stairwell",
-    "Rooftop", "3F_UtilityRoom",
-  ];
+  // Derived from MAP_ROOMS registry — single source of truth for all room codes
+  const KNOWN = ALL_LOCATIONS;
 
   // Try matching movement verbs followed by a known location
   const matches = text.matchAll(LOCATION_VERB_RE);
@@ -345,10 +351,7 @@ function extractLocationFromText(text: string): string | null {
   return null;
 }
 
-const NPC_NAME_PATTERNS = [
-  "林栀", "阿花", "老刘", "电工老刘", "刘师傅",
-  "老周", "周叔", "周伯", "苏晴", "苏老师",
-];
+const NPC_NAME_PATTERNS = ALL_NPC_NAMES;
 
 function extractNpcMentions(text: string): string[] {
   const found = new Set<string>();

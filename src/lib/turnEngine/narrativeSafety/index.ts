@@ -2,6 +2,7 @@ export * from "@/lib/turnEngine/narrativeSafety/types";
 export {
   auditEntityWhitelist,
   collectEntityAuditIssues,
+  collectEpistemicEntityCrossCheck,
   extractEntitySurfacesConservatively,
   extractNpcIdsFromDmRecord,
   extractNpcIdsFromNarrative,

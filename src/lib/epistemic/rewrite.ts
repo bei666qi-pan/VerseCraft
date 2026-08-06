@@ -8,21 +8,19 @@ import type { KnowledgeFact } from "./types";
 export const EPISTEMIC_SOFT_HEDGE =
   "对方话到一半又顿住，像是没完全接住你的意思，没有把话说死。";
 
-/** 严重越界：改为不确认 + 追问来源（保留前文少量语境） */
+/**
+ * 严重越界：改为不确认 + 追问来源。
+ * 所有泄露类型统一处理：禁止复述原文前缀（极易仍含子串命中），只保留脱责推进。
+ * overreach_acceptance 原设计会保留前 120 字语境，但这部分仍可能包含被禁事实文本，
+ * 导致认知泄露在改写后残留，因此移除 head 保留。
+ */
 export function rewriteNarrativeHeavyLeak(
   narrative: string,
   leakType: "overreach_acceptance" | "private_fact_leak" | "world_truth_premature"
 ): string {
-  const tail =
-    leakType === "overreach_acceptance"
-      ? "……我没法照你这话接下去。你从哪里听来的？"
-      : "……这些事我不该是从你嘴里第一次听说。你先说说，消息哪来的？";
-  if (leakType === "overreach_acceptance") {
-    const head = narrative.trim().slice(0, Math.min(120, narrative.trim().length));
-    return head ? `${head}\n\n${tail}` : tail;
-  }
-  // 私有/世界真相：禁止复述原文前缀（极易仍含子串命中），只保留脱责推进
-  return tail;
+  return leakType === "overreach_acceptance"
+    ? "……我没法照你这话接下去。你从哪里听来的？"
+    : "……这些事我不该是从你嘴里第一次听说。你先说说，消息哪来的？";
 }
 
 export function appendSoftHedge(narrative: string): string {

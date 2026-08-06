@@ -1,3 +1,5 @@
+import type { DirectorBranchSeed, DirectorConsistencyWarning, DirectorPrivateHook } from "@/lib/worldEngine/contracts";
+
 export type ServerDirectorDigest = {
   tension?: number;
   stallCount?: number;
@@ -20,6 +22,13 @@ export type ServerDirectorAgendaHint = {
   forbiddenOutcomes?: string[];
   salience?: number;
   revealPolicy?: string | null;
+};
+
+/** 从 world_engine_agenda_snapshots 中提取的 NPC 行动条目 */
+export type ServerNpcActionHint = {
+  npc_code: string;
+  action: string;
+  urgency: "low" | "medium" | "high";
 };
 
 function clampInt(n: unknown, min: number, max: number): number {
@@ -79,11 +88,87 @@ function agendaArr(v: unknown, cap: number): ServerDirectorAgendaHint[] {
   return out;
 }
 
+/** 最小接口：只需要 injectionHint（或 injection_hint）和可选的标识字段 */
+export interface DirectorHintItem {
+  injectionHint?: string;
+  injection_hint?: string;
+  title?: string;
+  event_code?: string;
+  eventCode?: string;
+}
+
+/** 中文标点，用于拆分 injectionHint 提取关键短语 */
+const HINT_SPLIT_RE = /[。！？，、；：""''（）\n]+/;
+
+/** 从 injectionHint 中提取长度 ≥ minLen 的关键短语 */
+function extractHintPhrases(hint: string, minLen = 4): string[] {
+  const cleaned = hint.trim();
+  if (!cleaned) return [];
+  return cleaned
+    .split(HINT_SPLIT_RE)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= minLen);
+}
+
+/**
+ * 轻量级启发式检查：叙事中是否采纳了导演议程提示。
+ *
+ * 对每个议程项，从 injectionHint 中提取长度 ≥ 4 的关键短语，
+ * 在叙事中做大小写不敏感的包含匹配；任一段落命中即视为"已采纳"。
+ *
+ * @returns adoptedCount 采纳数、adoptionRate 采纳率 (0-1)、missedItems 未采纳项的标识（优先 eventCode 其次 title）
+ */
+export function detectDirectorHintAdoption(
+  narrative: string,
+  agendaItems: readonly DirectorHintItem[]
+): { adoptedCount: number; adoptionRate: number; missedItems: string[] } {
+  if (!narrative || agendaItems.length === 0) {
+    return { adoptedCount: 0, adoptionRate: 0, missedItems: [] };
+  }
+
+  const lowerNarrative = narrative.toLowerCase();
+  let adoptedCount = 0;
+  const missedItems: string[] = [];
+
+  for (const item of agendaItems) {
+    const hint = item.injectionHint ?? item.injection_hint ?? "";
+    if (!hint.trim()) {
+      // 无 hint 的项视为未被采纳
+      const label = item.eventCode ?? item.event_code ?? item.title ?? "unknown";
+      missedItems.push(label);
+      continue;
+    }
+
+    const phrases = extractHintPhrases(hint);
+    if (phrases.length === 0) {
+      const label = item.eventCode ?? item.event_code ?? item.title ?? "unknown";
+      missedItems.push(label);
+      continue;
+    }
+
+    const adopted = phrases.some((phrase) => lowerNarrative.includes(phrase.toLowerCase()));
+    if (adopted) {
+      adoptedCount++;
+    } else {
+      const label = item.eventCode ?? item.event_code ?? item.title ?? "unknown";
+      missedItems.push(label);
+    }
+  }
+
+  const adoptionRate = agendaItems.length > 0
+    ? Math.round((adoptedCount / agendaItems.length) * 100) / 100
+    : 0;
+
+  return { adoptedCount, adoptionRate, missedItems };
+}
+
 export function buildDirectorAgendaHintBlock(
   agenda: readonly ServerDirectorAgendaHint[],
   opts?: {
     currentPhase?: string | null;
     targetIntent?: string | null;
+    directorIntent?: string | null;
+    pacingSummary?: { tension: number; mystery: number; fatigue: number } | null;
     maxItems?: number;
     maxChars?: number;
   }
@@ -97,8 +182,17 @@ export function buildDirectorAgendaHintBlock(
   lines.push("## 【后台导演提示｜仅供主笔参考，不是玩家可见文本】");
   const phase = clampText(opts?.currentPhase, 24);
   const intent = clampText(opts?.targetIntent, 140);
+  const directorIntent = clampText(opts?.directorIntent, 280);
+  const pacing = opts?.pacingSummary ?? null;
   if (phase) lines.push(`当前导演阶段：${phase}`);
   if (intent) lines.push(`目标体验：${intent}`);
+  if (directorIntent) lines.push(`当前导演意图：${directorIntent}`);
+  if (pacing) {
+    const t = Math.round((pacing.tension ?? 0) * 100);
+    const m = Math.round((pacing.mystery ?? 0) * 100);
+    const f = Math.round((pacing.fatigue ?? 0) * 100);
+    lines.push(`节奏评估：紧张度${t} 神秘度${m} 疲劳度${f}`);
+  }
   lines.push("可用事件：");
   items.forEach((item, idx) => {
     lines.push(`${idx + 1}. event_code=${item.eventCode}`);
@@ -123,14 +217,80 @@ export function buildDirectorAgendaHintBlock(
 export function buildServerDirectorHintBlock(
   d: ServerDirectorDigest | null,
   agenda: readonly ServerDirectorAgendaHint[] = [],
-  opts?: { socialWorldHintBlock?: string }
+  opts?: {
+    socialWorldHintBlock?: string;
+    directorIntent?: string | null;
+    currentPhase?: string | null;
+    pacingSummary?: { tension: number; mystery: number; fatigue: number } | null;
+    npcActions?: readonly ServerNpcActionHint[];
+    storyBranchSeeds?: readonly DirectorBranchSeed[];
+    consistencyWarnings?: readonly DirectorConsistencyWarning[];
+    playerPrivateHooks?: readonly DirectorPrivateHook[];
+  }
 ): string {
   const socialWorldHintBlock = clampText(opts?.socialWorldHintBlock, 420);
+  const npcActions = opts?.npcActions ?? [];
   const agendaBlock = buildDirectorAgendaHintBlock(agenda, {
-    currentPhase: d?.beatModeHint,
+    currentPhase: d?.beatModeHint ?? opts?.currentPhase,
     targetIntent: d?.digest,
+    directorIntent: opts?.directorIntent,
+    pacingSummary: opts?.pacingSummary,
   });
-  if (!d) return [agendaBlock, socialWorldHintBlock].filter(Boolean).join("\n\n");
+
+  // NPC 行为指引：仅注入高 urgency 的行动
+  const highActions = npcActions.filter((a) => a.urgency === "high");
+  const npcHintLines: string[] = [];
+  if (highActions.length > 0) {
+    npcHintLines.push("## 【NPC 行为指引｜仅供主笔参考，不是玩家可见文本】");
+    for (const a of highActions) {
+      npcHintLines.push(`NPC行为指引：${a.npc_code} 应当 ${a.action}`);
+    }
+  }
+  const npcHintBlock = npcHintLines.join("\n");
+
+  // 剧情分支提示：仅注入 seed_code 中数值后缀 >= 7 的种子
+  const branchSeeds = opts?.storyBranchSeeds ?? [];
+  const branchHintLines: string[] = [];
+  for (const seed of branchSeeds) {
+    const numMatch = seed.seed_code.match(/(\d+)$/);
+    const num = numMatch ? parseInt(numMatch[1], 10) : 0;
+    if (num >= 7) {
+      branchHintLines.push(`剧情分支提示：${seed.summary}`);
+    }
+  }
+  const branchHintBlock = branchHintLines.length > 0
+    ? ["## 【剧情分支提示｜仅供主笔参考，不是玩家可见文本】", ...branchHintLines].join("\n")
+    : "";
+
+  // 连续性警告：仅注入 severity=high 的警告
+  const warnings = opts?.consistencyWarnings ?? [];
+  const warningLines: string[] = [];
+  for (const w of warnings) {
+    if (w.severity === "high") {
+      warningLines.push(`连续性警告：${w.message}`);
+    }
+  }
+  const warningBlock = warningLines.length > 0
+    ? ["## 【连续性警告｜仅供主笔参考，不是玩家可见文本】", ...warningLines].join("\n")
+    : "";
+
+  // 玩家私有伏笔：按 tag 分类格式化，注入主笔 prompt 作为写作约束
+  const playerHooks = opts?.playerPrivateHooks ?? [];
+  const recallHooks = playerHooks.filter((h) => h.tag === "must_recall");
+  const forbiddenHooks = playerHooks.filter((h) => h.tag === "forbidden_reveal");
+  const hookLines: string[] = [];
+  if (recallHooks.length > 0 || forbiddenHooks.length > 0) {
+    hookLines.push("## 【玩家私有伏笔｜仅供主笔参考，不是玩家可见文本】");
+    for (const h of recallHooks) {
+      hookLines.push(`必须回收的伏笔：${h.summary}`);
+    }
+    for (const h of forbiddenHooks) {
+      hookLines.push(`禁止揭露：${h.summary}`);
+    }
+  }
+  const playerPrivateHooksBlock = hookLines.join("\n");
+
+  if (!d) return [agendaBlock, npcHintBlock, branchHintBlock, warningBlock, playerPrivateHooksBlock, socialWorldHintBlock].filter(Boolean).join("\n\n");
 
   const tension = clampInt(d.tension, 0, 100);
   const stall = clampInt(d.stallCount, 0, 9);
@@ -139,7 +299,7 @@ export function buildServerDirectorHintBlock(
   const recall = asStrArr(d.mustRecallHookCodes, 2);
 
   if (tension <= 0 && stall <= 0 && pending.length === 0 && recall.length === 0) {
-    return agendaBlock;
+    return [npcHintBlock, agendaBlock, branchHintBlock, warningBlock, playerPrivateHooksBlock].filter(Boolean).join("\n\n");
   }
 
   const lines: string[] = [];
@@ -160,5 +320,5 @@ export function buildServerDirectorHintBlock(
 
   const digestBlock = lines.join("\n");
   const clippedDigestBlock = digestBlock.length <= 600 ? digestBlock : digestBlock.slice(0, 600);
-  return [clippedDigestBlock, agendaBlock, socialWorldHintBlock].filter(Boolean).join("\n\n");
+  return [clippedDigestBlock, npcHintBlock, agendaBlock, branchHintBlock, warningBlock, playerPrivateHooksBlock, socialWorldHintBlock].filter(Boolean).join("\n\n");
 }

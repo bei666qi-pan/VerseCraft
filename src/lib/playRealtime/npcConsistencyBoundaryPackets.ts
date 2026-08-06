@@ -17,7 +17,7 @@ import { buildThreatPacket } from "./stage2Packets";
 import { buildMultiNpcPersonaBoundaryPacketObject } from "@/lib/playRealtime/multiNpcPersonaPackets";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { recordSceneActorGateTelemetry } from "@/lib/observability/versecraftRolloutMetrics";
-import { buildSceneActorGate, compactSceneActorGatePacket, type SceneActorGateResult } from "./sceneActorGate";
+import { buildSceneActorGate, compactSceneActorGatePacket, compactSceneActorGatePacketMicro, type SceneActorGateResult } from "./sceneActorGate";
 
 export type NpcConsistencyEpistemicCounts = {
   actorKnownFactCount: number;
@@ -113,6 +113,8 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
   maxChars?: number;
   /** 未传则等价于全开 */
   rollout?: Partial<NpcConsistencyBoundaryRollout>;
+  /** fast lane (contextMode=minimal) 使用 micro scene actor gate，仅含 focusNpcId + presentNpcIds */
+  microSceneActorGate?: boolean;
 }): NpcConsistencyBoundaryBuildResult {
   const ro: NpcConsistencyBoundaryRollout = {
     enableNpcCanonGuard: args.rollout?.enableNpcCanonGuard !== false,
@@ -134,7 +136,11 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
         relationshipHints: prim.relationshipHints,
       })
     : null;
-  const sceneActorGatePacket = sceneActorGate ? compactSceneActorGatePacket(sceneActorGate) : null;
+  const sceneActorGatePacket = sceneActorGate
+    ? args.microSceneActorGate
+      ? compactSceneActorGatePacketMicro(sceneActorGate)
+      : compactSceneActorGatePacket(sceneActorGate)
+    : null;
   recordBoundarySceneActorGateTelemetry(sceneActorGate, sceneActorGatePacket);
   const nearbyNpcIds = sceneActorGate ? sceneActorGate.presentNpcIds : legacyNearbyNpcIds;
   const focusNpcForBaseline = sceneActorGate ? sceneActorGate.focusNpcId : legacyFocusNpcId;

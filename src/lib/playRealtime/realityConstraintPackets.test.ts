@@ -20,11 +20,10 @@ test("deduped reality packet preserves turn facts while removing repeated prose"
   const full = buildRealityConstraintPacketBlock({ ...args, maxChars: 2600 });
   const compact = buildRealityConstraintPacketBlock({ ...args, maxChars: 2600, dedupeStableRules: true });
   assert.ok(compact.length < full.length * 0.55, `${compact.length} !< ${full.length} * 0.55`);
-  assert.match(compact, /reality_constraint_v2_compact/);
+  assert.match(compact, /reality_constraint_v3_compact/);
   assert.match(compact, /1F_Lobby/);
   assert.match(compact, /N-010/);
-  assert.match(compact, /欣蓝/);
-  assert.doesNotMatch(compact, /latest_user_input_hint|relationship_pressure|epistemic_reaction/);
+  assert.doesNotMatch(compact, /latest_user_input_hint|relationship_pressure|epistemic_reaction|digest|journal_clue/);
   const json = compact.slice(compact.indexOf("\n") + 1);
   assert.doesNotThrow(() => JSON.parse(json));
 });

@@ -63,8 +63,14 @@ function mapRowToCandidate(row: VectorChunkRow): RetrievalCandidate {
  * 只依赖 `vectorQuery` 字段（`Pick`，而非完整 `RetrievalQuery`），这样 `retrieveWorldKnowledge.ts`
  * （用 `RuntimeLoreRequest`/`RetrievalPlan`，不是 `RetrievalQuery`）也能直接传一个临时对象调用，
  * 不需要伪造一份完整的 `RetrievalQuery`。
+ *
+ * `scopeFilter` 必须由调用方传入（与 exact/tag/fts 三层使用相同的
+ * `mergeScopeFilterSql` 结果），确保向量检索不泄露 private/session 数据。
  */
-export async function vectorSearch(query: Pick<RetrievalQuery, "vectorQuery">): Promise<RetrievalCandidate[]> {
+export async function vectorSearch(
+  query: Pick<RetrievalQuery, "vectorQuery">,
+  scopeFilter?: { sql: string; params: unknown[] },
+): Promise<RetrievalCandidate[]> {
   const vq = query.vectorQuery;
   if (!vq || !Array.isArray(vq.embedding) || vq.embedding.length === 0) return [];
 
@@ -77,20 +83,25 @@ export async function vectorSearch(query: Pick<RetrievalQuery, "vectorQuery">): 
     const client = await pool.connect();
     try {
       const literal = toPgVectorLiteral(vq.embedding);
+      const scopeSql = scopeFilter?.sql ?? "(c.visibility_scope = 'global')";
+      const scopeParams = scopeFilter?.params ?? [];
+      const vectorParamIdx = scopeParams.length + 1;
+      const limitParamIdx = scopeParams.length + 2;
       const ret = await client.query<VectorChunkRow>(
         `
           SELECT
             c.id AS chunk_id, c.entity_id, e.code, e.canonical_name, e.entity_type,
             c.chunk_index, c.content, c.importance AS chunk_importance, c.visibility_scope,
-            (c.embedding_vector <=> $1::vector) AS distance
+            (c.embedding_vector <=> $${vectorParamIdx}::vector) AS distance
           FROM world_knowledge_chunks c
           JOIN world_entities e ON e.id = c.entity_id
-          WHERE c.embedding_status = 'ready'
+          WHERE (${scopeSql})
+            AND c.embedding_status = 'ready'
             AND c.embedding_vector IS NOT NULL
-          ORDER BY c.embedding_vector <=> $1::vector
-          LIMIT $2
+          ORDER BY c.embedding_vector <=> $${vectorParamIdx}::vector
+          LIMIT $${limitParamIdx}
         `,
-        [literal, topK]
+        [...scopeParams, literal, topK],
       );
       return ret.rows.filter((r) => r.distance <= maxDistance).map(mapRowToCandidate);
     } finally {

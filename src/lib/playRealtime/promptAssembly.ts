@@ -6,15 +6,19 @@
 
 import type { AnalyticsPlatform } from "@/lib/analytics/types";
 import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+import { startStageSpan } from "@/lib/observability/langfuse";
 import { envNumber } from "@/lib/config/envRaw";
 import { resolveAiEnv } from "@/lib/ai/config/env";
 import { resolvePlayerChatMaxTokensForNarrativeBudget } from "@/lib/ai/tasks/taskPolicy";
 import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
-import { buildStyleGuidePacketBlock, buildDynamicPlayerDmSystemSuffix, getPlayerDmPromptVersion, stablePromptHash } from "@/lib/playRealtime/playerChatSystemPrompt";
+import { buildStyleGuidePacketBlock, buildDynamicPlayerDmSystemSuffix, estimatePromptTokens, getPlayerDmPromptVersion, stablePromptHash } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { buildNpcProactiveGrantNarrativeBlock } from "@/lib/tasks/taskV2";
 import { build7FConspiracyNarrativeBlock } from "@/lib/revive/conspiracy";
 import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
-import { loadDueDirectorAgenda } from "@/lib/worldEngine/agenda";
+import { buildDirectorHintBlock } from "@/lib/langgraph/directorHintBuilder";
+import type { WorldEngineStructuredDelta } from "@/lib/worldEngine/contracts";
+import type { WorldDirectorState } from "@/lib/worldEngine/directorState";
+import { loadDueDirectorAgenda, loadRecentNpcActions, loadRecentBranchSeedsAndWarnings, loadLanggraphHintBlock, loadRecentPlayerHooks, type DirectorAgendaLoadResult } from "@/lib/worldEngine/agenda";
 import { resolveWorldDirectorConfig } from "@/lib/worldEngine/config";
 import { resolveSocialWorldConfig } from "@/lib/socialWorld/config";
 import { loadDueSocialEventsForPrompt } from "@/lib/socialWorld/persistence";
@@ -44,8 +48,7 @@ import {
 import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
 import { buildProtagonistAnchorPacketBlock } from "@/lib/playRealtime/protagonistAnchorPackets";
-import { buildTurnModePolicyPacketBlock } from "@/lib/playRealtime/turnModePackets";
-import { buildNarrativeBudgetPacketBlock, resolveNarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
+import { resolveNarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
 import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
 import { buildNarrativeDirectiveBlock } from "@/lib/playRealtime/narrativeDirectivePackets";
 import { computeNpcFirstEncounterEchoPlan } from "@/lib/playerEcho/npcFirstEncounter";
@@ -55,6 +58,7 @@ import type { PlayerEchoCanon } from "@/lib/playerEcho/types";
 import { buildNpcKnowledgePacket, inferNpcKnowledgeFloorId } from "@/lib/npcKnowledge/npcKnowledgeResolver";
 import { getFactsForFloor, getFactsForNpc, listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
 import { extractLastAssistantNarrativeTail, inferPlannedTurnMode } from "@/lib/turnEngine/requestMetadata";
+import { computeNpcTurnState, buildNpcTurnStatePacket, estimateNpcTurnStatePacketChars } from "@/lib/turnEngine/npcTurnState";
 import {
   buildEpistemicInput,
   buildEpistemicPromptContext,
@@ -410,15 +414,19 @@ export async function buildPlayerChatMessages(
     playerContext,
     serviceState,
   });
+  // When NPC belief graph validation is active, the code-level validators
+  // (applyNpcProactiveGrantGuard, ensure7FConspiracyTask) already enforce
+  // NPC task grant and conspiracy constraints post-generation, so the
+  // narrative prompt blocks can be slimmed.
   const npcTaskNarrativeBlock =
-    !laneSideEffectPlan.compactPrompt
+    !laneSideEffectPlan.compactPrompt && !verseRollout.enableNpcBeliefGraph
       ? buildNpcProactiveGrantNarrativeBlock({
           playerContext,
           latestUserInput,
         })
       : "";
   const conspiracyNarrativeBlock =
-    !laneSideEffectPlan.compactPrompt
+    !laneSideEffectPlan.compactPrompt && !verseRollout.enableNpcBeliefGraph
       ? build7FConspiracyNarrativeBlock({
           playerContext,
           latestUserInput,
@@ -437,8 +445,44 @@ export async function buildPlayerChatMessages(
           turnIndex: totalRounds,
           limit: worldDirectorConfig.maxDueHints,
           timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
+        }).catch((): DirectorAgendaLoadResult => ({
+          items: [],
+          enforcerRejectedCount: 0,
+          enforcerRejectionReasons: [],
+        }))
+      : Promise.resolve({
+          items: [],
+          enforcerRejectedCount: 0,
+          enforcerRejectionReasons: [],
+        } as DirectorAgendaLoadResult);
+  const recentNpcActionsPromise =
+    sessionId && worldDirectorConfig.hintInjectionEnabled
+      ? loadRecentNpcActions({
+          sessionId,
+          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
         }).catch(() => [])
       : Promise.resolve([]);
+  const branchSeedsAndWarningsPromise =
+    sessionId && worldDirectorConfig.hintInjectionEnabled
+      ? loadRecentBranchSeedsAndWarnings({
+          sessionId,
+          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
+        }).catch(() => ({ seeds: [], warnings: [] }))
+      : Promise.resolve({ seeds: [], warnings: [] });
+  const playerHooksPromise =
+    sessionId && worldDirectorConfig.hintInjectionEnabled
+      ? loadRecentPlayerHooks({
+          sessionId,
+          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
+        }).catch(() => [])
+      : Promise.resolve([]);
+  const langgraphHintBlockPromise =
+    sessionId && worldDirectorConfig.enableLangGraph
+      ? loadLanggraphHintBlock({
+          sessionId,
+          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
+        }).catch(() => null)
+      : Promise.resolve(null);
   const socialWorldHintPromise = loadSocialWorldHintForPrompt({
     sessionId,
     nowTurn: totalRounds,
@@ -447,17 +491,33 @@ export async function buildPlayerChatMessages(
     timeoutMs: socialWorldConfig.queryTimeoutMs,
     budget: socialWorldConfig.budget,
   });
-  let dueDirectorAgendaForPrompt: Awaited<typeof dueDirectorAgendaPromise> = [];
+  let dueDirectorAgendaForPrompt: Awaited<typeof dueDirectorAgendaPromise> = {
+    items: [],
+    enforcerRejectedCount: 0,
+    enforcerRejectionReasons: [],
+  };
   let injectedDirectorAgendaIds: number[] = [];
+  let recentNpcActionsForPrompt: Awaited<typeof recentNpcActionsPromise> = [];
+  let recentBranchSeedsAndWarnings: Awaited<typeof branchSeedsAndWarningsPromise> = { seeds: [], warnings: [] };
+  let recentPlayerHooks: Awaited<typeof playerHooksPromise> = [];
+  let langgraphHintBlockFromDb: string | null = null;
 
-  const [, , dueDirectorAgendaItems, socialWorldHintForPrompt] = await Promise.all([
+  const [, , dueDirectorAgendaItems, socialWorldHintForPrompt, recentNpcActions, branchSeedsWarnings, playerHooks, langgraphHintBlockResolved] = await Promise.all([
     runControlPreflightP,
     loreRetrievalP,
     dueDirectorAgendaPromise,
     socialWorldHintPromise,
+    recentNpcActionsPromise,
+    branchSeedsAndWarningsPromise,
+    playerHooksPromise,
+    langgraphHintBlockPromise,
   ]);
   dueDirectorAgendaForPrompt = dueDirectorAgendaItems;
-  injectedDirectorAgendaIds = dueDirectorAgendaItems.map((item) => item.id).filter((id) => Number.isFinite(id));
+  injectedDirectorAgendaIds = dueDirectorAgendaItems.items.map((item) => item.id).filter((id) => Number.isFinite(id));
+  recentNpcActionsForPrompt = recentNpcActions;
+  recentBranchSeedsAndWarnings = branchSeedsWarnings;
+  recentPlayerHooks = playerHooks;
+  langgraphHintBlockFromDb = langgraphHintBlockResolved;
   void injectedDirectorAgendaIds; // used downstream by external callers after returning
   const socialWorldHintBlock = socialWorldHintForPrompt?.block ?? "";
   const injectedSocialEventIds = socialWorldHintForPrompt?.projectedEventIds ?? [];
@@ -479,9 +539,61 @@ export async function buildPlayerChatMessages(
   };
   const directorHintBlock = (() => {
     try {
+      // LangGraph path: prefer the pre-built hint stored in the agenda snapshot
+      // (richer — contains phase, intent, pacing, key events, NPC actions, forbidden outcomes).
+      if (worldDirectorConfig.enableLangGraph) {
+        // If a LangGraph hint block was persisted, use it directly.
+        if (langgraphHintBlockFromDb) {
+          return langgraphHintBlockFromDb;
+        }
+
+        // Fallback: rebuild from available DB data (less rich, used when no
+        // LangGraph tick has run yet for this session).
+        const hasAgenda = dueDirectorAgendaForPrompt.items.length > 0;
+        const hasDigest = directorDigestForPrompt != null;
+        const hasPlan = hasAgenda || hasDigest;
+
+        if (!hasPlan) {
+          return "";
+        }
+
+        const structuredDelta = (
+          directorDigestForPrompt != null &&
+          typeof directorDigestForPrompt === "object" &&
+          !Array.isArray(directorDigestForPrompt)
+            ? (directorDigestForPrompt as WorldEngineStructuredDelta)
+            : null
+        );
+
+        const directorState: WorldDirectorState = {
+          sessionId: sessionId ?? "",
+          userId,
+          turnIndex: totalRounds,
+          phase: structuredDelta?.current_phase ?? "quiet",
+          pacing: {
+            tension: structuredDelta?.pacing_assessment?.tension ?? 0.3,
+            mystery: structuredDelta?.pacing_assessment?.mystery ?? 0.5,
+            fatigue: structuredDelta?.pacing_assessment?.fatigue ?? 0.2,
+            progress: structuredDelta?.pacing_assessment?.progress ?? 0.3,
+            agency_health: structuredDelta?.pacing_assessment?.agency_health ?? 0.75,
+            reveal_pressure: structuredDelta?.pacing_assessment?.reveal_pressure ?? 0.25,
+          },
+          recentDirectorIntent: structuredDelta?.director_intent ?? null,
+          worldRevision: null,
+        };
+
+        return buildDirectorHintBlock({
+          hasPlan: true,
+          planConfidence: "normal",
+          structuredDelta,
+          directorState,
+        });
+      }
+
+      // Legacy path: existing behavior unchanged
       return buildServerDirectorHintBlock(
         directorDigestForPrompt,
-        dueDirectorAgendaForPrompt.map((item) => ({
+        dueDirectorAgendaForPrompt.items.map((item) => ({
           id: item.id,
           eventCode: item.eventCode,
           title: item.title,
@@ -491,7 +603,17 @@ export async function buildPlayerChatMessages(
           forbiddenOutcomes: item.forbiddenOutcomes,
           salience: item.salience,
           revealPolicy: item.revealPolicy,
-        }))
+        })),
+        {
+          directorIntent: dueDirectorAgendaForPrompt.directorIntent,
+          currentPhase: dueDirectorAgendaForPrompt.currentPhase,
+          pacingSummary: dueDirectorAgendaForPrompt.pacingSummary,
+          socialWorldHintBlock,
+          npcActions: recentNpcActionsForPrompt,
+          storyBranchSeeds: recentBranchSeedsAndWarnings.seeds,
+          consistencyWarnings: recentBranchSeedsAndWarnings.warnings,
+          playerPrivateHooks: recentPlayerHooks,
+        }
       );
     } catch {
       return "";
@@ -732,15 +854,26 @@ export async function buildPlayerChatMessages(
     preflightFailed: pipelinePreflightFailed,
   });
 
+  // When both epistemic alert augmentation and residue augmentation are empty,
+  // skip both lines entirely — saves ~100–300 chars per turn with no epistemic issues.
+  const hasEpistemicAugmentation =
+    Boolean(epistemicAlertAugmentation) || Boolean(epistemicResiduePlan.augmentationBlock);
+
   const controlAndLoreAugmentation = [
     contextMode === "minimal" ? "" : controlAugmentation,
     contextMode === "minimal" ? "" : serviceContextBlock,
     contextMode === "minimal" ? "" : directorHintBlock,
-    npcTaskNarrativeBlock,
+    contextMode === "minimal" ? "" : npcTaskNarrativeBlock,
     conspiracyNarrativeBlock,
-    epistemicAlertAugmentation,
-    epistemicResiduePlan.augmentationBlock,
-    socialWorldHintBlock,
+    ...(hasEpistemicAugmentation
+      ? [contextMode === "minimal" ? "" : epistemicAlertAugmentation, epistemicResiduePlan.augmentationBlock]
+      : []),
+    // When social events have been loaded (code-validated at creation) and
+    // the narrative safety hard gate runs post-generation, the social world
+    // constraint enforcement is already covered by code — skip this block.
+    contextMode === "minimal" || (injectedSocialEventIds.length > 0 && laneSideEffectPlan.requireNarrativeSafetyHardGate)
+      ? ""
+      : socialWorldHintBlock,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -778,7 +911,8 @@ export async function buildPlayerChatMessages(
       publicFactCount: epistemicPromptMetrics.publicFactCount,
       forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
     },
-    maxChars: contextMode === "minimal" ? 560 : 1600,
+    maxChars: contextMode === "minimal" ? 280 : 800,
+    microSceneActorGate: contextMode === "minimal",
     rollout: {
       enableNpcCanonGuard: epistemicRolloutFlags.enableNpcCanonGuard,
       enableNpcBaselineAttitude: epistemicRolloutFlags.enableNpcBaselineAttitude,
@@ -791,55 +925,26 @@ export async function buildPlayerChatMessages(
     !useFastLaneCompactDynamicPackets
       ? buildStyleGuidePacketBlock()
       : "";
+  // Minimal context mode: the compact stable prompt already covers style and continuity
+  // guidance, so skip the heavier narrative style bible and continuity block buildup.
   const narrativeStyleBibleBlock =
-    verseRollout.enableNarrativeStyleBible && !useFastLaneCompactDynamicPackets
+    verseRollout.enableNarrativeStyleBible && !useFastLaneCompactDynamicPackets && contextMode !== "minimal"
       ? buildNarrativeStyleBiblePacketBlock({
           rawAction: turnRawAction ?? latestUserInput,
-          maxChars: contextMode === "minimal" ? 720 : 1200,
-          includeExamples: contextMode !== "minimal",
+          maxChars: 1200,
+          includeExamples: true,
         })
       : "";
-  const worldFactAuditBlock = !useFastLaneCompactDynamicPackets
-    && verseRollout.enableWorldFactRegistry
-    ? [
-        "## 【world_fact_audit_v1】",
-        JSON.stringify({
-          required_when_claiming_world_facts: ["factId", "source", "truthLevel", "revealTier"],
-          strong_fact_categories: [
-            "root_cause",
-            "relationship",
-            "location_transition",
-            "event_stage",
-            "item_acquisition",
-            "npc_identity_or_deep_role",
-            "task_completion",
-          ],
-          output_required_when_claiming_strong_facts: {
-            _narrative_audit: {
-              used_fact_ids: ["fact:..."],
-              mentioned_entity_ids: ["N-001", "location_or_item_id"],
-              speaker_npc_id: focusNpcForPrompt ?? undefined,
-              candidate_new_facts: [
-                {
-                  text: "未证实候选事实，不得写成确定世界事实",
-                  category: "root_cause|relationship|location_transition|event_stage|item_acquisition|npc_identity|task_completion",
-                  confidence: 0.2,
-                  proposed_source: "player_observed|npc_belief|world_engine",
-                },
-              ],
-            },
-          },
-          hard_rule: "Do not state apartment root, NPC relation, event stage, item ownership, floor anomaly, or key history as fact unless backed by a listed factId.",
-        }),
-      ].join("\n")
-    : "";
+  // worldFactAuditBlock removed: redundant with validateNarrative + unsupportedFactDetector.
   const styleGuideBlock = legacyStyleGuideBlock;
-  const narrativeContinuityBlock = buildNarrativeContinuityPacketBlock({
-    previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
-    rawAction: turnRawAction ?? latestUserInput,
-    dice: turnDice,
-    maxChars: contextMode === "minimal" ? 180 : 900,
-  });
+  const narrativeContinuityBlock = contextMode === "minimal"
+    ? ""
+    : buildNarrativeContinuityPacketBlock({
+        previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
+        rawAction: turnRawAction ?? latestUserInput,
+        dice: turnDice,
+        maxChars: 900,
+      });
   const povBlock = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
   const npcGenderPronounBlock = buildNpcGenderPronounPacketBlock({
     focusNpcId: focusNpcForPrompt,
@@ -889,8 +994,25 @@ export async function buildPlayerChatMessages(
     isChapterClimax: directorBeatHint === "peak" || directorBeatHint === "climax" || (directorTension ?? 0) >= 95,
     chapter: extractChapterNarrativeBudgetInput(clientState),
   });
+  // narrativeBudgetBlock trimmed to budget caps only (tier, chars, stopRule). Prose instructions dropped.
   const narrativeBudgetBlock = laneSideEffectPlan.requirePacingValidation
-    ? buildNarrativeBudgetPacketBlock(narrativeBudget)
+    ? (() => {
+        const caps: Record<string, unknown> = {
+          schema: "narrative_budget_v2",
+          tier: narrativeBudget.tier,
+          minChars: narrativeBudget.minChars,
+          targetChars: narrativeBudget.targetChars,
+          maxChars: narrativeBudget.maxChars,
+          stopRule: narrativeBudget.stopRule,
+        };
+        if (narrativeBudget.chapter) {
+          caps.chapter = {
+            remainingHardChars: narrativeBudget.chapter.remainingHardChars,
+            shouldClose: narrativeBudget.chapter.shouldClose,
+          };
+        }
+        return `## 【narrative_budget_packet】\n${JSON.stringify(caps)}`;
+      })()
     : "";
   const narrativeBudgetTier = narrativeBudget.tier;
   const narrativeBudgetTargetChars = narrativeBudget.targetChars;
@@ -976,14 +1098,7 @@ export async function buildPlayerChatMessages(
     }).catch(() => {});
   }
 
-  const turnModePolicyBlock =
-    !useFastLaneCompactDynamicPackets && (verseRollout.enableLongNarrativeMode || verseRollout.enableDecisionTurnMode)
-      ? buildTurnModePolicyPacketBlock({
-          plannedMode: plannedTurnMode.mode,
-          reason: plannedTurnMode.reason,
-          maxChars: contextMode === "minimal" ? 420 : 860,
-        })
-      : "";
+  // turnModePolicyBlock removed: code controls maxTokens; narrative length is governed by narrativeBudgetBlock.
   const protagonistAnchorBlock = verseRollout.enableProtagonistAnchorPacket && !useFastLaneCompactDynamicPackets
     ? buildProtagonistAnchorPacketBlock({
         playerContext: playerContextForPrompt,
@@ -991,14 +1106,15 @@ export async function buildPlayerChatMessages(
         maxChars: contextMode === "minimal" ? 420 : 980,
       })
     : "";
+  // realityConstraintBlock trimmed to 2-3 essential lines: resolveDmTurn + validateNarrative are the real guardrails.
   const realityConstraintBlock = verseRollout.enableRealityConstraintPacket && !useFastLaneCompactDynamicPackets
     ? buildRealityConstraintPacketBlock({
         playerContext: playerContextForPrompt,
         latestUserInput,
         playerLocationFallback: guessPlayerLocationFromContext(playerContext),
         clientState,
-        maxChars: contextMode === "minimal" ? 520 : 1400,
-        dedupeStableRules: verseRollout.enablePromptPacketDedupV1,
+        maxChars: contextMode === "minimal" ? 240 : 400,
+        dedupeStableRules: true,
       })
     : "";
   // Phase-5: read due foreshadow entries for directive injection (fail-open, non-blocking)
@@ -1021,6 +1137,9 @@ export async function buildPlayerChatMessages(
           dueForeshadow: dueForeshadowEntries as any,
         })
       : "";
+  // NPC 回合状态：基于场景和对话历史计算每个在场 NPC 的对话阶段
+  const npcTurnState = computeNpcTurnState(playerContext, rawChatMessages);
+  const npcTurnStateBlock = buildNpcTurnStatePacket(npcTurnState);
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     languageInstruction,
     memoryBlock,
@@ -1030,11 +1149,9 @@ export async function buildPlayerChatMessages(
     runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
     protagonistAnchorBlock,
-    turnModePolicyBlock,
     narrativeStyleBibleBlock: useFastLaneCompactDynamicPackets ? "" : narrativeStyleBibleBlock,
     narrativeBudgetBlock,
     playerEchoBlock: playerEchoPromptBlock,
-    worldFactAuditBlock,
     realityConstraintBlock,
     npcConsistencyBoundaryBlock: useFastLaneCompactDynamicPackets ? "" : npcConsistencyBoundaryFinal.text,
     narrativeContinuityBlock: useFastLaneCompactDynamicPackets ? "" : narrativeContinuityBlock,
@@ -1042,6 +1159,7 @@ export async function buildPlayerChatMessages(
     npcGenderPronounBlock: useFastLaneCompactDynamicPackets ? "" : npcGenderPronounBlock,
     styleGuideBlock,
     narrativeDirectiveBlock,
+    npcTurnStateBlock,
     latestUserInput,
   });
   const aiEnvForSystem = resolveAiEnv();
@@ -1065,12 +1183,55 @@ export async function buildPlayerChatMessages(
   const promptStablePrefixHash = stablePromptHash(playerDmStablePrefix);
   const stableTokenEstimate = Math.ceil(stableCharLen / 4);
   const dynamicTokenEstimate = Math.ceil(dynamicCharLen / 4);
+  const totalSystemPromptChars = systemContent.length;
+  const totalSystemPromptTokens = estimatePromptTokens(systemContent);
+
+  // Langfuse stage span: track prompt token reduction metrics
+  const promptAssemblySpan = startStageSpan({
+    name: "prompt.assembly",
+    status: "ok",
+    resultSummary: {
+      stablePrefixChars: stableCharLen,
+      dynamicSuffixChars: dynamicCharLen,
+      totalSystemPromptChars,
+      estimatedTokens: totalSystemPromptTokens,
+    },
+  });
+  promptAssemblySpan.end();
+
+  // Telemetry: fire-and-forget prompt assembly metrics
+  if (sessionId) {
+    void recordGenericAnalyticsEvent({
+      eventId: `${requestId}:prompt_assembly_completed`,
+      idempotencyKey: `${requestId}:prompt_assembly_completed`,
+      userId,
+      guestId: userId ? null : chatGuestId,
+      sessionId,
+      eventName: "prompt_assembly_completed",
+      eventTime: new Date(),
+      page: "/play",
+      source: "chat",
+      platform,
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {
+        requestId,
+        stablePrefixChars: stableCharLen,
+        dynamicSuffixChars: dynamicCharLen,
+        totalSystemPromptChars,
+        estimatedTokens: totalSystemPromptTokens,
+        promptVersion,
+        promptStablePrefixHash,
+      },
+    }).catch(() => {});
+  }
 
   // per-component character counts (analytics telemetry)
   const promptComponentChars: Record<string, number> = {
     stable: stableCharLen,
     dynamic: dynamicCharLen,
     memory: memoryBlock.length,
+    npcTurnState: estimateNpcTurnStatePacketChars(npcTurnState),
   };
 
   // player chat max tokens (extracted from resolution)
@@ -1122,5 +1283,6 @@ export async function buildPlayerChatMessages(
     directorDigestForPrompt,
     socialWorldConfig,
     worldDirectorConfig,
+    totalSystemPromptChars,
   };
 }

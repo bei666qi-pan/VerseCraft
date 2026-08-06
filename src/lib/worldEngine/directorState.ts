@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { pool } from "@/db/index";
 import type { DirectorPhase, DirectorPlan } from "./contracts";
 
@@ -65,7 +66,10 @@ export async function loadDirectorState(sessionId: string): Promise<WorldDirecto
   let client;
   try {
     client = await pool.connect();
-  } catch {
+  } catch (e) {
+    console.warn('[worldEngine] pool.connect failed in loadDirectorState', {
+      message: e instanceof Error ? e.message : String(e),
+    });
     return null;
   }
   try {
@@ -98,7 +102,10 @@ export async function loadDirectorState(sessionId: string): Promise<WorldDirecto
       worldRevision: row.world_revision,
       updatedAt: row.updated_at?.toISOString?.(),
     };
-  } catch {
+  } catch (e) {
+    console.warn('[worldEngine] query failed in loadDirectorState', {
+      message: e instanceof Error ? e.message : String(e),
+    });
     return null;
   } finally {
     client.release();
@@ -144,16 +151,16 @@ export function computeNextDirectorState(args: {
   };
 }
 
-export async function saveDirectorState(state: WorldDirectorState): Promise<void> {
+export async function saveDirectorState(
+  state: WorldDirectorState,
+  client?: PoolClient,
+): Promise<void> {
   if (!state.sessionId) return;
-  let client;
+  let ownedClient: PoolClient | null = null;
   try {
-    client = await pool.connect();
-  } catch {
-    return;
-  }
-  try {
-    await client.query(
+    const c = client ?? await pool.connect();
+    ownedClient = client ? null : c;
+    await c.query(
       `INSERT INTO world_engine_director_state (
          session_id, user_id, turn_index, phase, pacing_json,
          recent_director_intent, world_revision, updated_at
@@ -177,9 +184,11 @@ export async function saveDirectorState(state: WorldDirectorState): Promise<void
         state.worldRevision,
       ]
     );
-  } catch {
-    /* director state is best-effort */
+  } catch (e) {
+    console.warn('[worldEngine] saveDirectorState failed', {
+      message: e instanceof Error ? e.message : String(e),
+    });
   } finally {
-    client.release();
+    ownedClient?.release();
   }
 }

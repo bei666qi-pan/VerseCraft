@@ -78,3 +78,70 @@ test("rewriteNpcNameAliases: handles multiple aliases", () => {
   assert.ok(!result.narrative.includes("小石"));
   assert.ok(!result.narrative.includes("老李"));
 });
+
+// ═══ Regression: Gap 2 — rewriteNpcNameAliases edge cases ═══
+
+test("rewriteNpcNameAliases: alias at absolute end of narrative is rewritten", () => {
+  // The endsWith fallback (line 110-113) handles this correctly.
+  const narrative = "你看着小陈";
+  const result = rewriteNpcNameAliases(narrative, [
+    { suspectedAlias: "小陈", possibleCanonName: "麟泽", npcId: "N-015" },
+  ]);
+  assert.equal(result.rewrites, 1);
+  assert.ok(result.narrative.endsWith("麟泽"), "should end with canonical name");
+  assert.ok(!result.narrative.includes("小陈"), "should not contain fabricated alias");
+});
+
+test("rewriteNpcNameAliases: alias at start of narrative followed by verb is rewritten", () => {
+  const narrative = "小陈说，这里不安全。";
+  const result = rewriteNpcNameAliases(narrative, [
+    { suspectedAlias: "小陈", possibleCanonName: "麟泽", npcId: "N-015" },
+  ]);
+  assert.equal(result.rewrites, 1);
+  assert.ok(result.narrative.startsWith("麟泽"), "should start with canonical name");
+});
+
+test("rewriteNpcNameAliases: alias before sentence-ending punctuation is rewritten", () => {
+  // The lookahead includes 。，、！？：；…— so this case is handled correctly.
+  const narrative = "麟泽刚走，小陈。你说呢？";
+  const result = rewriteNpcNameAliases(narrative, [
+    { suspectedAlias: "小陈", possibleCanonName: "麟泽", npcId: "N-015" },
+  ]);
+  assert.equal(result.rewrites, 1);
+  assert.ok(result.narrative.includes("麟泽。"), "alias before period should be rewritten");
+  assert.ok(!result.narrative.includes("小陈"), "should not contain fabricated alias");
+});
+
+test("rewriteNpcNameAliases: alias before newline is NOT rewritten (known gap)", () => {
+  // The lookahead regex (line 98-101) does not include \n, so alias at end of
+  // a paragraph followed by a newline is silently skipped.
+  const narrative = "麟泽站在门口。\n小陈\n下一段开始了。";
+  const result = rewriteNpcNameAliases(narrative, [
+    { suspectedAlias: "小陈", possibleCanonName: "麟泽", npcId: "N-015" },
+  ]);
+  // Known limitation: \n is not in the lookahead character set.
+  assert.ok(result.narrative.includes("\n小陈\n"), "alias before newline is NOT rewritten (known gap)");
+  assert.equal(result.rewrites, 0);
+});
+
+test("rewriteNpcNameAliases: alias before closing Chinese quote is NOT rewritten (known gap)", () => {
+  // The lookahead does not include 」or 』, so "小陈」" is not matched even though
+  // the next character "道" is in the lookahead — the alias must be IMMEDIATELY
+  // followed by a listed character, not separated by a quote mark.
+  const narrative = "「小陈」道，这里很危险。";
+  const result = rewriteNpcNameAliases(narrative, [
+    { suspectedAlias: "小陈", possibleCanonName: "麟泽", npcId: "N-015" },
+  ]);
+  assert.ok(result.narrative.includes("小陈」"), "alias before closing quote is NOT rewritten (known gap)");
+  assert.equal(result.rewrites, 0);
+});
+
+test("rewriteNpcNameAliases: alias followed by comma in dialogue is rewritten", () => {
+  // Commas in the lookahead (，) should match.
+  const narrative = "小陈，你来一下。";
+  const result = rewriteNpcNameAliases(narrative, [
+    { suspectedAlias: "小陈", possibleCanonName: "麟泽", npcId: "N-015" },
+  ]);
+  assert.equal(result.rewrites, 1);
+  assert.ok(result.narrative.startsWith("麟泽，"), "alias before comma should be rewritten");
+});

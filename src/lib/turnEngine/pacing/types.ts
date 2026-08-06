@@ -109,4 +109,8 @@ export type PacingValidationReport = {
   issues: PacingIssue[];
   maxSeverity: PacingSeverity | null;
   telemetry: PacingValidationTelemetry;
+  /** When true, the narrative should be re-validated by lightweight NPC consistency
+   *  checks (persona mixup, offscreen dialogue). Set when a pacing budget breach
+   *  is detected — an over-budget turn is more likely to have rushed NPC behaviour. */
+  needsRevalidate: boolean;
 };

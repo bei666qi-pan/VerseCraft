@@ -31,14 +31,22 @@ export default function HydrationProvider({
     const softDeadlineId = window.setTimeout(() => {
       if (settled) return;
       setStorageMode("degraded");
-      notifyStorageDegraded("本地存储读取较慢，已进入临时恢复模式");
+      notifyStorageDegraded({
+        message: "本地存储读取较慢，已进入临时恢复模式",
+        failedTier: "idb",
+        fallbackTier: "localStorage",
+      });
     }, HYDRATION_SOFT_DEADLINE_MS);
     const hardDeadlineId = window.setTimeout(() => {
       if (settled) return;
       hardReleased = true;
       setStorageMode("degraded");
       setHydrated(true);
-      notifyStorageDegraded("本地存储读取较慢，已进入临时恢复模式");
+      notifyStorageDegraded({
+        message: "本地存储读取较慢，已进入临时恢复模式",
+        failedTier: "idb",
+        fallbackTier: "localStorage",
+      });
     }, HYDRATION_HARD_DEADLINE_MS);
 
     const runRehydrate = async () => {
@@ -57,7 +65,11 @@ export default function HydrationProvider({
       console.warn("[HydrationProvider] Rehydrate deadline fallback activated:", error);
       rehydrateFailed = true;
       setStorageMode("degraded");
-      notifyStorageDegraded("本地存储读取较慢，已进入临时恢复模式");
+      notifyStorageDegraded({
+        message: "本地存储读取较慢，已进入临时恢复模式",
+        failedTier: "idb",
+        fallbackTier: "localStorage",
+      });
     }).finally(() => {
       settled = true;
       window.clearTimeout(softDeadlineId);

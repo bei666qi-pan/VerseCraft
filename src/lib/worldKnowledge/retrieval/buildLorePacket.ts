@@ -5,8 +5,11 @@ import type { LoreFact, LorePacket, RetrievalCandidate, RetrievalDebugMeta, Runt
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
 function compactLine(fact: LoreFact): string {
-  const shortText = fact.canonicalText.replace(/\s+/g, " ").slice(0, 180);
-  return `- [${fact.factType}|${fact.layer}] ${shortText}`;
+  const shortText = fact.canonicalText.replace(/\s+/g, " ").slice(0, 200);
+  const source = fact.source?.entityId ? `[src:${fact.source.entityId}]` : "";
+  const typeTag = fact.factType;
+  const hotMarker = fact.isHot ? "🔥" : "";
+  return `- ${hotMarker}[${typeTag}|${fact.layer}]${source} ${shortText}`;
 }
 
 function trimByCharBudget(facts: LoreFact[], charBudget: number): { facts: LoreFact[]; trimmed: boolean } {
@@ -36,6 +39,9 @@ export function buildLorePacket(args: {
   cache: RetrievalDebugMeta["cache"];
   dbRoundTrips: number;
 }): LorePacket {
+  // Safety cap: fusion already limits candidates to topK (default 14 via
+  // VERSECRAFT_HYBRID_TOP_K). This .slice(0, 18) is a secondary ceiling in
+  // case fusion is bypassed or its topK is raised above this constant.
   const allFacts = args.candidates.map((c) => c.fact).slice(0, WORLD_KNOWLEDGE_MAX_RETRIEVED_FACTS);
   const byPriority = allFacts;
   const tokenDerivedCharBudget = Math.max(
@@ -59,9 +65,23 @@ export function buildLorePacket(args: {
   }
 
   let compactPromptText = [
-    "【RAG-Lore精简片段】",
-    ...retrievedFacts.map(compactLine),
-  ].join("\n");
+    "【世界知识检索】", // World Knowledge Retrieval header
+    coreAnchors.length > 0 ? `▎核心真相 (${coreAnchors.length}条)` : "",
+    ...coreAnchors.map(compactLine),
+    sceneFacts.length > 0 ? `\n▎场景事实 (${sceneFacts.length}条)` : "",
+    ...sceneFacts.map(compactLine),
+    privateFacts.length > 0 ? `\n▎私有知识 (${privateFacts.length}条)` : "",
+    ...privateFacts.map(compactLine),
+    retrievedFacts
+      .filter((f) => !coreAnchors.includes(f) && !sceneFacts.includes(f) && !privateFacts.includes(f))
+      .length > 0
+      ? `\n▎其他相关 (${retrievedFacts.filter((f) => !coreAnchors.includes(f) && !sceneFacts.includes(f) && !privateFacts.includes(f)).length}条)`
+      : "",
+    ...retrievedFacts
+      .filter((f) => !coreAnchors.includes(f) && !sceneFacts.includes(f) && !privateFacts.includes(f))
+      .slice(0, 5)
+      .map(compactLine),
+  ].filter(Boolean).join("\n");
   if (compactPromptText.length > WORLD_KNOWLEDGE_MAX_PACKET_CHARS) {
     compactPromptText = compactPromptText.slice(0, WORLD_KNOWLEDGE_MAX_PACKET_CHARS);
   }

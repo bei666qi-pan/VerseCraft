@@ -129,6 +129,150 @@ describe("Intent Router — Mixed Signals", () => {
   });
 });
 
+describe("Intent Router — Inventory Use Signals", () => {
+  const inventoryUseInputs = [
+    "使用药水治疗自己",
+    "使用药剂恢复理智",
+    "喝下药水",
+    "喝下治疗药剂",
+    "服用解毒药剂",
+    "用药水治疗伤口",
+    "使用背包里的绷带",
+    "使用背包中的道具",
+    "从背包拿出药水",
+    "涂抹药膏在伤口上",
+    "使用治疗道具",
+    "吃下回复药",
+  ];
+
+  for (const input of inventoryUseInputs) {
+    it(`"${input}" → mechanics`, () => {
+      const result = classifyMechanicsIntent(input);
+      assert.strictEqual(
+        result.classification,
+        "mechanics",
+        `"${input}" should be mechanics, got ${result.classification}: ${result.reason}`
+      );
+      assert.strictEqual(shouldAttemptDmAgent(input), true);
+    });
+  }
+});
+
+describe("Intent Router — NPC Inquiry Signals", () => {
+  const npcInquiryInputs = [
+    "这个NPC卖什么",
+    "铁匠出售什么东西",
+    "阿织有什么商品",
+    "这个商人有什么货物",
+    "有什么服务可以提供",
+    "看看有什么可以买的",
+    "能买什么东西",
+    "有什么商品可以购买",
+    "铁匠卖哪些武器",
+    "商店的货物有哪些",
+    "库存有什么",
+  ];
+
+  for (const input of npcInquiryInputs) {
+    it(`"${input}" → mechanics`, () => {
+      const result = classifyMechanicsIntent(input);
+      assert.strictEqual(
+        result.classification,
+        "mechanics",
+        `"${input}" should be mechanics (NPC inquiry), got ${result.classification}: ${result.reason}`
+      );
+      assert.strictEqual(shouldAttemptDmAgent(input), true);
+    });
+  }
+});
+
+describe("Intent Router — Location Lookup Signals", () => {
+  const locationLookupInputs = [
+    "铁匠在哪",
+    "阿织在哪里",
+    "锻造台的位置在哪",
+    "B1有什么",
+    "B2楼层有什么",
+    "这层有什么设施",
+    "这个楼层有什么商店",
+    "一楼有什么",
+    "地下一层有什么",
+    "去哪里找铁匠",
+    "在什么地方可以锻造",
+    "B3有什么房间",
+  ];
+
+  for (const input of locationLookupInputs) {
+    it(`"${input}" → mechanics`, () => {
+      const result = classifyMechanicsIntent(input);
+      assert.strictEqual(
+        result.classification,
+        "mechanics",
+        `"${input}" should be mechanics (location lookup), got ${result.classification}: ${result.reason}`
+      );
+      assert.strictEqual(shouldAttemptDmAgent(input), true);
+    });
+  }
+});
+
+describe("Intent Router — New Intents Do Not Break Existing Classifications", () => {
+  it("narrative inputs still classified as narrative", () => {
+    const narratives = [
+      "你好，请问这里是哪里？",
+      "观察一下周围的环境",
+      "环顾四周",
+      "我感觉有点害怕",
+      "等待一会儿",
+    ];
+    for (const input of narratives) {
+      const result = classifyMechanicsIntent(input);
+      assert.strictEqual(
+        result.classification,
+        "narrative",
+        `"${input}" should remain narrative, got ${result.classification}`
+      );
+    }
+  });
+
+  it("ambiguous inputs still classified as ambiguous", () => {
+    const ambiguous = [
+      "怎么锻造武器？",
+      "什么是战斗系统",
+      "能不能强化",
+      "我不想锻造",
+      "如何修理装备",
+      "可以强化装备吗",
+    ];
+    for (const input of ambiguous) {
+      const result = classifyMechanicsIntent(input);
+      assert.strictEqual(
+        result.classification,
+        "ambiguous",
+        `"${input}" should remain ambiguous, got ${result.classification}`
+      );
+    }
+  });
+
+  it("existing mechanics inputs still classified as mechanics", () => {
+    const mechanics = [
+      "我要锻造一把武器",
+      "攻击面前的敌人",
+      "接受这个任务",
+      "强化装备",
+      "消耗材料锻造",
+      "修理我的武器",
+    ];
+    for (const input of mechanics) {
+      const result = classifyMechanicsIntent(input);
+      assert.strictEqual(
+        result.classification,
+        "mechanics",
+        `"${input}" should remain mechanics, got ${result.classification}`
+      );
+    }
+  });
+});
+
 describe("Intent Router — Determinism", () => {
   it("相同输入多次调用返回相同结果", () => {
     const inputs = ["锻造武器", "你好", "怎么锻造", "观察四周", "攻击"];

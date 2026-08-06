@@ -2,7 +2,10 @@ import type { NarrativeValidationIssue } from "@/lib/turnEngine/validateNarrativ
 import type { NpcKnowledgeValidationIssue } from "@/lib/npcKnowledge/npcKnowledgeValidator";
 import type { UnsupportedFactCandidate } from "@/lib/worldFacts/unsupportedFactDetector";
 import type { PacingIssue } from "@/lib/turnEngine/pacing";
-import { auditEntityWhitelist } from "@/lib/turnEngine/narrativeSafety/entityAudit";
+import {
+  auditEntityWhitelist,
+  collectEpistemicEntityCrossCheck,
+} from "@/lib/turnEngine/narrativeSafety/entityAudit";
 import type {
   NarrativeSafetyDecision,
   NarrativeSafetyInput,
@@ -47,6 +50,8 @@ function toInvariant(code: NarrativeSafetyIssueCode): SafetyInvariantCode | unde
     case "schema_contract_violation":
     case "pacing_budget_breach":
     case "prompt_injection_entity_creation_attempt":
+      return code;
+    case "potential_epistemic_violation":
       return code;
     case "location_conflict_with_delta":
     case "inventory_conflict":
@@ -138,9 +143,9 @@ function fromPacingIssue(issue: PacingIssue): NarrativeSafetyIssue {
   });
 }
 
-function collectWorldFactIssues(input: NarrativeSafetyInput): NarrativeSafetyIssue[] {
+export function collectWorldFactIssues(input: NarrativeSafetyInput): NarrativeSafetyIssue[] {
   const facts = new Map((input.worldFacts ?? []).map((fact) => [fact.factId, fact]));
-  if (facts.size === 0 && !input.usedFactIds?.length) return [];
+  if (facts.size === 0) return [];
 
   const allowed = new Set(input.allowedFactIds ?? []);
   const maxRevealRank = input.maxRevealRank ?? Number.POSITIVE_INFINITY;
@@ -152,7 +157,7 @@ function collectWorldFactIssues(input: NarrativeSafetyInput): NarrativeSafetyIss
       issues.push(
         normalizeIssue({
           code: "used_fact_id_missing_from_registry",
-          severity: "high",
+          severity: "medium",
           source: "worldFactRegistry",
           detail: `fact=${factId}`,
           anchor: factId,
@@ -263,6 +268,7 @@ export function collectSafetyReport(input: NarrativeSafetyInput = {}): Narrative
   }
 
   issues.push(...auditEntityWhitelist(input));
+  issues.push(...collectEpistemicEntityCrossCheck(input));
   issues.push(...collectWorldFactIssues(input));
 
   const deduped = dedupeIssues(issues);

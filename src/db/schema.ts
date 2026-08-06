@@ -3,7 +3,9 @@ import {
   bigserial,
   bigint,
   boolean,
+  check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -11,6 +13,7 @@ import {
   serial,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -25,8 +28,8 @@ export const users = pgTable(
     todayTokensUsed: integer("today_tokens_used").notNull().default(0),
     playTime: integer("play_time").notNull().default(0),
     todayPlayTime: integer("today_play_time").notNull().default(0),
-    lastDataReset: timestamp("last_data_reset").notNull().default(sql`CURRENT_TIMESTAMP`),
-    lastActive: timestamp("last_active").notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastDataReset: timestamp("last_data_reset", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastActive: timestamp("last_active", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     nameUnique: uniqueIndex("users_name_unique").on(table.name),
@@ -44,12 +47,13 @@ export const feedbacks = pgTable(
     content: text("content").notNull(),
     kind: varchar("kind", { length: 24 }).notNull().default("open"),
     clientMeta: jsonb("client_meta").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
-    createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     userIdx: index("feedbacks_user_id_idx").on(table.userId),
     guestIdx: index("feedbacks_guest_id_idx").on(table.guestId),
     createdIdx: index("feedbacks_created_idx").on(table.createdAt),
+    kindCheck: check("feedbacks_kind_check", sql`kind IN ('bug','feature','content','other','open')`),
   })
 );
 
@@ -145,7 +149,7 @@ export const gameSessionMemory = pgTable("game_session_memory", {
   plotSummary: text("plot_summary"),
   playerStatus: jsonb("player_status").$type<Record<string, unknown>>(),
   npcRelationships: jsonb("npc_relationships").$type<Record<string, unknown>>(),
-  updatedAt: timestamp("updated_at")
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`)
     .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
@@ -300,7 +304,7 @@ export const userOnboarding = pgTable("user_onboarding", {
   tasksFirstViewDone: integer("tasks_first_view_done")
     .notNull()
     .default(0),
-  updatedAt: timestamp("updated_at")
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`)
     .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
@@ -325,7 +329,7 @@ export const saveSlots = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     slotId: varchar("slot_id", { length: 64 }).notNull(),
     data: jsonb("data").$type<Record<string, unknown>>().notNull(),
-    updatedAt: timestamp("updated_at")
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`)
       .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
@@ -340,7 +344,7 @@ export const adminStatsSnapshots = pgTable("admin_stats_snapshots", {
   totalUsers: integer("total_users").notNull().default(0),
   totalTokens: integer("total_tokens").notNull().default(0),
   activeUsers: integer("active_users").notNull().default(0),
-  createdAt: timestamp("created_at")
+  createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
@@ -397,7 +401,7 @@ export const analyticsEvents = pgTable(
     /** 与 useGameStore.guestId 对齐（游客长期身份锚点） */
     guestId: varchar("guest_id", { length: 128 }),
     userId: varchar("user_id", { length: 191 })
-      .references(() => users.id, { onDelete: "cascade" })
+      .references(() => users.id, { onDelete: "set null" })
       ,
     sessionId: varchar("session_id", { length: 191 }).notNull(),
     eventName: varchar("event_name", { length: 64 }).notNull(),
@@ -474,6 +478,10 @@ export const analyticsActors = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
+    actorIdTypeKey: unique("analytics_actors_actor_id_type_key").on(
+      table.actorId,
+      table.actorType
+    ),
     actorTypeIdx: index("analytics_actors_actor_type_idx").on(table.actorType),
     userIdx: index("analytics_actors_user_id_idx").on(table.userId),
     guestIdx: index("analytics_actors_guest_id_idx").on(table.guestId),
@@ -500,9 +508,17 @@ export const actorSessions = pgTable(
     idleSec: integer("idle_sec").notNull().default(0),
     /** T8 方案B（2026-07）：心跳限流字段，从 user_sessions/guest_sessions 迁移过来的等价列。 */
     lastPresenceOkAt: timestamp("last_presence_ok_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
+    actorFk: foreignKey({
+      columns: [table.actorId, table.actorType],
+      foreignColumns: [analyticsActors.actorId, analyticsActors.actorType],
+      name: "actor_sessions_actor_fk",
+    }).onDelete("cascade"),
     actorLastSeenIdx: index("actor_sessions_actor_last_seen_idx").on(table.actorId, table.lastSeenAt),
     guestLastSeenIdx: index("actor_sessions_guest_last_seen_idx").on(table.guestId, table.lastSeenAt),
     userLastSeenIdx: index("actor_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt),
@@ -589,7 +605,10 @@ export const userSessions = pgTable(
     chatActionCount: integer("chat_action_count").notNull().default(0),
 
     lastPresenceOkAt: timestamp("last_presence_ok_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     userLastSeenIdx: index("user_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt),
@@ -601,8 +620,7 @@ export const userDailyActivity = pgTable(
   "user_daily_activity",
   {
     userId: varchar("user_id", { length: 191 })
-      .references(() => users.id, { onDelete: "cascade" })
-      .notNull(),
+      .references(() => users.id, { onDelete: "set null" }),
     dateKey: date("date_key").notNull(),
     firstActiveAt: timestamp("first_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
     lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -619,8 +637,7 @@ export const userDailyTokens = pgTable(
   "user_daily_tokens",
   {
     userId: varchar("user_id", { length: 191 })
-      .references(() => users.id, { onDelete: "cascade" })
-      .notNull(),
+      .references(() => users.id, { onDelete: "set null" }),
     dateKey: date("date_key").notNull(),
     dailyTokenCost: integer("daily_token_cost").notNull().default(0),
     dailyPlayDurationSec: integer("daily_play_duration_sec").notNull().default(0),
@@ -644,7 +661,10 @@ export const guestRegistry = pgTable(
     ua: text("ua"),
     ipHash: varchar("ip_hash", { length: 64 }),
     platform: varchar("platform", { length: 32 }).notNull().default("unknown"),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     lastSeenIdx: index("guest_registry_last_seen_at_idx").on(table.lastSeenAt),
@@ -698,7 +718,10 @@ export const adminMetricsDaily = pgTable(
     feedbackSubmittedCount: integer("feedback_submitted_count").notNull().default(0),
     gameCompletedCount: integer("game_completed_count").notNull().default(0),
 
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     dateKeyIdx: index("admin_metrics_daily_date_key_idx").on(table.dateKey),
@@ -712,7 +735,10 @@ export const webTrafficDaily = pgTable(
     dateKey: date("date_key").primaryKey(),
     pageViews: integer("page_views").notNull().default(0),
     uniqueVisitors: integer("unique_visitors").notNull().default(0),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({ dateKeyIdx: index("web_traffic_daily_date_key_idx").on(table.dateKey) })
 );
@@ -1001,6 +1027,64 @@ export const worldRetrievalCacheSnapshots = pgTable(
   })
 );
 
+/**
+ * ========= Knowledge Graph Tables (vc_*) =========
+ *
+ * These tables are created via raw SQL in `src/db/ensureSchema.ts` and are
+ * currently queried via raw `pool.query(...)` in the kg/ module — they are
+ * not driven through Drizzle ORM at this time. The definitions below exist
+ * to reflect the real database structure in schema.ts and provide type-safe
+ * schemas for future migrations or ORM-based queries.
+ *
+ * Columns of type `vector(256)` are mapped as `text` here, following the same
+ * convention used for `world_knowledge_chunks.embedding_vector`. At runtime,
+ * pgvector handles the actual vector type; Drizzle does not have a built-in
+ * vector column type.
+ */
+
+export const vcWorldFact = pgTable(
+  "vc_world_fact",
+  {
+    factId: bigserial("fact_id", { mode: "number" }).primaryKey(),
+    canonicalText: text("canonical_text").notNull(),
+    normalizedHash: text("normalized_hash").notNull().unique(),
+    embedding: text("embedding").notNull(),
+    isHot: boolean("is_hot").notNull().default(true),
+    lastHitAt: timestamp("last_hit_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    hotIdx: index("vc_world_fact_ivfflat_hot").on(table.embedding).where(sql`${table.isHot} = TRUE`),
+  })
+);
+
+export const vcSemanticCache = pgTable(
+  "vc_semantic_cache",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    cacheScope: text("cache_scope").notNull(),
+    task: text("task").notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
+    worldRevision: bigint("world_revision", { mode: "bigint" }).notNull(),
+    requestEmbedding: text("request_embedding").notNull(),
+    requestNorm: text("request_norm"),
+    requestTextPreview: text("request_text_preview"),
+    requestHash: text("request_hash").notNull().unique(),
+    responseText: text("response_text").notNull(),
+    isValid: boolean("is_valid").notNull().default(true),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    hitCount: integer("hit_count").notNull().default(0),
+    lastHitAt: timestamp("last_hit_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    globalCodexIdx: index("vc_semantic_cache_ivfflat_global_codex")
+      .on(table.requestEmbedding)
+      .where(sql`${table.cacheScope} = 'global' AND ${table.isValid} = TRUE AND ${table.task} = 'codex'`),
+  })
+);
+
 export const worldEngineRuns = pgTable(
   "world_engine_runs",
   {
@@ -1092,7 +1176,10 @@ export const worldEngineDirectorState = pgTable(
     pacingJson: jsonb("pacing_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     recentDirectorIntent: text("recent_director_intent"),
     worldRevision: bigint("world_revision", { mode: "bigint" }),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     sessionUnique: uniqueIndex("world_engine_director_state_session_unique").on(table.sessionId),
@@ -1111,7 +1198,10 @@ export const npcAgentState = pgTable(
     status: varchar("status", { length: 24 }).notNull().default("idle"),
     lastActiveTurn: integer("last_active_turn").notNull().default(0),
     nextEligibleTurn: integer("next_eligible_turn").notNull().default(0),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     sessionNpcUnique: uniqueIndex("npc_agent_state_session_npc_unique").on(table.sessionId, table.npcId),
@@ -1133,7 +1223,10 @@ export const npcRelationEdges = pgTable(
     fromNpcId: varchar("from_npc_id", { length: 128 }).notNull(),
     toNpcId: varchar("to_npc_id", { length: 128 }).notNull(),
     edgeJson: jsonb("edge_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     sessionEdgeUnique: uniqueIndex("npc_relation_edges_session_edge_unique").on(
@@ -1168,7 +1261,10 @@ export const socialEventLedger = pgTable(
     eventJson: jsonb("event_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     projectedAt: timestamp("projected_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     dedupUnique: uniqueIndex("social_event_ledger_dedup_unique").on(

@@ -169,14 +169,14 @@ const DEFECTS: Record<CalibrationDefect, DefectInjector> = {
     targetFile: "src/features/play/turnCommit/resolveDmTurn.ts",
     mutate(content: string): string {
       return content.replace(
-        /awarded_items\s*[:=]\s*(\w+|\[)/g,
-        "[] /* CALIBRATION: awarded_items always empty */"
+        /awarded_items\s*[:=]\s*\w+/g,
+        "awarded_items: [] /* CALIBRATION: awarded_items emptied */"
       );
     },
     revert(content: string): string {
       return content.replace(
-        /\[\] \/\* CALIBRATION: awarded_items always empty \*\//g,
-        "awarded_items"
+        /awarded_items:\s*\[\] \/\* CALIBRATION: awarded_items emptied \*\//g,
+        "awarded_items: awardedItems"
       );
     },
     scenario: {
@@ -190,6 +190,87 @@ const DEFECTS: Record<CalibrationDefect, DefectInjector> = {
 };
 
 // ── Worktree management ───────────────────────────────
+
+/**
+ * Upload calibration evaluation scores to Langfuse.
+ * Reads trace ID from the DM JSON response (injected by the API handler).
+ */
+async function uploadCalibrationScores(
+  response: LiveChatResponse,
+  meta: {
+    oraclePassed: boolean;
+    judgePassed: boolean;
+    defectType: string;
+    durationMs: number;
+    judgeVerdicts?: Record<string, string>;
+    narrativeLen?: number;
+    optionsCount?: number;
+    isActionLegal?: boolean;
+  }
+): Promise<void> {
+  let traceId = response.dmJson?._langfuse_trace_id as string | undefined;
+
+  // Fallback: query Langfuse by requestId in metadata
+  if (!traceId && response.dmJson) {
+    const requestId = response.dmJson.internal_meta?.request_id as string | undefined;
+    if (requestId) {
+      try {
+        const baseUrl = process.env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com";
+        const auth = Buffer.from(
+          `${process.env.LANGFUSE_PUBLIC_KEY}:${process.env.LANGFUSE_SECRET_KEY}`
+        ).toString("base64");
+        const res = await fetch(
+          `${baseUrl}/api/public/traces?limit=1&tags=requestId:${requestId}`,
+          { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(5000) }
+        );
+        if (res.ok) {
+          const data = await res.json() as any;
+          traceId = data.data?.[0]?.id;
+        }
+      } catch { /* best-effort */ }
+    }
+  }
+
+  if (!traceId) {
+    console.log("[Calibration] No trace ID — skipping score upload");
+    return;
+  }
+
+  const scores = [
+    { name: "calibration.oracle_pass", value: meta.oraclePassed ? 1 : 0, dataType: "NUMERIC" as const, source: "EVAL" as const, comment: `Defect: ${meta.defectType}` },
+    { name: "calibration.judge_pass",  value: meta.judgePassed ? 1 : 0,  dataType: "NUMERIC" as const, source: "EVAL" as const, comment: `Defect: ${meta.defectType}` },
+    { name: "calibration.latency_ms",  value: meta.durationMs,           dataType: "NUMERIC" as const, source: "EVAL" as const },
+    { name: "calibration.is_action_legal", value: meta.isActionLegal ? 1 : 0, dataType: "NUMERIC" as const, source: "EVAL" as const },
+    { name: "calibration.narrative_length", value: meta.narrativeLen ?? 0, dataType: "NUMERIC" as const, source: "EVAL" as const },
+    { name: "calibration.options_count", value: meta.optionsCount ?? 0, dataType: "NUMERIC" as const, source: "EVAL" as const },
+  ];
+
+  // Per-judge dimension scores
+  if (meta.judgeVerdicts) {
+    for (const [dim, verdict] of Object.entries(meta.judgeVerdicts)) {
+      scores.push({
+        name: `calibration.judge.${dim}`,
+        value: verdict === "OK" ? 1 : verdict === "FAIL" ? 0 : 0.5,
+        dataType: "NUMERIC" as const,
+        source: "EVAL" as const,
+        comment: `Judge dimension: ${dim} → ${verdict}`,
+      });
+    }
+  }
+
+  try {
+    const { execSync } = await import("node:child_process");
+    const scoresJson = JSON.stringify(scores);
+    execSync(
+      `pnpm tsx scripts/self-improve/upload-scores.ts --trace-id '${traceId}' --scores '${scoresJson}'`,
+      { stdio: "pipe", timeout: 15_000 }
+    );
+    console.log(`[Calibration] ${scores.length} scores uploaded → ${traceId.slice(0, 12)}`);
+  } catch (err) {
+    console.warn("[Calibration] Score upload failed (non-fatal):",
+      err instanceof Error ? err.message : String(err));
+  }
+}
 
 function createWorktree(): string {
   const id = randomUUID().slice(0, 8);
@@ -225,8 +306,29 @@ function createWorktree(): string {
   // Copy .env.local so AI gateway works
   const envLocal = resolve(process.cwd(), ".env.local");
   if (existsSync(envLocal)) {
-    writeFileSync(join(worktreePath, ".env.local"), readFileSync(envLocal, "utf-8"), "utf-8");
-    console.log("[Calibration] Copied .env.local to worktree");
+    let envContent = readFileSync(envLocal, "utf-8");
+    // Disable Langfuse in worktree to avoid SDK connection issues in isolated env
+    envContent = envContent.replace(/^VERSECRAFT_ENABLE_LANGFUSE=.*$/gm, "VERSECRAFT_ENABLE_LANGFUSE=false");
+    writeFileSync(join(worktreePath, ".env.local"), envContent, "utf-8");
+    console.log("[Calibration] Copied .env.local to worktree (Langfuse disabled for isolation)");
+  }
+
+  // Copy untracked source dirs that git worktree won't include
+  for (const dir of [
+    "src/lib/observability/langfuse",
+    "src/lib/worldKnowledge/retrieval/queryExpander.ts",
+    "src/lib/worldKnowledge/retrieval/bm25Config.ts",
+    "src/lib/worldKnowledge/retrieval/hybridFusion.ts",
+    "src/lib/worldKnowledge/retrieval/chunkContextExpander.ts",
+  ]) {
+    const srcDir = resolve(process.cwd(), dir);
+    const destDir = join(worktreePath, dir);
+    if (existsSync(srcDir)) {
+      // Ensure parent directory exists
+      mkdirSync(join(destDir, ".."), { recursive: true });
+      execSync(`cp -rf ${srcDir} ${destDir}`, { stdio: "pipe" });
+      console.log(`[Calibration] Copied ${dir} to worktree`);
+    }
   }
 
   return worktreePath;
@@ -865,7 +967,7 @@ async function runCalibration(defectType: CalibrationDefect): Promise<Calibratio
 
     // Step 3: Install deps in worktree
     console.log("[Calibration] Installing dependencies in worktree...");
-    execSync("pnpm install --frozen-lockfile", { cwd: worktreePath, stdio: "pipe", timeout: 60_000 });
+    execSync("pnpm install --no-frozen-lockfile", { cwd: worktreePath, stdio: "pipe", timeout: 120_000 });
     result.steps.push({ step: "install_deps", passed: true, evidence: "pnpm install completed" });
 
     // Step 4: Start dev server in worktree
@@ -902,6 +1004,18 @@ async function runCalibration(defectType: CalibrationDefect): Promise<Calibratio
     if (!judgeResult.passed) {
       result.errors.push(`Judge ensemble failed: ${judgeResult.error}`);
     }
+
+    // Upload evaluation scores to Langfuse
+    await uploadCalibrationScores(liveResponse, {
+      oraclePassed: oracleResult.passed,
+      judgePassed: judgeResult.passed,
+      defectType,
+      durationMs: liveResponse.durationMs,
+      judgeVerdicts: (judgeResult as any).verdicts,
+      narrativeLen: liveResponse.narrative.length,
+      optionsCount: liveResponse.options.length,
+      isActionLegal: liveResponse.dmJson?.is_action_legal as boolean | undefined,
+    });
 
     // Step 8: Verify defect signature
     const triageResult = verifyDefectSignature(defect);

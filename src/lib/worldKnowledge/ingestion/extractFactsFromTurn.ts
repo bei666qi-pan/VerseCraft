@@ -217,7 +217,10 @@ export function extractFactsFromTurn(input: ExtractFactsInput): ExtractedFact[] 
 
   const dedup = new Map<string, ExtractedFact>();
   for (const fact of out) {
-    if (!dedup.has(fact.normalized)) dedup.set(fact.normalized, fact);
+    const existing = dedup.get(fact.normalized);
+    if (!existing || fact.confidence > existing.confidence) {
+      dedup.set(fact.normalized, fact);
+    }
   }
   return [...dedup.values()].slice(0, maxFacts);
 }

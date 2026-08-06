@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  collectEpistemicEntityCrossCheck,
   collectSafetyReport,
   extractEntitySurfacesConservatively,
   extractNpcIdsFromDmRecord,
   extractNpcIdsFromNarrative,
   extractNpcIdsFromOptions,
 } from "@/lib/turnEngine/narrativeSafety";
+import { collectWorldFactIssues } from "@/lib/turnEngine/narrativeSafety/collectSafetyReport";
+import { REVEAL_TIER_RANK } from "@/lib/registry/revealTierRank";
 import type { NpcSceneAuthorityPacket } from "@/lib/npcSceneAuthority/types";
 import type { NarrativeValidationIssue } from "@/lib/turnEngine/validateNarrative";
 import type { UnsupportedFactCandidate } from "@/lib/worldFacts/unsupportedFactDetector";
@@ -397,4 +400,169 @@ test("entity whitelist exported extractors read narrative, options, dmRecord and
     ["N-001", "N-002", "N-003"]
   );
   assert.ok(extractEntitySurfacesConservatively("艾薇娅推门进来").some((ref) => ref.surface === "艾薇娅"));
+});
+
+test("collectEpistemicEntityCrossCheck no-ops when worldFacts or maxRevealRank are missing", () => {
+  const issues = collectEpistemicEntityCrossCheck({
+    narrative: "N-001 mentions something deep.",
+    npcSceneAuthorityPacket: scenePacket(),
+    registeredNpcIds: ["N-001", "N-002"],
+  });
+
+  assert.deepEqual(issues, []);
+});
+
+test("collectEpistemicEntityCrossCheck no-ops when maxRevealRank is absent", () => {
+  const issues = collectEpistemicEntityCrossCheck({
+    narrative: "N-001 walks in.",
+    worldFacts: [{ factId: "fact:item:rust_key:unclaimed", revealTier: REVEAL_TIER_RANK.surface }],
+  });
+
+  assert.deepEqual(issues, []);
+});
+
+test("collectEpistemicEntityCrossCheck flags entity when direct fact lookup exceeds maxRevealRank", () => {
+  const issues = collectEpistemicEntityCrossCheck({
+    narrative: "N-001 walks in.",
+    npcSceneAuthorityPacket: scenePacket(),
+    registeredNpcIds: ["N-001"],
+    worldFacts: [
+      { factId: "fact:relationship:N-001:N-002:neighbor", revealTier: REVEAL_TIER_RANK.surface },
+      { factId: "fact:relationship:N-010:N-001:protects", revealTier: REVEAL_TIER_RANK.fracture },
+    ],
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+  });
+
+  // N-001 appears in fact:relationship:N-010:N-001:protects which has fracture > surface
+  assert.ok(issues.length > 0);
+  const violation = issues.find((i) => i.code === "potential_epistemic_violation");
+  assert.ok(violation);
+  assert.equal(violation.severity, "low");
+  assert.equal(violation.source, "entityAudit");
+  assert.ok(violation.detail?.includes("N-001"));
+});
+
+test("collectEpistemicEntityCrossCheck does not flag entities within maxRevealRank", () => {
+  const issues = collectEpistemicEntityCrossCheck({
+    narrative: "N-001 greets N-002.",
+    npcSceneAuthorityPacket: scenePacket(),
+    registeredNpcIds: ["N-001", "N-002"],
+    worldFacts: [
+      { factId: "fact:relationship:N-001:N-002:neighbor", revealTier: REVEAL_TIER_RANK.surface },
+    ],
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+  });
+
+  assert.equal(issues.length, 0);
+});
+
+test("collectEpistemicEntityCrossCheck flags entity via indirect factId match", () => {
+  const issues = collectEpistemicEntityCrossCheck({
+    narrative: "N-010 stares at you.",
+    npcSceneAuthorityPacket: scenePacket({ presentNpcIds: ["N-010"], npcMentionModes: { "N-010": "present" } }),
+    registeredNpcIds: ["N-010"],
+    worldFacts: [
+      { factId: "fact:relationship:N-010:N-001:protects", revealTier: REVEAL_TIER_RANK.fracture },
+    ],
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+  });
+
+  assert.ok(issues.length > 0);
+  assert.ok(issues.some((i) => i.code === "potential_epistemic_violation" && i.anchor === "N-010"));
+});
+
+test("collectEpistemicEntityCrossCheck is wired into collectSafetyReport", () => {
+  const report = collectSafetyReport({
+    narrative: "N-010 whispers about the abyss.",
+    npcSceneAuthorityPacket: scenePacket({ presentNpcIds: ["N-010"], npcMentionModes: { "N-010": "present" } }),
+    registeredNpcIds: ["N-010"],
+    worldFacts: [
+      { factId: "fact:relationship:N-010:N-001:protects", revealTier: REVEAL_TIER_RANK.fracture },
+    ],
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+  });
+
+  assert.ok(report.issues.some((i) => i.code === "potential_epistemic_violation"));
+  assert.ok(report.invariantsViolated.includes("potential_epistemic_violation"));
+  // severity is low so decision should remain pass (not repair/block)
+  assert.equal(report.decision, "pass");
+});
+
+// ── collectWorldFactIssues ──
+
+test("collectWorldFactIssues early returns [] when worldFacts is empty but usedFactIds is non-empty", () => {
+  const issues = collectWorldFactIssues({
+    worldFacts: [],
+    usedFactIds: ["fact:item:rust_key:unclaimed"],
+  });
+
+  assert.deepEqual(issues, []);
+});
+
+test("collectWorldFactIssues returns no issue when fact ID exists in registry", () => {
+  const issues = collectWorldFactIssues({
+    worldFacts: [
+      { factId: "fact:item:rust_key:unclaimed", revealTier: REVEAL_TIER_RANK.surface },
+      { factId: "fact:location:B1:old_elevator", revealTier: REVEAL_TIER_RANK.fracture },
+    ],
+    usedFactIds: ["fact:item:rust_key:unclaimed"],
+  });
+
+  assert.deepEqual(issues, []);
+});
+
+test("collectWorldFactIssues flags missing fact ID with used_fact_id_missing_from_registry severity medium", () => {
+  const issues = collectWorldFactIssues({
+    worldFacts: [
+      { factId: "fact:item:rust_key:unclaimed", revealTier: REVEAL_TIER_RANK.surface },
+    ],
+    usedFactIds: ["fact:npc:unknown_janitor"],
+  });
+
+  assert.equal(issues.length, 1);
+  const issue = issues[0];
+  assert.equal(issue.code, "used_fact_id_missing_from_registry");
+  assert.equal(issue.severity, "medium");
+  assert.equal(issue.source, "worldFactRegistry");
+  assert.equal(issue.anchor, "fact:npc:unknown_janitor");
+  assert.ok(issue.detail?.includes("fact:npc:unknown_janitor"));
+});
+
+test("collectWorldFactIssues handles mixed present and missing fact IDs", () => {
+  const issues = collectWorldFactIssues({
+    worldFacts: [
+      { factId: "fact:item:rust_key:unclaimed", revealTier: REVEAL_TIER_RANK.surface },
+      { factId: "fact:location:B1:old_elevator", revealTier: REVEAL_TIER_RANK.fracture },
+    ],
+    usedFactIds: [
+      "fact:item:rust_key:unclaimed",
+      "fact:npc:unknown_janitor",
+      "fact:location:B1:old_elevator",
+      "fact:missing_event",
+    ],
+  });
+
+  assert.equal(issues.length, 2);
+
+  const missingIds = issues
+    .filter((i) => i.code === "used_fact_id_missing_from_registry")
+    .map((i) => i.anchor);
+  assert.deepEqual(missingIds, ["fact:npc:unknown_janitor", "fact:missing_event"]);
+
+  for (const issue of issues) {
+    assert.equal(issue.code, "used_fact_id_missing_from_registry");
+    assert.equal(issue.severity, "medium");
+    assert.equal(issue.source, "worldFactRegistry");
+  }
+});
+
+test("collectWorldFactIssues no-ops when usedFactIds is empty even with populated worldFacts", () => {
+  const issues = collectWorldFactIssues({
+    worldFacts: [
+      { factId: "fact:item:rust_key:unclaimed", revealTier: REVEAL_TIER_RANK.surface },
+    ],
+    usedFactIds: [],
+  });
+
+  assert.deepEqual(issues, []);
 });

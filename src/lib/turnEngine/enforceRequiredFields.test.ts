@@ -179,7 +179,8 @@ test("backfillMissingFields: backfills codex_updates from NPC mentions in narrat
   });
   assert.equal(result.didBackfill, true);
   const updates = result.backfilled.codex_updates as Array<{ name: string }>;
-  assert.ok(updates.some((u) => u.name === "老刘"));
+  // Uses registry name "电工老刘" (from NPCS), not short form "老刘"
+  assert.ok(updates.some((u) => u.name === "电工老刘"));
 });
 
 test("backfillMissingFields: backfills relationship_updates from slots.target", () => {

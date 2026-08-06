@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } fr
 import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume, startAmbientDrone, stopAmbientDrone } from "@/lib/audioEngine";
-import type { StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
 import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
@@ -14,6 +13,7 @@ import { deleteCloudSaveSlot, syncSaveToCloud } from "@/app/actions/save";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { selectBgmForTurn } from "@/features/play/bgm/bgmRules";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
+import { PlayErrorBoundary } from "@/features/play/components/PlayErrorBoundary";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
 import { PlayFeedbackToast } from "@/features/play/components/PlayFeedbackToast";
@@ -52,7 +52,18 @@ import {
   isOpeningSystemUserMessage,
 } from "@/features/play/opening/openingCopy";
 import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
-import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
+import { MAX_INPUT } from "@/features/play/playConstants";
+import {
+  usePlayUIState,
+  usePlayerStats,
+  useOptionsState,
+  useChapterEndingState,
+  useWorldState,
+  useCodexState,
+  useTaskState,
+  useProfessionState,
+  useSaveSettingsState,
+} from "@/hooks/useGameStoreBatch";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
 import {
   buildPersistedProfessionCertificationChoice,
@@ -498,50 +509,79 @@ function PlayContent() {
     router.prefetch("/");
   }, [router]);
 
-  const isHydrated = useGameStore((s) => s.isHydrated);
+  // ---- Batched state-value selectors (one subscription per group) ----
 
-  const rawStats = useGameStore((s) => s.stats) ?? FALLBACK_STATS;
-  const stats = useMemo(() => {
-    const base = rawStats ?? FALLBACK_STATS;
-    const safe: Record<StatType, number> = { ...FALLBACK_STATS };
-    for (const key of STAT_ORDER) {
-      const v = (base as Record<StatType, number> | undefined)?.[key];
-      safe[key] = Number.isFinite(v as number) ? (v as number) : FALLBACK_STATS[key];
-    }
-    return safe;
-  }, [rawStats]);
+  const {
+    isHydrated,
+    isGameStarted,
+    activeMenu,
+    inputMode,
+    isGuest,
+    guestId,
+  } = usePlayUIState();
+
+  const {
+    stats,
+    talent,
+    talentCooldowns,
+    historicalMaxSanity,
+    originium,
+  } = usePlayerStats();
+
+  const {
+    currentOptions: currentOptionsFromStore,
+    recentOptions,
+    pendingClientAction,
+  } = useOptionsState();
+
+  const { endingState } = useChapterEndingState();
+
+  const {
+    playerLocation,
+    time,
+    dynamicNpcStates,
+    mainThreatByFloor,
+    intrusionFlashUntil,
+    dialogueCount,
+  } = useWorldState();
+
+  const { codex, viewedCodexIds } = useCodexState();
+
+  const {
+    tasks,
+    taskUnviewedCount,
+    taskPanelFirstOpen,
+  } = useTaskState();
+
+  const {
+    professionState,
+    hasMetProfessionCertifier,
+  } = useProfessionState();
+
+  const { volume, readingPreferences, language } = useSaveSettingsState();
+
+  // ---- Derived selectors (one subscription each; infrequent writers) ----
+
   const inventory = useGameStore((s) => s.inventory ?? []);
-  const talent = useGameStore((s) => s.talent);
-  const talentCooldowns = useGameStore((s) => s.talentCooldowns ?? {});
   const logs = useGameStore((s) => s.logs ?? []);
-  const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
-  const historicalMaxSanity = useGameStore((s) => s.historicalMaxSanity ?? 50);
+  const memorySpine = useGameStore((s) => s.memorySpine ?? null);
+  const escapeMainlineStage = useGameStore((s) => s.escapeMainline?.stage ?? null);
+
+  // ---- Stable action references (each creates one subscription; reference is constant) ----
+
   const setStats = useGameStore((s) => s.setStats);
   const rewindTime = useGameStore((s) => s.rewindTime);
   const popLastNLogs = useGameStore((s) => s.popLastNLogs);
   const mergeCodex = useGameStore((s) => s.mergeCodex);
-  const currentOptionsFromStore = useGameStore((s) => s.currentOptions ?? []);
-  const recentOptions = useGameStore((s) => s.recentOptions ?? []);
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
   const writeResumeShadow = useGameStore((s) => s.writeResumeShadow);
   const clearResumeShadow = useGameStore((s) => s.clearResumeShadow);
-  const endingState = useGameStore((s) => s.endingState);
   const evaluateEndingAfterTurn = useGameStore((s) => s.evaluateEndingAfterTurn);
   const selectEndingFinalAction = useGameStore((s) => s.selectEndingFinalAction);
   const commitEndingFinalNarrative = useGameStore((s) => s.commitEndingFinalNarrative);
   const markEndingRedirected = useGameStore((s) => s.markEndingRedirected);
-  const inputMode = useGameStore((s) => s.inputMode ?? "options");
-  const currentOptions = useMemo(
-    () => filterNarrativeActionOptions(currentOptionsFromStore, 4),
-    [currentOptionsFromStore]
-  );
-  const originium = useGameStore((s) => s.originium ?? 0);
   const addOriginium = useGameStore((s) => s.addOriginium);
-  const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
-  const dynamicNpcStates = useGameStore((s) => s.dynamicNpcStates ?? {});
-  const mainThreatByFloor = useGameStore((s) => s.mainThreatByFloor ?? {});
   const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
-  const tasks = useGameStore((s) => s.tasks ?? []);
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const updateTask = useGameStore((s) => s.updateTask);
@@ -551,36 +591,33 @@ function PlayContent() {
   const applyMainThreatUpdates = useGameStore((s) => s.applyMainThreatUpdates);
   const applyWeaponUpdates = useGameStore((s) => s.applyWeaponUpdates);
   const applyWeaponBagUpdates = useGameStore((s) => s.applyWeaponBagUpdates);
-  const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
-  const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
-  const isGuest = useGameStore((s) => s.isGuest ?? false);
-  const guestId = useGameStore((s) => s.guestId ?? null);
-  const dialogueCount = useGameStore((s) => s.dialogueCount ?? 0);
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
-  const activeMenu = useGameStore((s) => s.activeMenu);
   const setActiveMenu = useGameStore((s) => s.setActiveMenu);
   const recordChapterTurn = useGameStore((s) => s.recordChapterTurn);
-  const codex = useGameStore((s) => s.codex ?? {});
-  const memorySpine = useGameStore((s) => s.memorySpine ?? null);
-  const escapeMainlineStage = useGameStore((s) => s.escapeMainline?.stage ?? null);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
-  const viewedCodexIds = useGameStore((s) => s.viewedCodexIds ?? {});
   const markCodexViewed = useGameStore((s) => s.markCodexViewed);
+  const clearTaskUnviewedCount = useGameStore((s) => s.clearTaskUnviewedCount);
+  const markTaskPanelOpened = useGameStore((s) => s.markTaskPanelOpened);
+  const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
+  const certifyProfession = useGameStore((s) => s.certifyProfession);
+  const consumeClientAction = useGameStore((s) => s.consumeClientAction);
+  const setVolume = useGameStore((s) => s.setVolume);
+  const setReadingPreference = useGameStore((s) => s.setReadingPreference);
+  const setLanguage = useGameStore((s) => s.setLanguage);
+
+  // ---- Derived memos (use batched values now) ----
+
+  const currentOptions = useMemo(
+    () => filterNarrativeActionOptions(currentOptionsFromStore, 4),
+    [currentOptionsFromStore]
+  );
+
   const hasUnreadCodex = useMemo(
     () => getMobileCodexUnreadCount(codex, viewedCodexIds) > 0,
     [codex, viewedCodexIds]
   );
-  const taskUnviewedCount = useGameStore((s) => s._taskUnviewedCount ?? 0);
+
   const hasUnviewedTaskUpdates = useMemo(() => taskUnviewedCount > 0, [taskUnviewedCount]);
-  const clearTaskUnviewedCount = useGameStore((s) => s.clearTaskUnviewedCount);
-  const taskPanelFirstOpen = useGameStore((s) => s._taskPanelFirstOpen ?? true);
-  const markTaskPanelOpened = useGameStore((s) => s.markTaskPanelOpened);
-  const professionState = useGameStore((s) => s.professionState);
-  const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
-  const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
-  const certifyProfession = useGameStore((s) => s.certifyProfession);
-  const pendingClientAction = useGameStore((s) => s.pendingClientAction ?? null);
-  const consumeClientAction = useGameStore((s) => s.consumeClientAction);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
@@ -595,12 +632,6 @@ function PlayContent() {
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
-  const volume = useGameStore((s) => s.volume ?? 50);
-  const setVolume = useGameStore((s) => s.setVolume);
-  const readingPreferences = useGameStore((s) => s.readingPreferences);
-  const setReadingPreference = useGameStore((s) => s.setReadingPreference);
-  const language = useGameStore((s) => s.language);
-  const setLanguage = useGameStore((s) => s.setLanguage);
   const [, setPendingHallucinationCheck] = useState(false);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
@@ -696,6 +727,13 @@ function PlayContent() {
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const chatQueuePollAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      chatQueuePollAbortRef.current?.abort();
+    };
+  }, []);
+
   const pendingQueueActionRef = useRef<PendingChatQueueAction | null>(null);
   const settlementRedirectScheduledRef = useRef(false);
   const endingTelemetrySeenRef = useRef<Set<string>>(new Set());
@@ -1424,14 +1462,23 @@ function PlayContent() {
     }).catch(() => {});
   }, [guestId, streamPhase, waitUxDisplayStage]);
 
+  // Lift primitive values to avoid deep-object dependency churn — every
+  // progress update regenerates chapterState.progressByChapterId, but the
+  // display entries only depend on a few specific numbers.
+  const isReviewingNow = Boolean(chapterRuntime.isReviewing);
+  const activeStartedLogIndex = chapterRuntime.activeProgress?.startedLogIndex;
+  const prevChapterIdForProgress = chapterRuntime.previousDefinition?.id;
+  const prevCompletedLogIndex =
+    prevChapterIdForProgress != null
+      ? chapterRuntime.chapterState.progressByChapterId[prevChapterIdForProgress]?.completedLogIndex
+      : undefined;
+
   const displayEntries = useMemo(() => {
     const baseLogs = logs ?? [];
     const cutoff = isStreamVisualActive ? streamLogsBaselineRef.current : baseLogs.length;
-    const isReviewingNow = Boolean(chapterRuntime.isReviewing);
-    const activeProgress = chapterRuntime.activeProgress;
     const startedLogIndex =
-      typeof activeProgress?.startedLogIndex === "number" && Number.isFinite(activeProgress.startedLogIndex)
-        ? Math.max(0, Math.trunc(activeProgress.startedLogIndex))
+      typeof activeStartedLogIndex === "number" && Number.isFinite(activeStartedLogIndex)
+        ? Math.max(0, Math.trunc(activeStartedLogIndex))
         : null;
     let scopeStart = 0;
     if (isReviewingNow) {
@@ -1439,13 +1486,9 @@ function PlayContent() {
     } else if (startedLogIndex !== null) {
       scopeStart = Math.max(0, startedLogIndex - CHAPTER_DISPLAY_OVERLAP);
     } else {
-      const prevDef = chapterRuntime.previousDefinition;
-      const prevProgress = prevDef
-        ? chapterRuntime.chapterState.progressByChapterId[prevDef.id]
-        : undefined;
       const prevCompletedIdx =
-        typeof prevProgress?.completedLogIndex === "number"
-          ? Math.max(0, Math.trunc(prevProgress.completedLogIndex))
+        typeof prevCompletedLogIndex === "number"
+          ? Math.max(0, Math.trunc(prevCompletedLogIndex))
           : null;
       scopeStart = resolveDisplayScopeStartForNewChapterBridge({
         logs: baseLogs,
@@ -1460,10 +1503,9 @@ function PlayContent() {
   }, [
     logs,
     isStreamVisualActive,
-    chapterRuntime.isReviewing,
-    chapterRuntime.activeProgress,
-    chapterRuntime.previousDefinition,
-    chapterRuntime.chapterState.progressByChapterId,
+    isReviewingNow,
+    activeStartedLogIndex,
+    prevCompletedLogIndex,
   ]);
 
   const prevIsStreamVisualActiveRef = useRef(false);
@@ -5136,7 +5178,7 @@ function PlayContent() {
   const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
   const chapterInteractionLocked = Boolean(pendingChapterEnd);
   const mobileHeaderTitle = chapterRuntime.headerTitle;
-  const previousChapterId = chapterRuntime.displayedDefinition.previousChapterId;
+  const previousChapterId = chapterRuntime.displayedDefinition?.previousChapterId;
   const canNavigatePreviousChapter = Boolean(
     !chapterRuntime.isReviewing &&
       previousChapterId &&
@@ -5273,68 +5315,6 @@ function PlayContent() {
               : "relative bg-transparent"
           }
         >
-          {!isOverlayPanelActive && isCharacterPanelActive ? (
-            <MobileCharacterPanel
-              stats={stats}
-              historicalMaxSanity={historicalMaxSanity}
-              originium={originium}
-              time={time}
-              playerLocation={playerLocation}
-              currentProfession={professionState.currentProfession}
-              onUpgradeAttribute={(attr) => {
-                upgradeAttribute(attr);
-              }}
-              escapeStage={escapeMainlineStage}
-            />
-          ) : !isOverlayPanelActive && isCodexPanelActive ? (
-            <MobileCodexPanel
-              codex={codex}
-              dynamicNpcStates={dynamicNpcStates}
-              mainThreatByFloor={mainThreatByFloor}
-              playerLocation={playerLocation}
-              memorySpine={memorySpine}
-              viewedCodexIds={viewedCodexIds}
-              onViewCodexEntry={markCodexViewed}
-            />
-          ) : !isOverlayPanelActive && isTasksPanelActive ? (
-            <MobileTaskPanel
-              tasks={tasks}
-              originium={originium}
-              codex={codex}
-              highlightTaskIds={recentTaskHighlightIds}
-              onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
-              taskPanelFirstOpen={taskPanelFirstOpen}
-              onMarkTaskPanelOpened={markTaskPanelOpened}
-            />
-          ) : !isOverlayPanelActive && isSettingsPanelActive ? (
-            <MobileSettingsPanel
-              audioMuted={audioMuted}
-              chapterState={chapterRuntime.chapterState}
-              language={language}
-              onExitGame={() => setShowExitModal(true)}
-              onReturnToActiveChapter={() => {
-                runChapterPageTurn("return", () => {
-                  chapterRuntime.returnToActiveChapter();
-                }, { scrollEnd: true });
-                setActiveMenu(null);
-              }}
-              onReviewChapter={(chapterId) => {
-                runChapterPageTurn("previous", () => {
-                  chapterRuntime.reviewChapter(chapterId);
-                });
-                setActiveMenu(null);
-              }}
-              onSetReadingPreference={setReadingPreference}
-              onSetLanguage={handleLanguageChange}
-              onToggleMute={() => {
-                toggleMute();
-                setAudioMuted(isMuted());
-              }}
-              readingPreferences={readingPreferences}
-              setVolume={handleSetVolume}
-              volume={volume}
-            />
-          ) : (
             <>
               <MobileStoryViewport
                 onSwipeLeft={navigateToNextChapter}
@@ -5545,7 +5525,6 @@ function PlayContent() {
                 )
               ) : null}
             </>
-          )}
           {isOverlayPanelActive ? (
             <div className="absolute inset-0 z-20 h-full min-h-0 overflow-hidden bg-transparent">
               {isCharacterPanelActive ? (
@@ -5706,10 +5685,10 @@ function PlayContent() {
 export default function PlayPageWrapper(props: AppPageDynamicProps) {
   useClientPageDynamicProps(props);
   const router = useRouter();
-  const isHydrated = useGameStore((s) => s.isHydrated);
-  const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
+  const { isHydrated, isGameStarted } = usePlayUIState();
+  const { chapterState } = useChapterEndingState();
   const hasLogs = useGameStore((s) => (s.logs?.length ?? 0) > 0);
-  const isReviewing = useGameStore((s) => !!s.chapterState?.reviewChapterId);
+  const isReviewing = !!chapterState?.reviewChapterId;
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -5720,7 +5699,11 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
 
   return (
     <div className="relative min-h-[calc(var(--vc-vh,1svh)_*_100)] overflow-x-hidden bg-[#f6f2ec]">
-      {isHydrated && isGameStarted ? <PlayContent /> : null}
+      {isHydrated && isGameStarted ? (
+        <PlayErrorBoundary>
+          <PlayContent />
+        </PlayErrorBoundary>
+      ) : null}
       {!isHydrated && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#f6f2ec]">
           <div className="flex flex-col items-center gap-4">

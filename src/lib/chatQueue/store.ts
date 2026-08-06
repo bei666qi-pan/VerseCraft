@@ -369,7 +369,14 @@ class RedisChatQueueStore implements ChatQueueStore {
     for (const key of identityKeys(ticket)) {
       const activeKey = keys.active(key);
       const current = await redis.get(activeKey).catch(() => null);
-      if (current === ticket.queueId) await redis.del(activeKey).catch(() => undefined);
+      if (current === ticket.queueId) {
+        await redis.del(activeKey).catch((e) => {
+          console.debug("[chatQueue] del failed", {
+            key: activeKey,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        });
+      }
     }
   }
 
@@ -403,16 +410,36 @@ class RedisChatQueueStore implements ChatQueueStore {
     for (const queueId of [...(await this.queuedIds(config)), ...(await this.runningIds(config))]) {
       const ticket = await this.getMutable(queueId, config);
       if (!ticket) {
-        await redis.zRem(keys.queued, queueId).catch(() => undefined);
-        await redis.zRem(keys.running, queueId).catch(() => undefined);
+        await redis.zRem(keys.queued, queueId).catch((e) => {
+          console.debug("[chatQueue] zRem(queued) failed", {
+            queueId,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        });
+        await redis.zRem(keys.running, queueId).catch((e) => {
+          console.debug("[chatQueue] zRem(running) failed", {
+            queueId,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        });
         continue;
       }
       if (!isTerminal(ticket.status) && isExpired(ticket, config, now)) {
         ticket.status = "expired";
         ticket.updatedAt = now;
         await this.save(ticket, config);
-        await redis.zRem(keys.queued, queueId).catch(() => undefined);
-        await redis.zRem(keys.running, queueId).catch(() => undefined);
+        await redis.zRem(keys.queued, queueId).catch((e) => {
+          console.debug("[chatQueue] zRem(queued) failed", {
+            queueId,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        });
+        await redis.zRem(keys.running, queueId).catch((e) => {
+          console.debug("[chatQueue] zRem(running) failed", {
+            queueId,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        });
         await this.clearActive(ticket, config);
         logQueueEvent("queue_expired", ticket);
       }
@@ -568,8 +595,18 @@ class RedisChatQueueStore implements ChatQueueStore {
     ticket.status = "completed";
     ticket.updatedAt = now;
     await this.save(ticket, config);
-    await redis.zRem(this.keys(config).running, queueId).catch(() => undefined);
-    await redis.zRem(this.keys(config).queued, queueId).catch(() => undefined);
+    await redis.zRem(this.keys(config).running, queueId).catch((e) => {
+      console.debug("[chatQueue] zRem(running) failed", {
+        queueId,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    });
+    await redis.zRem(this.keys(config).queued, queueId).catch((e) => {
+      console.debug("[chatQueue] zRem(queued) failed", {
+        queueId,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    });
     await this.clearActive(ticket, config);
     logQueueEvent("queue_completed", await this.compute(ticket, config));
     await this.promote(config, now);
@@ -583,8 +620,18 @@ class RedisChatQueueStore implements ChatQueueStore {
     ticket.status = "failed";
     ticket.updatedAt = now;
     await this.save(ticket, config);
-    await redis.zRem(this.keys(config).running, queueId).catch(() => undefined);
-    await redis.zRem(this.keys(config).queued, queueId).catch(() => undefined);
+    await redis.zRem(this.keys(config).running, queueId).catch((e) => {
+      console.debug("[chatQueue] zRem(running) failed", {
+        queueId,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    });
+    await redis.zRem(this.keys(config).queued, queueId).catch((e) => {
+      console.debug("[chatQueue] zRem(queued) failed", {
+        queueId,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    });
     await this.clearActive(ticket, config);
     logQueueEvent("queue_failed", await this.compute(ticket, config));
     await this.promote(config, now);
@@ -600,8 +647,18 @@ class RedisChatQueueStore implements ChatQueueStore {
       ticket.status = "cancelled";
       ticket.updatedAt = now;
       await this.save(ticket, config);
-      await redis.zRem(this.keys(config).running, queueId).catch(() => undefined);
-      await redis.zRem(this.keys(config).queued, queueId).catch(() => undefined);
+      await redis.zRem(this.keys(config).running, queueId).catch((e) => {
+        console.debug("[chatQueue] zRem(running) failed", {
+          queueId,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      });
+      await redis.zRem(this.keys(config).queued, queueId).catch((e) => {
+        console.debug("[chatQueue] zRem(queued) failed", {
+          queueId,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      });
       await this.clearActive(ticket, config);
       logQueueEvent("queue_cancelled", await this.compute(ticket, config));
       await this.promote(config, now);

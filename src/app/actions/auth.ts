@@ -29,6 +29,14 @@ function getErrorMessage(error: unknown): string {
   return "";
 }
 
+// TODO: never log raw error objects in production
+function safeLogError(context: string, error: unknown): void {
+  console.error(`[auth] ${context}`, {
+    message: error instanceof Error ? error.message : String(error),
+    code: (error as any)?.code,
+  });
+}
+
 function isDuplicateUserError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const maybeError = error as { code?: string; message?: string; cause?: unknown };
@@ -159,7 +167,7 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
       payload: { name },
     }).catch(() => {});
   } catch (error) {
-    console.error("Registration Backend Error:", error);
+    safeLogError("Registration Backend Error", error);
     if (isDuplicateUserError(error)) {
       return { success: false, error: "该名称已被占用，档案已存在。" };
     }
@@ -180,7 +188,7 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
     if (isNextRedirectError(error)) {
       throw error;
     }
-    console.error("Registration Auto SignIn Error:", error);
+    safeLogError("Registration Auto SignIn Error", error);
     if (error instanceof AuthError) {
       const explicitMessage = resolveCredentialsError(error);
       if (explicitMessage) {
@@ -200,7 +208,7 @@ async function performCredentialsLogin(name: string, password: string): Promise<
     .where(eq(users.name, name))
     .limit(1)
     .catch((error) => {
-      console.error("Login lookup failed:", error);
+      safeLogError("Login lookup failed", error);
       return null;
     });
   if (!existing) {
@@ -255,7 +263,7 @@ async function performCredentialsLogin(name: string, password: string): Promise<
       }).catch(() => {});
       throw error;
     }
-    console.error("Login Backend Error:", error);
+    safeLogError("Login Backend Error", error);
     return { success: false, error: "系统异常，登录中止。" };
   }
 }
@@ -294,7 +302,7 @@ export async function signInOrRegister(
     }
     return performCredentialsLogin(name, password);
   } catch (error) {
-    console.error("signInOrRegister lookup error:", error);
+    safeLogError("signInOrRegister lookup error", error);
     if (isDatabaseConnectionError(error)) {
       return { success: false, error: "深渊意志干扰了数据库连接，请稍后再试。" };
     }
@@ -362,7 +370,7 @@ export async function checkNameAvailability(input: { name: string }): Promise<{
     if (existing[0]) return { ok: true, available: false, message: "已被占用" };
     return { ok: true, available: true, message: "可用" };
   } catch (error) {
-    console.error("[auth] checkNameAvailability failed", error);
+    safeLogError("checkNameAvailability failed", error);
     return { ok: false, available: false, message: "暂时无法校验，请稍后重试。" };
   }
 }

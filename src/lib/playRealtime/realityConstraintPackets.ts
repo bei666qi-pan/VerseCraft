@@ -129,29 +129,20 @@ export function buildRealityConstraintPacketBlock(args: {
   };
 
   const compactPacket = {
-    schema: "reality_constraint_v2_compact",
+    schema: "reality_constraint_v3_compact",
     scene: {
       location: prim.location ?? null,
       time,
-      hot_threat_present: hotThreat,
-      ...(mainThreat ? { main_threat_surface: mainThreat } : {}),
-      present_npcs: presentNpcs,
+      ...(hotThreat ? { hot_threat: true } : {}),
+      present_npc_ids: presentNpcIds,
       ...(deadNpcIds.length ? { dead_npc_ids: deadNpcIds } : {}),
       ...(activeThreatIds.length ? { active_threat_ids: activeThreatIds } : {}),
     },
-    player: {
-      profession: currentProfession || null,
-      equipped_weapon: equippedWeapon,
-      weapon_bag: weaponBag,
-      journal_clue_ids: journalClueIds,
-    },
-    ...(directorDigest || memoryDigest || narrativeLinkageDigest
-      ? { digests: { directorDigest, memoryDigest, narrativeLinkageDigest } }
-      : {}),
+    ...(currentProfession ? { profession: currentProfession } : {}),
+    ...(equippedWeapon?.name ? { weapon: equippedWeapon.name } : {}),
     rules: [
-      "仅在场NPC可当面对话；死亡NPC不得行动",
-      "只写当前或相邻可感知范围；移动须有过渡与时间感",
-      "职业、装备、线索、威胁结算只服从本包与结构字段",
+      "仅在场NPC可当面对话；死亡NPC不得行动；只写当前或相邻可感知范围；移动须有过渡与时间感",
+      "职业、装备、威胁结算只服从本包与结构字段；不得凭空新增任何ID",
     ],
   };
 

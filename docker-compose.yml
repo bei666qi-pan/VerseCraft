@@ -18,6 +18,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-langfuse-db.sql:/docker-entrypoint-initdb.d/init-langfuse-db.sql
 
   redis:
     image: redis:7-alpine
@@ -28,6 +29,22 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+
+  langfuse-server:
+    image: langfuse/langfuse:2
+    container_name: versecraft-langfuse
+    restart: unless-stopped
+    profiles: ["local"]
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-versecraft}:${POSTGRES_PASSWORD:-change_me_local_only}@postgres:5432/langfuse"
+      NEXTAUTH_URL: "http://localhost:3001"
+      NEXTAUTH_SECRET: "${LANGFUSE_NEXTAUTH_SECRET:-versecraft-langfuse-local-dev-secret-key}"
+      SALT: "${LANGFUSE_SALT:-versecraft-langfuse-local-salt}"
+      ENCRYPTION_KEY: "${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000001}"
+    depends_on:
+      - postgres
 
   vc-worker:
     image: ${VERSECRAFT_IMAGE:-versecraft:latest}

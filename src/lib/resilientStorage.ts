@@ -4,10 +4,12 @@
 
 import type { StateStorage } from "zustand/middleware";
 import { get, set, del } from "idb-keyval";
+import { envNumber } from "@/lib/config/envRaw";
+import { trackGameplayEvent } from "@/app/actions/telemetry";
 
-const GET_ITEM_TIMEOUT_MS = 3000;
-const SET_ITEM_TIMEOUT_MS = 5000;
-const SAFARI_NULL_PROBE_MS = 500;
+const GET_ITEM_TIMEOUT_MS = envNumber("VERSECRAFT_RESILIENT_STORAGE_GET_TIMEOUT", 3000);
+const SET_ITEM_TIMEOUT_MS = envNumber("VERSECRAFT_RESILIENT_STORAGE_SET_TIMEOUT", 5000);
+const SAFARI_NULL_PROBE_MS = envNumber("VERSECRAFT_RESILIENT_STORAGE_SAFARI_PROBE_TIMEOUT", 500);
 
 const memoryCache = new Map<string, string>();
 let idbAvailable: boolean | null = null;
@@ -70,13 +72,33 @@ function probeIdbAvailable(): Promise<boolean> {
   });
 }
 
-export function notifyStorageDegraded(message?: string): void {
+export function notifyStorageDegraded(opts: {
+  message?: string;
+  failedTier: "idb" | "localStorage" | "idb_and_localStorage";
+  fallbackTier: "localStorage" | "memory";
+}): void {
   if (typeof window === "undefined") return;
   try {
-    window.dispatchEvent(new CustomEvent("storage-degraded", { detail: { message } }));
+    window.dispatchEvent(
+      new CustomEvent("storage-degraded", {
+        detail: { message: opts.message, failedTier: opts.failedTier, fallbackTier: opts.fallbackTier },
+      })
+    );
   } catch {
     /* ignore */
   }
+  void trackGameplayEvent({
+    eventName: "storage_degraded",
+    sessionId: "system",
+    page: null,
+    source: "resilient_storage",
+    payload: {
+      message: opts.message ?? null,
+      source: "resilient_storage",
+      failedTier: opts.failedTier,
+      fallbackTier: opts.fallbackTier,
+    },
+  }).catch(() => {});
 }
 
 export function resolveStorageFallbackValue(
@@ -132,7 +154,11 @@ export function createResilientIdbStorage(): StateStorage {
             } catch {
               /* ignore */
             }
-            notifyStorageDegraded("本地存储数据格式异常，已隔离当前存档缓存");
+            notifyStorageDegraded({
+              message: "本地存储数据格式异常，已隔离当前存档缓存",
+              failedTier: "idb",
+              fallbackTier: "localStorage",
+            });
           }
           const resolved = resolveStorageFallbackValue(idbResult, getLocalItem(name), memoryCache.get(name));
           if (resolved !== null) return resolved;
@@ -147,7 +173,11 @@ export function createResilientIdbStorage(): StateStorage {
         } catch {
           /* ignore */
         }
-        notifyStorageDegraded("本地存储读取较慢，已进入临时恢复模式");
+        notifyStorageDegraded({
+          message: "本地存储读取较慢，已进入临时恢复模式",
+          failedTier: "idb",
+          fallbackTier: "localStorage",
+        });
         return getLocalItem(name) ?? memoryCache.get(name) ?? null;
       }
     },
@@ -164,7 +194,10 @@ export function createResilientIdbStorage(): StateStorage {
       } catch {
         if (setLocalItem(name, value)) return;
       }
-      notifyStorageDegraded();
+      notifyStorageDegraded({
+        failedTier: "idb_and_localStorage",
+        fallbackTier: "memory",
+      });
     },
 
     removeItem: async (name: string): Promise<void> => {

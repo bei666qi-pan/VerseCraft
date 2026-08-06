@@ -62,6 +62,10 @@ export interface AiCostRecord {
   providerInitMs?: number;
   /** Number of tool calls returned in this completion (offline tool-enabled tasks only). */
   toolCallCount?: number;
+  /** Langfuse generation input snapshot — truncated, server-only, never logged. */
+  inputSnapshot?: unknown;
+  /** Langfuse generation output snapshot — truncated, server-only, never logged. */
+  outputSnapshot?: unknown;
 }
 
 function totalTokensOf(u: TokenUsage | null | undefined): number | undefined {

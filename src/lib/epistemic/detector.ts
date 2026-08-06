@@ -5,6 +5,7 @@
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 import { REVEAL_TIER_RANK } from "@/lib/registry/revealTierRank";
 import type { NpcCanonicalIdentity } from "@/lib/registry/types";
+import { enhancedSegmentCJK } from "@/lib/worldKnowledge/retrieval/queryRewriter";
 import { canActorKnowFact, forbiddenFactsForActor } from "./guards";
 import type {
   EpistemicAlertSeverity,
@@ -19,11 +20,32 @@ function normalizeMention(s: string): string {
   return s.replace(/\s+/g, "").toLowerCase();
 }
 
+/**
+ * Extract CJK trigrams from text for Jaccard similarity comparison.
+ * Uses the enhanced CJK tokenizer but keeps only 3-character trigrams
+ * to avoid noise from bigrams and full-word tokens.
+ */
+function extractCjkTrigrams(text: string): string[] {
+  return enhancedSegmentCJK(text).filter((t) => t.length === 3);
+}
+
+/** Compute Jaccard similarity between two trigram sets. */
+function jaccardSimilarity(a: string[], b: string[]): number {
+  const setA = new Set(a);
+  const setB = new Set(b);
+  if (setA.size === 0 && setB.size === 0) return 0;
+  const intersect = new Set([...setA].filter((x) => setB.has(x)));
+  const union = new Set([...setA, ...setB]);
+  return intersect.size / union.size;
+}
+
 /** 玩家输入是否包含事实正文的足够长子串（中文按字） */
 export function inputMentionsFactContent(input: string, factContent: string, minLen = 5): boolean {
   const ni = normalizeMention(input);
   const fc = factContent.replace(/\s+/g, "").trim();
   if (fc.length < minLen) return false;
+
+  // Primary: sliding-window substring matching
   const maxWin = Math.min(28, fc.length);
   for (let len = maxWin; len >= minLen; len--) {
     const step = len > 12 ? Math.max(1, Math.floor(len / 3)) : 1;
@@ -32,6 +54,17 @@ export function inputMentionsFactContent(input: string, factContent: string, min
       if (ni.includes(chunk)) return true;
     }
   }
+
+  // Secondary: CJK trigram Jaccard similarity for paraphrased facts
+  // (e.g. "循环真相" → "往复的真实")
+  if (fc.length >= 3 && ni.length >= 3) {
+    const factTrigrams = extractCjkTrigrams(fc);
+    const inputTrigrams = extractCjkTrigrams(ni);
+    if (factTrigrams.length > 0 && inputTrigrams.length > 0) {
+      if (jaccardSimilarity(factTrigrams, inputTrigrams) > 0.6) return true;
+    }
+  }
+
   return false;
 }
 
@@ -172,8 +205,8 @@ export type CognitiveAnomalyDetectorInput = {
   nowIso?: string;
   maxRevealRank?: number;
   canonical?: NpcCanonicalIdentity | null;
-  /** 惰性模式：跳过事实池 forbidden 和玩家输入规则层检测，仅返回空结果。
-   *  适用于 pre-prompt 的 TTFT 关键路径，完整检测可推迟到 post-generation。 */
+  /** 惰性模式：跳过事实池 forbidden 检测（detectEpistemicAnomaly），但保留轻量级玩家输入规则层检测
+   *  （纯正则/子串匹配，无模型调用）。适用于 pre-prompt 的 TTFT 关键路径，完整检测推迟到 post-generation。 */
   lazy?: boolean;
 };
 
@@ -248,11 +281,13 @@ function detectPlayerInputRuleSignals(input: CognitiveAnomalyDetectorInput): Epi
 /**
  * 认知异常检测（阶段6）：事实池 forbidden + 玩家输入规则层；供生成前 prompt / alert 包。
  *
- * 惰性模式（lazy=true）：跳过所有检测逻辑，直接返回空结果。
- * 适用于 pre-prompt TTFT 关键路径；完整检测推迟到 post-generation。
+ * 惰性模式（lazy=true）：跳过事实池 forbidden 检测（detectEpistemicAnomaly），
+ * 但仍运行轻量级玩家输入规则层检测（detectPlayerInputRuleSignals，纯正则/子串匹配），
+ * 以防玩家在 pre-prompt 到 post-prompt 之间注入禁知事实。
+ * 完整检测（含事实池遍历）推迟到 post-generation。
  */
 export function detectCognitiveAnomaly(input: CognitiveAnomalyDetectorInput): EpistemicAnomalyResult {
-  if (input.lazy) return emptyResult(input.npcId);
+  if (input.lazy) return detectPlayerInputRuleSignals(input) ?? emptyResult(input.npcId);
   const base = detectEpistemicAnomaly(input);
   const rule = detectPlayerInputRuleSignals(input);
   if (!rule) return base;

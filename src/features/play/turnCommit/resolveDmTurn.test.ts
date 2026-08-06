@@ -100,9 +100,13 @@ test("resolveTurnConsistency: conflict degrade can be disabled without changing 
       awarded_items: [],
       awarded_warehouse_items: [],
     });
+    // When the flag is OFF, the acquire-semantics check is skipped entirely.
     assert.equal(out.narrative.includes("捡起了"), true);
     assert.deepEqual(out.awarded_items, []);
-    assert.equal(out.ui_hints?.consistency_flags?.includes("acquire_without_awards_detected") ?? false, true);
+    const hasAcquireFlag = (out.ui_hints?.consistency_flags ?? []).some((f) =>
+      f.startsWith("acquire_without_awards"),
+    );
+    assert.equal(hasAcquireFlag, false);
   } finally {
     if (previous === undefined) delete process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE;
     else process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE = previous;

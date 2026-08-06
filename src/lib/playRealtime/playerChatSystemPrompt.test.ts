@@ -52,49 +52,47 @@ test("ordinary RULE turns use compact stable prompt while REVEAL retains full ca
 test("stable prefix 体积已降到可控范围", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积小幅上升；2026-07 文风改造（电影感/长短句/
-  // 命运感）再次小幅推高体积（约 9330 字符）；NPC 名册扩充至 43 条后达到 ~9841 字符；
-  // 仍需保持可缓存与可控，暂定新上限 11500（2026-07-09 实测 10819）。
-  assert.ok(s.length < 11500, `stable prefix too large: ${s.length}`);
-  assert.ok(s.includes("【JSON】单个对象"));
+  // v6-20260806: major compression — sections enforced by code (resolveDmTurn / validateNarrative /
+  // commitTurn / b1Safety / actorEpistemicFilter / post-generation validators / dynamic packets)
+  // removed from stable prompt. Target ~4,500 chars, upper bound 6,000.
+  assert.ok(s.length < 6000, `stable prefix too large: ${s.length}`);
+  // 平台身份与核心规则
   assert.ok(s.includes("is_action_legal"));
   assert.ok(s.includes("sanity_damage"));
   assert.ok(s.includes("narrative"));
-  assert.ok(s.includes("is_death"));
-  assert.ok(s.includes("运行时注入事实优先"));
-  assert.ok(s.includes("major_npc_arc_packet"));
-  assert.ok(s.includes("school_cycle_experience_packet"));
+  assert.ok(s.includes("运行时注入优先"));
+  // 保留的核心段
   assert.ok(s.includes("dual-identity"));
-  assert.ok(s.includes("no-instant-party"));
-  assert.ok(s.includes("reveal-first"));
   assert.ok(s.includes("xinlan-anchor"));
-  assert.ok(s.includes("当前对白视角"));
-  assert.ok(s.includes("系统知道"));
+  assert.ok(s.includes("NPC一致性·硬边界"));
   assert.ok(s.includes("欣蓝（N-010）"));
-  assert.ok(s.includes("第一牵引"));
-  assert.ok(s.includes("阶段6·系统咬合"));
-  assert.ok(s.includes("matures_to_objective_id"));
-  assert.ok(s.includes("NPC 一致性·硬边界"));
-  assert.ok(s.includes("阶段5·强制"));
-  assert.ok(s.includes("误闯公寓"));
-  assert.ok(s.includes("夜读老人"));
-  assert.ok(s.includes("快车道若省略运行时 lore JSON"));
-  assert.ok(s.includes("actor-*"));
-  assert.ok(s.includes("personality/residue/foreshadow"));
+  assert.ok(s.includes("昼夜"));
+  assert.ok(s.includes("承接玩家输入"));
+  assert.ok(s.includes("POV·第一人称硬约束"));
+  assert.ok(s.includes("任务三要素"));
+  assert.ok(s.includes("NPC 回合状态"));
+  // 不应包含已被代码强制的内容
+  assert.ok(!s.includes("阶段6·系统咬合"));
+  assert.ok(!s.includes("matures_to_objective_id"));
+  assert.ok(!s.includes("major_npc_arc_packet"));
+  assert.ok(!s.includes("【JSON】单个对象"));
+  assert.ok(!s.includes("actor-*"));
+  assert.ok(!s.includes("规范名册"));
+  assert.ok(!s.includes("lowCharmNpcPacket"));
   assert.ok(!s.includes("forge_mod_"));
   assert.ok(!s.includes("液态威胁"));
   assert.ok(!s.includes("镜像灌注"));
 });
 
-test("stable prefix constrains NPC first encounter and cinematic literary style", () => {
+test("stable prefix constrains NPC natural entrance and cinematic literary style", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  assert.ok(s.includes("长度句交替"));
-  assert.ok(s.includes("四拍组织"));
-  assert.ok(s.includes("生活化动作、位置、正在做的事"));
-  assert.ok(s.includes("对白可通俗"));
-  assert.ok(s.includes("误闯学生/新来的人/需要判断风险的陌生人"));
-  assert.ok(s.includes("禁止突兀站着等主角"));
+  // 文风与四拍已由风格指导 packet 动态注入，stable 仅保留平台身份中的核心文风描述
+  assert.ok(s.includes("长短句交替"));
+  // NPC 回合状态 packet 替代了原有的硬编码规则
+  assert.ok(s.includes("按 npc_turn_state packet 执行"));
+  // 不应包含已移除的内容
+  assert.ok(!s.includes("四拍组织"));
   assert.ok(!s.includes("龙族"));
   assert.ok(!s.includes("江南"));
 });
@@ -126,7 +124,6 @@ test("dynamic suffix 含 npc_consistency_boundary_compact（快车道亦适用�
 });
 
 test("dynamic suffix 传入 narrativeBudgetBlock 时注入 narrative_budget_packet", () => {
-  const turnModePolicyBlock = "## 【turn_mode_policy_packet】\n{\"plannedMode\":\"narrative_only\"}";
   const narrativeBudgetBlock =
     "## 【narrative_budget_packet】\n{\"schema\":\"narrative_budget_v1\",\"tier\":\"standard\",\"minChars\":260,\"targetChars\":420,\"maxChars\":520,\"minInfoBeats\":4,\"mustInclude\":[\"承接上一段尾巴\"],\"stopRule\":\"达到目标信息量后停笔，不凑字\",\"reasonCodes\":[\"explore\",\"normal_risk\"]}";
   const narrativeContinuityBlock = "## 【narrative_continuity_packet】\n{\"ok\":true}";
@@ -136,18 +133,15 @@ test("dynamic suffix 传入 narrativeBudgetBlock 时注入 narrative_budget_pack
     isFirstAction: false,
     runtimePackets: "",
     controlAugmentation: "",
-    turnModePolicyBlock,
     narrativeBudgetBlock,
     narrativeContinuityBlock,
   });
 
   assert.ok(dyn.includes("narrative_budget_packet"));
   assert.ok(dyn.includes('"targetChars":420'));
-  const turnModeIdx = dyn.indexOf("turn_mode_policy_packet");
   const budgetIdx = dyn.indexOf("narrative_budget_packet");
   const continuityIdx = dyn.indexOf("narrative_continuity_packet");
-  assert.ok(turnModeIdx >= 0 && continuityIdx > turnModeIdx, "continuity 应跟在 turn mode / style 后注入");
-  assert.ok(budgetIdx >= 0 && budgetIdx > continuityIdx, "budget 保留在治理 runtime packet 后注入");
+  assert.ok(budgetIdx >= 0 && budgetIdx > continuityIdx, "budget 应在 continuity 之后注入（runtime packet 区域）");
 });
 
 test("dynamic suffix 不传 narrativeBudgetBlock 时保持兼容", () => {

@@ -5,7 +5,7 @@
  * 所有新能力均通过独立灰度开关控制，关闭后旧 world director 路径不受影响。
  */
 
-import { envFlag, envNumber } from "@/lib/config/envRaw";
+import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import type { ActorSimulationFlags } from "./types";
 
 // ============================================================
@@ -38,7 +38,7 @@ const DEFAULTS: ActorSimulationFlags = {
  * - `VERSECRAFT_ACTOR_SIMULATION_PER_ACTOR_TIMEOUT_MS`: 每 actor 超时
  */
 export function resolveActorSimulationFlags(): ActorSimulationFlags {
-  const enabled = envFlag("VERSECRAFT_ENABLE_ACTOR_SIMULATION", DEFAULTS.enabled);
+  const enabled = envBoolean("VERSECRAFT_ENABLE_ACTOR_SIMULATION", DEFAULTS.enabled);
 
   const rawMode = (process.env.VERSECRAFT_ACTOR_SIMULATION_MODE ?? "").trim().toLowerCase();
   const mode = (["off", "batch_shadow", "batch_soft"] as const).find((m) => m === rawMode) ?? DEFAULTS.mode;

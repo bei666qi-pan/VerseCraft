@@ -1,5 +1,9 @@
 /**
  * 阶段6–7：生成后 NPC 一致性校验（认知事实层 + 叙事规则层 + 叙事节奏保险丝）。
+ *
+ * 校验分两轨运行：
+ * - Tier 1（所有在场 NPC）：角色混淆、不在场对话、规范命名别名 —— 廉价字符串启发式，无 actorId 依赖。
+ * - Tier 2（仅焦点 NPC）：复合叙事质量守卫、特权/揭示层级约束、玩家回声、叙事节奏 —— 需要 actorId 与 canonical。
  */
 
 import type { NpcCanonicalIdentity } from "@/lib/registry/types";
@@ -29,6 +33,7 @@ import { detectPersonaMixup, rewritePersonaMixupConservatively } from "./persona
 import { incrProtagonistDriftRewriteCount, incrWorldPostRewriteCount } from "@/lib/observability/versecraftRolloutMetrics";
 import { applyPlayerEchoPostGenerationValidation } from "@/lib/playerEcho/validator";
 import type { NpcFirstEncounterEchoPlan } from "@/lib/playerEcho/types";
+import { validateCanonNames, rewriteNpcNameAliases } from "./canonNameValidator";
 
 export type NpcConsistencyViolationType =
   | "offscreen_npc_dialogue"
@@ -43,7 +48,8 @@ export type NpcConsistencyViolationType =
   | "persona_mixup"
   | "player_echo_normal_npc_overreach"
   | "player_echo_reveal_overreach"
-  | "player_echo_canon_override";
+  | "player_echo_canon_override"
+  | "canon_name_alias";
 
 function normalizeNpcId(id: string): string {
   return String(id ?? "")
@@ -166,27 +172,163 @@ export function applyNpcConsistencyPostGeneration(input: {
   }
 
   const playerEchoValidatorEnabled = rollout.enablePlayerEchoValidator;
+
+  // ── Tier 1: 关键认知检查（对所有在场 NPC 执行，不依赖焦点 NPC）──
+  // 廉价字符串启发式，无大模型调用。优先运行以确保非焦点 NPC 的认知边界
+  // 也被独立校验。
+  const tier1Narrative = typeof rec.narrative === "string" ? rec.narrative : "";
+  let tier1Work = tier1Narrative;
+  const tier1Violations: string[] = [];
+  const tier1Vtypes: string[] = [];
+  const tier1Logs: string[] = [];
+  let tier1Rewrite = false;
+
+  if (enableNpcConsistencyValidator()) {
+    // 阶段 10.5：多人 NPC 角色混淆检测器
+    try {
+      const mix = detectPersonaMixup({
+        narrative: tier1Work,
+        presentNpcIds: input.presentNpcIds,
+        focusNpcId: input.actorNpcId?.trim() || null,
+      });
+      if (mix.hits.length > 0) {
+        tier1Violations.push(...mix.hits.map((h) => `persona_mixup:${h.victimNpcId}<=${h.leakedFromNpcId}:${h.kind}:${h.token}`));
+        if (!tier1Vtypes.includes("persona_mixup")) tier1Vtypes.push("persona_mixup");
+        tier1Logs.push(`persona_mixup:${mix.hits.slice(0, 3).map((h) => `${h.victimNpcId}<=${h.leakedFromNpcId}:${h.token}`).join("|")}`);
+        const rw = rewritePersonaMixupConservatively({ narrative: tier1Work, hits: mix.hits });
+        if (rw.changed) {
+          tier1Work = rw.narrative;
+          tier1Rewrite = true;
+        }
+      }
+    } catch (e) {
+      console.warn("[npc_consistency] persona mixup detection skipped", e);
+    }
+
+    // 不在场 NPC 对话检测
+    const off = findOffscreenNpcDialogueViolations(tier1Work, input.presentNpcIds);
+    if (off.length) {
+      tier1Violations.push(...off);
+      tier1Vtypes.push("offscreen_npc_dialogue");
+      tier1Logs.push(`offscreen:${off.join(",")}`);
+      tier1Work = rewriteNarrativeOffscreenDialogue(tier1Work, input.presentNpcIds);
+      tier1Rewrite = true;
+    }
+  }
+
+  // 规范命名别名纠错：始终运行
+  try {
+    const canonWarnings = validateCanonNames(tier1Work, input.presentNpcIds);
+    if (canonWarnings.length > 0) {
+      const rw = rewriteNpcNameAliases(tier1Work, canonWarnings);
+      if (rw.rewrites > 0 && rw.narrative !== tier1Work) {
+        tier1Work = rw.narrative;
+        tier1Rewrite = true;
+        tier1Violations.push("canon_name_alias");
+        if (!tier1Vtypes.includes("canon_name_alias")) tier1Vtypes.push("canon_name_alias");
+        tier1Logs.push(`canon_name_alias:${rw.rewrites} rewrites`);
+      }
+    }
+  } catch (e) {
+    console.warn("[npc_consistency] canon name alias check skipped", e);
+  }
+
+  // ── Feature gate：若无更高级别功能启用且无 actor，则直接返回 ──
   if (!enableNpcConsistencyValidator() && !enableNarrativeRhythmGateAny() && !playerEchoValidatorEnabled) {
-    return { dmRecord: rec, telemetry: baseTelemetry };
+    if (tier1Rewrite) {
+      rec.narrative = tier1Work;
+      incrWorldPostRewriteCount(1);
+    }
+    if (tier1Violations.length > 0) {
+      const prevMeta =
+        rec.security_meta && typeof rec.security_meta === "object" && !Array.isArray(rec.security_meta)
+          ? (rec.security_meta as Record<string, unknown>)
+          : {};
+      rec.security_meta = {
+        ...prevMeta,
+        npc_consistency_validator: {
+          violations: tier1Violations,
+          types: tier1Vtypes,
+          logs: tier1Logs,
+        },
+      };
+      epistemicDebugLog("npc_consistency_validator", { types: tier1Vtypes });
+    }
+    return {
+      dmRecord: rec,
+      telemetry: {
+        ...baseTelemetry,
+        validatorTriggered: baseTelemetry.validatorTriggered || tier1Violations.length > 0,
+        rewriteTriggered: baseTelemetry.rewriteTriggered || tier1Rewrite,
+        rewriteReason: tier1Rewrite && !baseTelemetry.rewriteTriggered ? "npc_consistency_layer" : baseTelemetry.rewriteReason,
+        npcConsistencyValidatorTriggered: tier1Violations.length > 0,
+        violationTypes: [
+          ...new Set([
+            ...(baseTelemetry.leakType !== "none" ? [baseTelemetry.leakType] : []),
+            ...tier1Vtypes,
+          ]),
+        ],
+        consistencyViolations: tier1Violations,
+        validatorLogs: tier1Logs,
+        finalResponseSafe: true,
+      },
+    };
   }
 
   const actorId = input.actorNpcId?.trim() || null;
   if (!actorId) {
-    return { dmRecord: rec, telemetry: baseTelemetry };
+    if (tier1Rewrite) {
+      rec.narrative = tier1Work;
+      incrWorldPostRewriteCount(1);
+    }
+    if (tier1Violations.length > 0) {
+      const prevMeta =
+        rec.security_meta && typeof rec.security_meta === "object" && !Array.isArray(rec.security_meta)
+          ? (rec.security_meta as Record<string, unknown>)
+          : {};
+      rec.security_meta = {
+        ...prevMeta,
+        npc_consistency_validator: {
+          violations: tier1Violations,
+          types: tier1Vtypes,
+          logs: tier1Logs,
+        },
+      };
+      epistemicDebugLog("npc_consistency_validator", { types: tier1Vtypes });
+    }
+    return {
+      dmRecord: rec,
+      telemetry: {
+        ...baseTelemetry,
+        validatorTriggered: baseTelemetry.validatorTriggered || tier1Violations.length > 0,
+        rewriteTriggered: baseTelemetry.rewriteTriggered || tier1Rewrite,
+        rewriteReason: tier1Rewrite && !baseTelemetry.rewriteTriggered ? "npc_consistency_layer" : baseTelemetry.rewriteReason,
+        npcConsistencyValidatorTriggered: tier1Violations.length > 0,
+        violationTypes: [
+          ...new Set([
+            ...(baseTelemetry.leakType !== "none" ? [baseTelemetry.leakType] : []),
+            ...tier1Vtypes,
+          ]),
+        ],
+        consistencyViolations: tier1Violations,
+        validatorLogs: tier1Logs,
+        finalResponseSafe: true,
+      },
+    };
   }
 
+  // ── Tier 2: 焦点 NPC 依赖的检查（复合守卫、特权校验、玩家回声、叙事节奏）──
   const canon = input.canonical ?? getNpcCanonicalIdentity(actorId);
   const priv = canon.memoryPrivilege;
   const privileged = priv === "xinlan" || priv === "major_charm" || priv === "night_reader";
   const mr = (input.maxRevealRank ?? 0) as RevealTierRank;
 
-  const originalNarrative = typeof rec.narrative === "string" ? rec.narrative : "";
-  let narrativeWork = originalNarrative;
+  let narrativeWork = tier1Work;
 
-  const violations: string[] = [];
-  const vtypes: string[] = [];
-  const logs: string[] = [];
-  let extraRewrite = false;
+  const violations: string[] = [...tier1Violations];
+  const vtypes: string[] = [...tier1Vtypes];
+  const logs: string[] = [...tier1Logs];
+  let extraRewrite = tier1Rewrite;
   let compositeTelemetry: {
     continuityValidatorTriggered: boolean;
     povValidatorTriggered: boolean;
@@ -261,36 +403,7 @@ export function applyNpcConsistencyPostGeneration(input: {
   }
 
   if (enableNpcConsistencyValidator()) {
-    // Phase-10.5: multi-NPC persona mixup detector (cheap string heuristics; no extra model calls).
-    // Detect: one NPC borrowing another's signature appearance/speech/role tokens.
-    try {
-      const mix = detectPersonaMixup({
-        narrative: narrativeWork,
-        presentNpcIds: input.presentNpcIds,
-        focusNpcId: actorId,
-      });
-      if (mix.hits.length > 0) {
-        violations.push(...mix.hits.map((h) => `persona_mixup:${h.victimNpcId}<=${h.leakedFromNpcId}:${h.kind}:${h.token}`));
-        if (!vtypes.includes("persona_mixup")) vtypes.push("persona_mixup");
-        logs.push(`persona_mixup:${mix.hits.slice(0, 3).map((h) => `${h.victimNpcId}<=${h.leakedFromNpcId}:${h.token}`).join("|")}`);
-        const rw = rewritePersonaMixupConservatively({ narrative: narrativeWork, hits: mix.hits });
-        if (rw.changed) {
-          narrativeWork = rw.narrative;
-          extraRewrite = true;
-        }
-      }
-    } catch (e) {
-      console.warn("[npc_consistency] persona mixup detection skipped", e);
-    }
-
-    const off = findOffscreenNpcDialogueViolations(narrativeWork, input.presentNpcIds);
-    if (off.length) {
-      violations.push(...off);
-      vtypes.push("offscreen_npc_dialogue");
-      logs.push(`offscreen:${off.join(",")}`);
-      narrativeWork = rewriteNarrativeOffscreenDialogue(narrativeWork);
-      extraRewrite = true;
-    }
+    // T1 已运行 persona mixup 与 offscreen dialogue，此处仅运行焦点 NPC 特权校验。
 
     if (!privileged && OLD_FRIEND_RE.test(narrativeWork)) {
       violations.push("narrative_old_friend_tone");
@@ -325,6 +438,8 @@ export function applyNpcConsistencyPostGeneration(input: {
       logs.push("major_charm_omn");
     }
   }
+
+  // T1 已运行 canon name alias，此处不再重复。
 
   if (playerEchoValidatorEnabled) {
     const echo = applyPlayerEchoPostGenerationValidation({
@@ -379,7 +494,7 @@ export function applyNpcConsistencyPostGeneration(input: {
     }
   }
 
-  if (narrativeWork !== originalNarrative) {
+  if (narrativeWork !== tier1Narrative) {
     rec.narrative = narrativeWork;
     // Any post-generation rewrite counts toward world-consistency rewrite budget/observability.
     incrWorldPostRewriteCount(1);

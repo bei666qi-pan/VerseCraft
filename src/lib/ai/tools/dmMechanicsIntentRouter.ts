@@ -6,9 +6,9 @@
  * 从而决定是否应进入 DM Agent 工具调用路径。
  *
  * 规则：
- * - mechanics 意图（任务/锻造/战斗/物品操作）→ 允许进入 Agent
+ * - mechanics 意图（任务/锻造/战斗/物品使用/NPC查询/位置查询）→ 允许进入 Agent
  * - narrative 意图（观察/对话/闲聊/探索）→ 禁止进入 Agent，走旧 DM 路径
- * - ambiguous 意图（模糊/混合）→ 保守走旧路径，不应擅自写状态
+ * - ambiguous 意图（模糊/混合/咨询方法）→ 保守走旧路径，不应擅自写状态
  *
  * 设计约束：
  * - 纯函数，不做 IO，不调用 LLM
@@ -69,6 +69,40 @@ const WEAK_MECHANICS_SIGNALS: readonly string[] = [
   "装备", "武器",
 ];
 
+/** 物品使用信号：玩家意图使用背包中的特定物品 */
+const INVENTORY_USE_SIGNALS: readonly string[] = [
+  "使用药水", "使用药剂", "使用道具", "使用背包里的", "使用背包中的",
+  "喝下药水", "喝下药剂", "喝药水", "喝下",
+  "服用", "吃下",
+  "用药水", "用药治疗", "用药剂", "用药膏",
+  "使用治疗", "使用绷带", "涂抹药膏",
+  "使用背包", "从背包", "拿出背包",
+];
+
+/** NPC 查询信号：玩家询问 NPC 的服务/商品/库存 */
+const NPC_INQUIRY_SIGNALS: readonly string[] = [
+  "卖什么", "出售什么", "出售哪些", "卖哪些",
+  "有什么服务", "提供什么服务", "能提供什么",
+  "的商品", "的货物", "的库存",
+  "可买", "可以买", "能买什么", "购买选项",
+  "有什么商品", "有什么货物",
+  "卖东西", "能卖什么",
+  "库存有", "有没有卖",
+];
+
+/** 位置查询信号：玩家询问 NPC/设施位置或楼层内容 */
+const LOCATION_POSITION_SIGNALS: readonly string[] = [
+  "在哪", "在哪里", "的位置", "在什么地方",
+  "在哪个", "去哪里找", "上哪找",
+];
+
+/** 位置查询辅助：楼层/区域引用 */
+const LOCATION_FLOOR_REFERENCES: readonly string[] = [
+  "楼层", "这层", "那层", "这楼", "那楼",
+  "b1", "b2", "b3", "f1", "f2", "f3",
+  "一楼", "二楼", "三楼", "地下一层", "地下二层",
+];
+
 /** 强 narrative 信号：包含这些词 → 几乎肯定是叙事/对话 */
 const STRONG_NARRATIVE_SIGNALS: readonly string[] = [
   // 观察/探索
@@ -110,6 +144,7 @@ const ANTI_MECHANICS_SIGNALS: readonly string[] = [
  *
  * 算法：
  * 1. 检查强 narrative 信号 → 直接分类为 narrative
+ * 1.5 检查数据查询意图（NPC 服务/商品、位置/楼层）→ 分类为 mechanics
  * 2. 检查反 mechanics 信号 → 降级为 ambiguous（问题/咨询而非执行）
  * 3. 检查强 mechanics 信号 → 分类为 mechanics
  * 4. 检查弱 mechanics 信号 → 分类为 ambiguous
@@ -140,6 +175,44 @@ export function classifyMechanicsIntent(
       matchedSignals: [],
       matchedNarrative,
       reason: `检测到强叙事信号: ${matchedNarrative.join(", ")}`,
+    };
+  }
+
+  // Step 1.5: 数据查询意图 — NPC 服务/商品查询 或 位置/楼层查询
+  // 这些是玩家向游戏系统查询结构化数据（而非世界内叙事），应路由到 DM Agent
+  // 以便调用 get_inventory / get_world_context 获取真实数据
+  for (const signal of NPC_INQUIRY_SIGNALS) {
+    if (lowerInput.includes(signal)) {
+      return {
+        classification: "mechanics",
+        matchedSignals: [`NPC查询: ${signal}`],
+        matchedNarrative: [],
+        reason: `检测到 NPC 查询意图（服务/商品）: "${signal}"`,
+      };
+    }
+  }
+
+  // 位置查询：具体询问 NPC/设施位置
+  for (const signal of LOCATION_POSITION_SIGNALS) {
+    if (lowerInput.includes(signal)) {
+      return {
+        classification: "mechanics",
+        matchedSignals: [`位置查询: ${signal}`],
+        matchedNarrative: [],
+        reason: `检测到位置查询意图: "${signal}"`,
+      };
+    }
+  }
+
+  // 楼层内容查询：楼层/区域引用 + "有什么"
+  const hasFloorRef = LOCATION_FLOOR_REFERENCES.some((f) => lowerInput.includes(f));
+  const hasWhatQuery = lowerInput.includes("有什么");
+  if (hasFloorRef && hasWhatQuery) {
+    return {
+      classification: "mechanics",
+      matchedSignals: ["位置查询: 楼层内容"],
+      matchedNarrative: [],
+      reason: "检测到楼层内容查询意图（楼层引用 + 询问内容）",
     };
   }
 
@@ -228,6 +301,19 @@ export function classifyMechanicsIntent(
       matchedNarrative: [],
       reason: "检测到战斗操作意图",
     };
+  }
+
+  // Step 3e: Inventory use patterns — 玩家意图使用背包中的特定物品
+  // 路由到 DM Agent 以便调用 get_inventory 验证物品存在
+  for (const signal of INVENTORY_USE_SIGNALS) {
+    if (lowerInput.includes(signal)) {
+      return {
+        classification: "mechanics",
+        matchedSignals: [`物品使用: ${signal}`],
+        matchedNarrative: [],
+        reason: `检测到物品使用意图: "${signal}"`,
+      };
+    }
   }
 
   // Step 4: 弱 mechanics 信号 → ambiguous

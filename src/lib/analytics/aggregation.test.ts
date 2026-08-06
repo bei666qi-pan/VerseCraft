@@ -8,7 +8,7 @@ test("daily rebuild preserves legacy activity sources and separately rebuilds Be
   assert.match(source, /actorDailyActivity/);
   assert.match(source, /actorDailyTokens/);
   assert.match(source, /eventName} = 'user_registered'/);
-  assert.match(source, /await rebuildWebTrafficDailyForDateKey\(dateKey\)/);
+  assert.match(source, /await rebuildWebTrafficDailyForDateKey\(getBeijingDateKey\(parseUtcDateKeyToDate\(dateKey\)\)\)/);
   assert.match(source, /event_time >= \$\{start\} AND event_time <= \$\{end\}/);
   assert.match(source, /ON CONFLICT \(date_key\) DO UPDATE SET/);
 });

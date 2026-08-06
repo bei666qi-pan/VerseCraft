@@ -35,3 +35,18 @@ export {
   type ActorSimulationContext,
   type EpistemicIndex,
 } from "./integration";
+
+// LLM call layer
+export {
+  runActorSimulation,
+  type RunActorSimulationArgs,
+  type ActorSimulationResult,
+} from "./actorSimulator";
+
+// Director synthesis
+export {
+  synthesizeDirectorPlan,
+  type DirectorSynthesisResult,
+  type SynthesisCandidateAction,
+  type SynthesisConflict,
+} from "./directorSynthesizer";

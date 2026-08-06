@@ -1,7 +1,9 @@
 import type { RetrievalCandidate, RetrievalPlan, RetrievalResult, RuntimeLoreRequest } from "../types";
-import { WORLD_KNOWLEDGE_MAX_DB_ROUND_TRIPS, WORLD_KNOWLEDGE_MAX_RETRIEVED_FACTS } from "../constants";
+import { WORLD_KNOWLEDGE_MAX_DB_ROUND_TRIPS } from "../constants";
 import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { vectorSearch } from "./vectorSearch";
+import { getBm25Config, buildBm25RankExpr } from "./bm25Config";
+import { fuseResults } from "./hybridFusion";
 
 type ChunkRow = {
   chunk_id: number;
@@ -41,16 +43,6 @@ function mapRowToCandidate(row: ChunkRow, from: "exact" | "tag" | "fts" | "vecto
     score,
     debug: { from },
   };
-}
-
-function dedupeCandidates(candidates: RetrievalCandidate[]): RetrievalCandidate[] {
-  const m = new Map<string, RetrievalCandidate>();
-  for (const c of candidates) {
-    const key = c.fact.identity.factKey;
-    const prev = m.get(key);
-    if (!prev || c.score > prev.score) m.set(key, c);
-  }
-  return [...m.values()].slice(0, WORLD_KNOWLEDGE_MAX_RETRIEVED_FACTS);
 }
 
 export function mergeScopeFilterSql(input: RuntimeLoreRequest): { sql: string; params: unknown[] } {
@@ -148,16 +140,22 @@ export async function retrieveWorldKnowledge(args: {
       allCandidates.push(...ret.rows.map((r, idx) => mapRowToCandidate(r, "tag", 80 - idx)));
     }
 
-    // 3) FTS
+    // 3) FTS (with BM25-style scoring via tunable k1/b)
     if (args.plan.ftsQuery && dbRoundTrips < dbRoundTripLimit) {
       dbRoundTrips += 1;
+      const bm25 = getBm25Config();
+      const rankExpr = buildBm25RankExpr(
+        "c.content_tsv",
+        `$${scopeFilter.params.length + 1}`,
+        bm25,
+      );
       const ret = await client.query<ChunkRow & { rank: number }>(
         `
           SELECT
             c.id AS chunk_id, c.entity_id, e.code, e.canonical_name, e.entity_type, e.scope AS entity_scope,
             e.owner_user_id, e.status, e.source_type, e.importance AS entity_importance,
             c.chunk_index, c.content, c.importance AS chunk_importance, c.visibility_scope, c.retrieval_key,
-            ts_rank(c.content_tsv, plainto_tsquery('simple', $${scopeFilter.params.length + 1})) AS rank
+            ${rankExpr} AS rank
           FROM world_knowledge_chunks c
           JOIN world_entities e ON e.id = c.entity_id
           WHERE (${scopeFilter.sql})
@@ -179,7 +177,9 @@ export async function retrieveWorldKnowledge(args: {
     // scripts/verify-embedding-dimension.ts + AI_WORLD_VECTOR_QUERY_EMBED_TIMEOUT_MS 调优）。
     used.vectorCount = 0;
     const vectorRetrievalEnabled = envBoolean("AI_ENABLE_WORLD_VECTOR_RETRIEVAL", true);
-    const queryText = args.plan.ftsQuery || args.input.latestUserInput || "";
+    // Prefer semanticQuery (natural language, better for embedding similarity).
+    // Fall back to ftsQuery (keyword-expanded), then raw input.
+    const queryText = args.plan.semanticQuery || args.plan.ftsQuery || args.input.latestUserInput || "";
     if (vectorRetrievalEnabled && queryText.trim() && dbRoundTrips < dbRoundTripLimit) {
       const embedTimeoutMs = Math.max(100, Math.min(2000, envNumber("AI_WORLD_VECTOR_QUERY_EMBED_TIMEOUT_MS", 300)));
       try {
@@ -187,9 +187,12 @@ export async function retrieveWorldKnowledge(args: {
         const embedded = await embedText(queryText, embedTimeoutMs);
         if (embedded.ok) {
           dbRoundTrips += 1;
-          const vectorCandidates = await vectorSearch({
-            vectorQuery: { embedding: embedded.vector, minSimilarity: 0.5 },
-          });
+          const vectorCandidates = await vectorSearch(
+            {
+              vectorQuery: { embedding: embedded.vector, minSimilarity: args.plan.retrievalBudget.minSimilarity },
+            },
+            scopeFilter,
+          );
           used.vectorCount = vectorCandidates.length;
           allCandidates.push(...vectorCandidates);
         }
@@ -198,11 +201,14 @@ export async function retrieveWorldKnowledge(args: {
       }
     }
 
-    const deduped = dedupeCandidates(allCandidates);
+    // Apply hybrid fusion (RRF) to merge FTS + vector results with tunable weights.
+    // Deduplication (by factKey, highest score wins) and the final candidate count
+    // are handled inside fuseResults → topK (default 14 via VERSECRAFT_HYBRID_TOP_K).
+    const fused = fuseResults(allCandidates);
     return {
-      facts: deduped.map((x) => x.fact),
+      facts: fused.map((x) => x.fact),
       used,
-      debugCandidates: deduped,
+      debugCandidates: fused,
       dbRoundTrips,
     };
   } finally {

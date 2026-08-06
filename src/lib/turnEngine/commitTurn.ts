@@ -22,6 +22,8 @@
  */
 import type { StateDelta } from "@/lib/turnEngine/types";
 import { classifyUnsupportedFactReason, type UnsupportedFactReasonCode } from "@/lib/worldFacts/unsupportedFactDetector";
+import { languageText } from "@/lib/i18n/gameDisplay";
+import type { GameLanguage } from "@/lib/i18n/language";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,
@@ -61,6 +63,25 @@ export const COMMIT_STATE_MIRROR_FIELDS = [
   "world_state_changes",
 ] as const;
 
+/** Fields the commit step may overwrite on the DM record beyond state-changing
+ *  and mirror fields. These include core DM fields, resource tracking, and
+ *  UI/output fields. Keep in sync with the commit-step logic in route.ts. */
+export const COMMIT_RECORD_OVERRIDE_FIELDS = [
+  "is_action_legal",
+  "sanity_damage",
+  "narrative",
+  "is_death",
+  "consumes_time",
+  "time_cost",
+  "consumed_items",
+  "currency_change",
+  "main_threat_updates",
+  "weapon_updates",
+  "weapon_bag_updates",
+  "options",
+  "decision_options",
+] as const;
+
 type CommitStateChangingField = (typeof COMMIT_STATE_CHANGING_FIELDS)[number];
 
 const UNKNOWN_ENTITY_WRITE_FIELDS = new Set<CommitStateChangingField>([
@@ -84,17 +105,39 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
   "npc_status_forbidden_direct_speech",
 ]);
 
-const UNKNOWN_ENTITY_SAFE_NARRATIVE = "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。";
+const UNKNOWN_ENTITY_SAFE_NARRATIVE_ZH = "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。";
+const UNKNOWN_ENTITY_SAFE_NARRATIVE_EN = "A brief sound echoes from the far end of the corridor, but the dim light and distance keep its source unidentifiable.";
 
 /** 位置/环境安全叙事变体，避免连续 fallback 时反复出现相同文本 */
-const SAFE_NARRATIVE_VARIANTS = [
+const SAFE_NARRATIVE_VARIANTS_ZH = [
   "走廊灯管闪了一下，空气里只有老旧的嗡鸣声。你没有发现明确的威胁。",
   "你停下动作，侧耳倾听——只有水管里的水声和远处隐约的电梯响动。",
   "四周恢复了安静。灰白的墙皮在灯光下显得有些斑驳，一切如常。",
   "走廊深处的阴影里什么都没有。你再次确认——目前没有直接的危险。",
   "你的脚步在空荡的楼道里回响。周围没有任何异常的变化。",
 ];
-const BLOCKED_CONFLICT_SAFE_NARRATIVE = "眼前的动静尚不足以形成可提交的战果；你停下动作重新确认局势，武器与世界状态没有变化。";
+const SAFE_NARRATIVE_VARIANTS_EN = [
+  "A hallway light flickers; only the old hum of the building fills the air. You detect no clear threat.",
+  "You stop and listen — nothing but the sound of water in the pipes and the distant rumble of the elevator.",
+  "Silence settles back in. The pale walls look mottled under the lights; everything appears normal.",
+  "The shadows at the far end of the corridor hold nothing. You confirm — there is no immediate danger.",
+  "Your footsteps echo through the empty hallway. Nothing around you has changed.",
+];
+const BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH = "眼前的动静尚不足以形成可提交的战果；你停下动作重新确认局势，武器与世界状态没有变化。";
+const BLOCKED_CONFLICT_SAFE_NARRATIVE_EN = "The commotion ahead amounts to nothing actionable; you pause to reassess — your weapons and the world state remain unchanged.";
+
+function getUnknownEntitySafeNarrative(language: GameLanguage): string {
+  return languageText(language, UNKNOWN_ENTITY_SAFE_NARRATIVE_ZH, UNKNOWN_ENTITY_SAFE_NARRATIVE_EN);
+}
+
+function getSafeNarrativeVariant(language: GameLanguage, turnIndex: number): string {
+  const variants = language === "en-US" ? SAFE_NARRATIVE_VARIANTS_EN : SAFE_NARRATIVE_VARIANTS_ZH;
+  return variants[turnIndex % variants.length] ?? getUnknownEntitySafeNarrative(language);
+}
+
+function getBlockedConflictSafeNarrative(language: GameLanguage): string {
+  return languageText(language, BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH, BLOCKED_CONFLICT_SAFE_NARRATIVE_EN);
+}
 
 function hasDescribedUnknownPersonIssue(report: NarrativeSafetyReport | null | undefined): boolean {
   return Boolean(
@@ -193,6 +236,8 @@ export type CommitTurnArgs = {
   safetyPolicy?: NarrativeSafetyCommitPolicy | null;
   /** Optional PR-3 fact-source gate result. Pure metadata, no IO. */
   factCommitGateResult?: FactCommitGateResult | null;
+  /** Player-facing language for safe fallback narrative text. Defaults to "zh-CN". */
+  gameLanguage?: GameLanguage;
 };
 
 export type CommitTurnResult = {
@@ -442,6 +487,7 @@ function mergeSecurityMeta(
 
 export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   const { candidateDmRecord, delta, validatorReport } = args;
+  const gameLanguage = args.gameLanguage ?? "zh-CN";
 
   let committed: Record<string, unknown> = { ...candidateDmRecord };
   const flags = new Set<TurnCommitFlag>();
@@ -495,8 +541,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     // place merely because no asynchronous repair model answered. This stays
     // deterministic and final-hook-only, so it adds no first-token latency.
     // Use turn-index-based variant to avoid repetitive identical fallback text.
-    const variantIndex = args.turnIndex % SAFE_NARRATIVE_VARIANTS.length;
-    const safeNarrative = SAFE_NARRATIVE_VARIANTS[variantIndex] ?? UNKNOWN_ENTITY_SAFE_NARRATIVE;
+    const safeNarrative = getSafeNarrativeVariant(gameLanguage, args.turnIndex);
     committed = {
       ...committed,
       narrative: safeNarrative,
@@ -509,7 +554,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     // committed as authoritative state.
     committed = {
       ...committed,
-      narrative: BLOCKED_CONFLICT_SAFE_NARRATIVE,
+      narrative: getBlockedConflictSafeNarrative(gameLanguage),
       options: [],
     };
     flags.add("safe_narrative_fallback_applied");

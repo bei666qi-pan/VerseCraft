@@ -139,6 +139,36 @@ export const INSPECT_FORGE_OPTIONS_SCHEMA = buildToolSchema(
   []
 );
 
+/** 查询位置信息 */
+export const LOOKUP_LOCATION_SCHEMA = buildToolSchema(
+  "lookup_location",
+  "查询指定地点/房间的详细信息，包括楼层归属、房间节点、描述和威胁等级。替代在 prompt 中硬编码地点数据。",
+  "read_world_state",
+  "read",
+  {
+    location_name: {
+      type: "string",
+      description: "地点名称（如「暗月工坊·铁匠铺」「废都中枢·B3」），支持模糊匹配",
+    },
+  },
+  ["location_name"]
+);
+
+/** 查询 NPC 服务/商品 */
+export const CHECK_NPC_STOCK_SCHEMA = buildToolSchema(
+  "check_npc_stock",
+  "查询指定 NPC 提供的服务、商品和锻造选项（如适用）。替代在 prompt 中硬编码 NPC 售卖清单。",
+  "read_world_state",
+  "read",
+  {
+    npc_id: {
+      type: "string",
+      description: "NPC 唯一 ID（如 N-008），必须来自注册表",
+    },
+  },
+  ["npc_id"]
+);
+
 // ============================================================
 // Write Tools - Quest Operations
 // ============================================================
@@ -384,6 +414,8 @@ export const DM_TOOL_SCHEMAS = {
   get_world_context: GET_WORLD_CONTEXT_SCHEMA,
   get_combat_state: GET_COMBAT_STATE_SCHEMA,
   inspect_forge_options: INSPECT_FORGE_OPTIONS_SCHEMA,
+  lookup_location: LOOKUP_LOCATION_SCHEMA,
+  check_npc_stock: CHECK_NPC_STOCK_SCHEMA,
   // Write tools - Quest
   issue_quest: ISSUE_QUEST_SCHEMA,
   update_quest_progress: UPDATE_QUEST_PROGRESS_SCHEMA,
@@ -412,6 +444,8 @@ export const READONLY_DM_TOOL_NAMES: DmToolName[] = [
   "get_world_context",
   "get_combat_state",
   "inspect_forge_options",
+  "lookup_location",
+  "check_npc_stock",
 ];
 
 /** 状态变更工具名称列表 */

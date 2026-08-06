@@ -129,7 +129,7 @@ const StreamPanel = memo(function StreamPanel({
   return (
     <div className="min-h-[140px] space-y-3">
       {smoothThinking ? (
-        <div className="space-y-1 py-2 transition-opacity duration-300 ease-out">
+        <div role="status" className="space-y-1 py-2 transition-opacity duration-300 ease-out">
           <div className="flex items-center gap-2">
             <VcSpinner size={28} strokeWidth={2} className="shrink-0" />
             <span
@@ -150,6 +150,8 @@ const StreamPanel = memo(function StreamPanel({
         <>
           <div
             data-testid="stream-narrative-block"
+            aria-live="polite"
+            aria-atomic="false"
             className={`space-y-6 ${STORY_TYPOGRAPHY_CLASS}`}
             style={STORY_TYPOGRAPHY_STYLE}
           >

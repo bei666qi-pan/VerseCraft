@@ -50,6 +50,8 @@ type NpcConsistencyEvalCase = {
     deepTruthLockedNpcIds?: string[];
     distinctPersonaPairs?: string[][];
     appearanceAlreadyWrittenNpcIds?: string[];
+    anchorVoiceHintNpcIds?: string[];
+    noVoiceHintNpcIds?: string[];
     packetMaxChars?: number;
   };
 };
@@ -294,7 +296,9 @@ function checkPersona(testCase: NpcConsistencyEvalCase, gate: SceneActorGateResu
     stringList(testCase.expect.ordinaryNpcIdsNoOldFriend).length > 0 ||
     stringList(testCase.expect.deepTruthLockedNpcIds).length > 0 ||
     (testCase.expect.distinctPersonaPairs ?? []).length > 0 ||
-    stringList(testCase.expect.appearanceAlreadyWrittenNpcIds).length > 0;
+    stringList(testCase.expect.appearanceAlreadyWrittenNpcIds).length > 0 ||
+    stringList(testCase.expect.anchorVoiceHintNpcIds).length > 0 ||
+    stringList(testCase.expect.noVoiceHintNpcIds).length > 0;
 
   const persona = needsPersona
     ? buildMultiNpcCompactPersonaPacketObject({
@@ -357,6 +361,28 @@ function checkPersona(testCase: NpcConsistencyEvalCase, gate: SceneActorGateResu
     if (!card || card.first_appearance_rule !== "already_written") {
       failed = true;
       failures.push(`appearance_reintroduced:${id}`);
+    }
+  }
+
+  for (const id of stringList(testCase.expect.anchorVoiceHintNpcIds)) {
+    const card = cardById.get(id);
+    const hint = card && "voice_hint" in card ? String((card as Record<string, unknown>).voice_hint ?? "").trim() : "";
+    if (!hint) {
+      failed = true;
+      failures.push(`voice_hint_missing:${id}`);
+    }
+  }
+
+  for (const id of stringList(testCase.expect.noVoiceHintNpcIds)) {
+    const card = cardById.get(id);
+    if (!card) {
+      failed = true;
+      failures.push(`persona_card_missing:${id}`);
+      continue;
+    }
+    if ("voice_hint" in card && String((card as Record<string, unknown>).voice_hint ?? "").trim()) {
+      failed = true;
+      failures.push(`unexpected_voice_hint:${id}`);
     }
   }
 

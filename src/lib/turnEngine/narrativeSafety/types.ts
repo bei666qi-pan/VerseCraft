@@ -44,7 +44,8 @@ export type SafetyInvariantCode =
   | "narrative_state_delta_conflict"
   | "schema_contract_violation"
   | "pacing_budget_breach"
-  | "prompt_injection_entity_creation_attempt";
+  | "prompt_injection_entity_creation_attempt"
+  | "potential_epistemic_violation";
 
 export type NarrativeSafetyIssueCode =
   | SafetyInvariantCode

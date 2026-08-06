@@ -138,6 +138,28 @@ test("routeTurnLane uses director tension to force RULE", () => {
   assert.ok(decision.reasons.includes("high_tension_director"));
 });
 
+test("routeTurnLane explicit reveal matches whitespace-padded input", () => {
+  const decision = routeTurnLane({
+    intent: makeIntent({ rawText: "  你到底是谁？  " }),
+    riskLane: "slow",
+    focusNpcId: null,
+    epistemicEnabled: true,
+  });
+  assert.equal(decision.lane, "REVEAL");
+  assert.ok(decision.reasons.includes("explicit_reveal_intent"));
+});
+
+test("routeTurnLane short ack matches whitespace-padded input", () => {
+  const decision = routeTurnLane({
+    intent: makeIntent({ rawText: "  嗯  " }),
+    riskLane: "fast",
+    focusNpcId: null,
+    epistemicEnabled: true,
+  });
+  assert.equal(decision.lane, "FAST");
+  assert.ok(decision.reasons.includes("short_acknowledgement"));
+});
+
 test("routeTurnLane returns FAST for short ack on fast risk lane", () => {
   const decision = routeTurnLane({
     intent: makeIntent({ rawText: "继续" }),

@@ -57,9 +57,7 @@ export function selectCastForTick(args: SelectCastArgs): DirectorCastPlan {
     nowTurn,
     desiredActiveNpcCount: maxActors * 2, // 先多选一些候选
     budget: {
-      maxActiveNpcs: maxActors * 2,
-      minAgencyWeight: 0,
-      maxInactiveTurns: 999,
+      maxActiveNpcPerTick: maxActors * 2,
     },
   });
 

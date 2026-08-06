@@ -7,6 +7,8 @@ import { normalizeForHash } from "@/lib/kg/normalize";
 import { DEFAULT_RETRIEVAL_BUDGET } from "../constants";
 import type { RetrievalIntentType, RetrievalPlan, RuntimeLoreRequest } from "../types";
 import { inferMaxRevealRank } from "../reveal/revealGate";
+import { expandQuery } from "./queryExpander";
+import { enrichQueryHeuristically, enhancedSegmentCJK, isLlmQueryRewriteEnabled } from "./queryRewriter";
 
 function addIfIncludes(target: Set<string>, text: string, tests: string[]): void {
   for (const t of tests) {
@@ -84,7 +86,8 @@ function buildFingerprint(
     threatLevel?: string | null;
     scenePressure?: string | null;
     playerKnownFactIds: string[];
-  }
+  },
+  enrichedQuery?: string
 ): string {
   const body = [
     normalizedInput,
@@ -104,6 +107,7 @@ function buildFingerprint(
     metadata.threatLevel ?? "",
     metadata.scenePressure ?? "",
     metadata.playerKnownFactIds.join(","),
+    enrichedQuery ?? "",
   ].join("|");
   return createHash("sha256").update(body).digest("hex");
 }
@@ -150,7 +154,28 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
     tagHints.add("survival_note");
   }
 
-  const ftsQuery = normalizedInput.slice(0, 512);
+  // ── Query expansion: generate structured multi-query variants ──
+  const expanded = expandQuery(input.latestUserInput);
+  const ftsQuery = expanded.ftsQuery;
+  const semanticQuery = expanded.semanticQuery;
+  const entityQuery = expanded.entityQuery;
+  const compositeQuery = expanded.compositeQuery;
+
+  // ── Enhanced CJK tokenization (trigram + sentence-boundary aware) ──
+  const enhancedTokens = enhancedSegmentCJK(input.latestUserInput);
+  for (const token of enhancedTokens) {
+    if (token.length >= 2) tagHints.add(token);
+  }
+
+  // Augment tag hints with expanded tokens
+  for (const token of expanded.tagTokens) {
+    if (token.length >= 2) tagHints.add(token);
+  }
+
+  // ── Heuristic query enrichment (location-aware) ──
+  const enrichedQuery = enrichQueryHeuristically(input.latestUserInput, input.playerLocation);
+  void isLlmQueryRewriteEnabled(); // Feature-gated LLM rewrite — checked but invoked off-critical-path
+
   const retrievalBudget = {
     ...DEFAULT_RETRIEVAL_BUDGET,
     maxFacts: Math.max(6, Math.min(DEFAULT_RETRIEVAL_BUDGET.maxFacts, Math.floor(input.tokenBudget / 35))),
@@ -163,7 +188,7 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
     threatLevel: input.threatLevel,
     scenePressure: input.scenePressure,
     playerKnownFactIds,
-  });
+  }, enrichedQuery);
   const entitiesFingerprint = createHash("sha256")
     .update([...entityHints.exactCodes, ...input.recentlyEncounteredEntities].sort().join("|"))
     .digest("hex");
@@ -184,6 +209,9 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
     scenePressure: input.scenePressure,
     playerKnownFactIds,
     ftsQuery,
+    semanticQuery,
+    entityQuery,
+    compositeQuery,
     scope: input.worldScope,
     tokenBudget: input.tokenBudget,
     retrievalBudget,

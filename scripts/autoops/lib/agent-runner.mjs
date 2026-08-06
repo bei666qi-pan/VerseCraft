@@ -12,7 +12,7 @@ export class AgentBackend {
   get name() {
     return this._name;
   }
-  // eslint-disable-next-line no-unused-vars
+   
   async run(_taskPrompt, _options = {}) {
     throw new Error(`AgentBackend "${this._name}" does not implement run()`);
   }
@@ -86,7 +86,7 @@ export class CodexBackend extends AgentBackend {
 // ── Claude Backend (Claude Code CLI) ──────────────────────────
 
 export class ClaudeBackend extends AgentBackend {
-  // eslint-disable-next-line no-unused-vars
+   
   constructor(options = {}) {
     super("claude");
   }

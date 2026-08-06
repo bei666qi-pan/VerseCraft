@@ -13,6 +13,7 @@
 
 import type { NpcAgentState } from "@/lib/socialWorld/types";
 import type { ChatMessage } from "@/lib/ai/types/core";
+import type { AIRequestContext } from "@/lib/ai/types/core";
 import {
   resolveActorSimulationFlags,
   shouldRunActorSimulation,
@@ -20,6 +21,8 @@ import {
 } from "./config";
 import { selectCastForTick } from "./castSelection";
 import { buildActorSimulationInput, hasValidActorInput } from "./buildActorInput";
+import { runActorSimulation } from "./actorSimulator";
+import { synthesizeDirectorPlan } from "./directorSynthesizer";
 import type {
   DirectorCastPlan,
   ActorSimulationInput,
@@ -70,8 +73,10 @@ export interface RunActorSimulationResult {
   actorInputs: ActorSimulationInput[];
   /** 有效的 actor 输入（有足够信息可推演） */
   validInputs: ActorSimulationInput[];
-  /** 模拟结果（仅在 soft 模式下有值） */
+  /** 模拟结果（已验证通过的 projection） */
   projections: ActorProjection[];
+  /** 导演合成结果 */
+  synthesisHint: string | null;
   /** Telemetry 数据 */
   telemetry: ActorSimulationTelemetry;
   /** 用于附加到 reasoner 消息的上下文文本 */
@@ -81,9 +86,17 @@ export interface RunActorSimulationResult {
 /**
  * 运行一轮 Actor Simulation（在 world engine tick 内调用）。
  *
- * @returns simulation result，包含 cast plan、inputs、projections 和 telemetry
+ * shadow 模式：只记录 cast selection + telemetry，不调用 LLM。
+ * soft 模式：实际调用 LLM → validate → synthesize → 注入 reasoner context。
+ *
+ * @returns simulation result
  */
-export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSimulationResult {
+export async function runActorSimulationPhase(
+  ctx: ActorSimulationContext & {
+    aiCtx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+    signal?: AbortSignal;
+  }
+): Promise<RunActorSimulationResult> {
   const t0 = Date.now();
   const flags = resolveActorSimulationFlags();
 
@@ -112,6 +125,7 @@ export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSi
       actorInputs: [],
       validInputs: [],
       projections: [],
+      synthesisHint: null,
       telemetry,
       reasonerContextHint: null,
     };
@@ -140,6 +154,7 @@ export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSi
       actorInputs: [],
       validInputs: [],
       projections: [],
+      synthesisHint: null,
       telemetry,
       reasonerContextHint: null,
     };
@@ -181,12 +196,38 @@ export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSi
 
   telemetry.simulationRequested = validInputs.length;
 
-  // Step 3: Build reasoner context hint (for soft mode)
+  // Step 3: Run Actor Simulation (LLM call in soft mode)
+  let projections: ActorProjection[] = [];
+  let synthesisHint: string | null = null;
   let reasonerContextHint: string | null = null;
 
   if (!isActorSimulationShadow(flags) && validInputs.length > 0) {
-    // In soft mode, generate a context hint for the reasoner
-    // This is a deterministic summary of what each NPC might do
+    // soft mode: actual LLM call
+    const simResult = await runActorSimulation({
+      inputs: validInputs,
+      ctx: ctx.aiCtx,
+      signal: ctx.signal,
+      registeredNpcIds: new Set(ctx.npcStates.map((s) => s.npcId)),
+      telemetry,
+    });
+
+    projections = simResult.projections;
+
+    // Director Synthesis: merge projections
+    if (projections.length > 0) {
+      const synthesis = synthesizeDirectorPlan({
+        projections,
+        rejectedProjections: simResult.rejectedProjections,
+        registeredNpcIds: new Set(ctx.npcStates.map((s) => s.npcId)),
+      });
+
+      synthesisHint = synthesis.injectionHint;
+      reasonerContextHint = synthesis.injectionHint;
+      telemetry.projectionAccepted = synthesis.safeCandidateActions.length;
+      telemetry.projectionRejectedByValidator = synthesis.discardedActions.length + simResult.rejectedProjections.length;
+    }
+  } else if (isActorSimulationShadow(flags) && validInputs.length > 0) {
+    // shadow mode: build deterministic context hint only
     const actorSummaries = validInputs.map((input) => {
       const parts: string[] = [];
       if (input.currentGoal) parts.push(`目标: ${input.currentGoal}`);
@@ -197,7 +238,7 @@ export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSi
     });
 
     reasonerContextHint = [
-      "=== Actor Simulation Context (soft mode) ===",
+      "=== Actor Simulation Context (shadow mode) ===",
       `本 tick 选中 ${validInputs.length} 个 NPC 进行后台推演：`,
       ...actorSummaries,
       "请基于以上 NPC 的认知边界和驱动力，在 director_plan_v1 的 npc_next_actions 中生成符合各 NPC 认知的候选行动。",
@@ -205,10 +246,6 @@ export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSi
       "=== End Actor Simulation Context ===",
     ].join("\n");
   }
-
-  // Step 4: Projections are filled later by the actual LLM call (gateway-dependent)
-  // In this integration layer, we prepare the inputs and context hint.
-  // The actual simulation call happens in the reasoner (which already does world building).
 
   const simLatencyMs = Date.now() - castT0;
   telemetry.actorSimulationLatencyMs = simLatencyMs;
@@ -218,7 +255,8 @@ export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSi
     castPlan,
     actorInputs,
     validInputs,
-    projections: [], // Filled by actual LLM call
+    projections,
+    synthesisHint,
     telemetry,
     reasonerContextHint,
   };

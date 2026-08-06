@@ -309,12 +309,15 @@ const tabIcons: Record<Tab, ComponentType<{ className?: string }>> = {
 };
 
 function percent(v: number | null | undefined): string {
-  return `${(Number(v ?? 0) * 100).toFixed(1)}%`;
+  const n = Number(v ?? 0);
+  if (Number.isNaN(n)) return "—";
+  return `${(n * 100).toFixed(1)}%`;
 }
 
 function fmt(v: number | string | null | undefined, unit?: string): string {
   if (v == null || v === "unavailable" || v === "unknown") return "暂无记录";
   if (typeof v === "number") {
+    if (Number.isNaN(v)) return "暂无记录";
     if (unit === "ratio" || unit === "failure_ratio") return percent(v);
     if (unit === "ms") return `${Math.round(v)} 毫秒`;
     return v.toLocaleString("zh-CN");
@@ -1159,7 +1162,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                     {surveyThemes.map((item) => (
                       <div key={item.theme} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
                         <span>{item.theme}</span>
-                        <span>{fmt(item.count)} · {item.pct}%</span>
+                        <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
                     ))}
                   </div>
@@ -1172,7 +1175,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                     {surveyRecommendDistribution.slice(0, 8).map((item) => (
                       <div key={item.bucket} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
                         <span>{item.label}</span>
-                        <span>{fmt(item.count)} · {item.pct}%</span>
+                        <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
                     ))}
                   </div>
@@ -1184,13 +1187,13 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                     {(surveyAggregate?.segmentBreakdown?.actorType ?? []).map((item) => (
                       <div key={`actor:${item.segment}`} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
                         <span>{item.segment === "registered" ? "注册用户" : item.segment === "guest" ? "游客" : "未知身份"}</span>
-                        <span>{fmt(item.count)} · {item.pct}%</span>
+                        <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
                     ))}
                     {(surveyAggregate?.segmentBreakdown?.platform ?? []).slice(0, 3).map((item) => (
                       <div key={`platform:${item.segment}`} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
                         <span>{item.segment}</span>
-                        <span>{fmt(item.count)} · {item.pct}%</span>
+                        <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
                     ))}
                   </div>

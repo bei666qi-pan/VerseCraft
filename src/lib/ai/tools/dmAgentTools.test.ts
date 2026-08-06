@@ -129,10 +129,11 @@ describe("DM Agent Tool Schemas", () => {
     }
   });
 
-  it("至少包含指定的 14 个工具", () => {
+  it("至少包含指定的 16 个工具", () => {
     const expectedTools = [
       "get_player_state", "get_inventory", "get_active_quests",
       "get_world_context", "get_combat_state", "inspect_forge_options",
+      "lookup_location", "check_npc_stock",
       "issue_quest", "update_quest_progress", "forge_weapon",
       "consume_materials", "grant_item", "start_combat",
       "resolve_combat_action", "apply_world_event",
@@ -140,7 +141,7 @@ describe("DM Agent Tool Schemas", () => {
     for (const name of expectedTools) {
       assert.ok(DM_TOOL_SCHEMAS[name as keyof typeof DM_TOOL_SCHEMAS], `Tool ${name} should exist`);
     }
-    assert.strictEqual(ALL_DM_TOOL_NAMES.length, 14);
+    assert.strictEqual(ALL_DM_TOOL_NAMES.length, 16);
   });
 });
 
@@ -528,8 +529,8 @@ describe("Tool Access Control", () => {
     const readonlyDefs = getReadonlyDmToolDefinitions();
     const readonlyNames = readonlyDefs.map((d) => d.function.name);
 
-    // 验证只包含 6 个只读工具
-    assert.strictEqual(readonlyNames.length, 6);
+    // 验证只包含 8 个只读工具
+    assert.strictEqual(readonlyNames.length, 8);
 
     // 验证不包含任何写工具
     const writeNames = ["issue_quest", "update_quest_progress", "forge_weapon",

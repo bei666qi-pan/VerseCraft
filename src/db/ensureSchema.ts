@@ -55,6 +55,20 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_user_id_idx ON feedbacks (user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_guest_id_idx ON feedbacks (guest_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_created_idx ON feedbacks (created_at);`);
+    // Enforce valid kind values at the database level (application-level fallback exists but DB constraint is authoritative).
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'feedbacks_kind_check'
+            AND conrelid = '"feedbacks"'::regclass
+        ) THEN
+          ALTER TABLE feedbacks
+            ADD CONSTRAINT feedbacks_kind_check
+            CHECK (kind IN ('bug', 'feature', 'content', 'other', 'open'));
+        END IF;
+      END $$;
+    `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS survey_responses (
@@ -505,13 +519,15 @@ export async function ensureRuntimeSchema(): Promise<void> {
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_daily_activity (
-        user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
         date_key DATE NOT NULL,
         first_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         last_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        chat_action_count INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (user_id, date_key)
+        chat_action_count INTEGER NOT NULL DEFAULT 0
       );
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS user_daily_activity_user_date_unique ON user_daily_activity (user_id, date_key);
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS user_daily_activity_date_key_idx ON user_daily_activity (date_key);
@@ -522,13 +538,15 @@ export async function ensureRuntimeSchema(): Promise<void> {
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_daily_tokens (
-        user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
         date_key DATE NOT NULL,
         daily_token_cost INTEGER NOT NULL DEFAULT 0,
         daily_play_duration_sec INTEGER NOT NULL DEFAULT 0,
-        chat_action_count INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (user_id, date_key)
+        chat_action_count INTEGER NOT NULL DEFAULT 0
       );
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS user_daily_tokens_user_date_unique ON user_daily_tokens (user_id, date_key);
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS user_daily_tokens_date_key_idx ON user_daily_tokens (date_key);
@@ -941,7 +959,7 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`
       CREATE TABLE IF NOT EXISTS world_engine_runs (
         run_id SERIAL PRIMARY KEY,
-        dedup_key VARCHAR(128) NOT NULL UNIQUE,
+        dedup_key VARCHAR(128) NOT NULL,
         request_id VARCHAR(191) NOT NULL,
         user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
         session_id VARCHAR(191) NOT NULL,

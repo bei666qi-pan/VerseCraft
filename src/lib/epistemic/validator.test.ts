@@ -85,9 +85,35 @@ test("preflight 异常但叙事缺少迟疑语气 → 追加轻微软化（不�
   assert.ok(String(dmRecord.narrative).includes("没有把话说死"));
 });
 
-test("欣蓝：世界/系统正史类禁止表被放宽，不应因 world 子串误杀", () => {
+test("欣蓝：未标记 xinlan_known 的世界事实仍进入 forbidden 触发拦截", () => {
   const canon = "星港学院学制循环与观测者在档案中的签名规则属于系统正史条目";
   const facts = [mkFact("w2", canon, "world", { sourceType: "system_canon" })];
+  const profile = buildNpcEpistemicProfile(XINLAN_NPC_ID);
+  assert.equal(profile.isXinlanException, true);
+  const dm: Record<string, unknown> = {
+    narrative: `她平静地补充：${canon}`,
+    options: ["记下", "换话题"],
+  };
+  const { dmRecord, telemetry } = applyEpistemicPostGenerationValidation({
+    dmRecord: dm,
+    actorNpcId: XINLAN_NPC_ID,
+    presentNpcIds: [XINLAN_NPC_ID],
+    allFacts: facts,
+    profile,
+    anomalyResult: emptyAnomaly(XINLAN_NPC_ID),
+    nowIso: iso,
+  });
+  assert.equal(telemetry.validatorTriggered, true);
+  assert.equal(telemetry.rewriteTriggered, true);
+  assert.ok(!String(dmRecord.narrative).includes(canon.replace(/\s+/g, "")));
+});
+
+test("欣蓝：标记 xinlan_known 的世界/系统正史事实豁免 forbidden 检测", () => {
+  const canon = "星港学院学制循环与观测者在档案中的签名规则属于系统正史条目";
+  const facts = [mkFact("w2", canon, "world", {
+    sourceType: "system_canon",
+    tags: ["xinlan_known"],
+  })];
   const profile = buildNpcEpistemicProfile(XINLAN_NPC_ID);
   assert.equal(profile.isXinlanException, true);
   const dm: Record<string, unknown> = {

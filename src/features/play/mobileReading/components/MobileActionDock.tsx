@@ -92,7 +92,11 @@ export function MobileActionDock({
                 onUseProfessionActive={onUseProfessionActive}
               />
             ) : null}
+            <label htmlFor="manual-action-input" className="sr-only">
+              {isEnglish ? "Action or dialogue input" : "行动或对白输入"}
+            </label>
             <input
+              id="manual-action-input"
               value={input}
               onFocus={onTextIntent}
               onChange={(event) => {

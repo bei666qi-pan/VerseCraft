@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { actorDailyActivity, actorDailyTokens, analyticsEvents } from "@/db/schema";
 import { getUtcDateKey, parseUtcDateKeyToDate } from "@/lib/analytics/dateKeys";
-import { getBeijingDateRange, WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN } from "@/lib/analytics/webTraffic";
+import { getBeijingDateKey, getBeijingDateRange, WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN } from "@/lib/analytics/webTraffic";
 
 export type AdminMetricsDailyRebuildResult = {
   dateKey: string;
@@ -134,9 +134,10 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
     .from(analyticsEvents)
     .where(sql`${analyticsEvents.eventName} IN ('game_settlement', 'game_record_submitted') AND (${analyticsEvents.eventTime} AT TIME ZONE 'UTC')::date = ${dateKey}::date`);
 
-  // Kept separate from legacy UTC admin_metrics_daily; the same date label is rebuilt by the
-  // shared maintenance route, but web traffic itself uses an Asia/Shanghai time range.
-  await rebuildWebTrafficDailyForDateKey(dateKey);
+  // Kept separate from legacy UTC admin_metrics_daily. Convert the UTC dateKey to the
+  // corresponding Beijing dateKey (UTC midnight = 08:00 Beijing, same calendar day)
+  // because web_traffic_daily uses Asia/Shanghai calendar-day labels.
+  await rebuildWebTrafficDailyForDateKey(getBeijingDateKey(parseUtcDateKeyToDate(dateKey)));
 
   const result: AdminMetricsDailyRebuildResult = {
     dateKey,

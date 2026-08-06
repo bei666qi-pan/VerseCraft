@@ -65,7 +65,17 @@ function classifyForbiddenFact(f: KnowledgeFact): EpistemicLeakType {
   return "private_fact_leak";
 }
 
-/** 欣蓝：world 层不在此硬拦（仍拦玩家独知 / 他 NPC 私域），避免误杀牵引式措辞 */
+/**
+ * 欣蓝例外：仅豁免其明确被授权可知的世界/系统正史事实。
+ * 未标记 xinlan_known 的 world/system_canon 事实仍进入 forbidden 列表并触发后验检测，
+ * 避免欣蓝因过度豁免而实际泄露了她不应知晓的世界真相。
+ *
+ * 风险：当前代码库缺少统一的 xinlan_known 事实标记机制。在事实补齐标记之前，
+ * 欣蓝对所有未标记的 world/system_canon 事实将按普通 NPC 规则处理（即全部拦截）。
+ * TODO: 在 KnowledgeFact.tags 中统一写入 ["xinlan_known"]，或引入事实白名单表
+ * （如 src/config/xinlanPermittedFacts.ts），由构建阶段（builders/policy）在生成
+ * NpcEpistemicProfile 时注入允许的 factId 集合，供此处分发过滤。
+ */
 function forbiddenListForActor(
   allFacts: KnowledgeFact[],
   actorNpcId: string,
@@ -75,7 +85,12 @@ function forbiddenListForActor(
 ): KnowledgeFact[] {
   const raw = forbiddenFactsForActor(allFacts, actorNpcId, scene, { nowIso });
   if (!profile?.isXinlanException) return raw;
-  return raw.filter((f) => f.scope !== "world" && f.sourceType !== "system_canon");
+  return raw.filter((f) => {
+    const isWorldOrCanon = f.scope === "world" || f.sourceType === "system_canon";
+    if (!isWorldOrCanon) return true; // 保持非世界事实在 forbidden 中
+    // 仅当事实显式标记 xinlan_known 时才从 forbidden 移除
+    return !(Array.isArray(f.tags) && f.tags.includes("xinlan_known"));
+  });
 }
 
 function narrativeHitsForbidden(narrative: string, forbidden: KnowledgeFact[]): { hit: boolean; worst: EpistemicLeakType } {

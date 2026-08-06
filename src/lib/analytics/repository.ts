@@ -262,7 +262,9 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
         SELECT
           ${dateKey}::date,
           (SELECT COUNT(*) FROM is_first_daily_activity_today),
-          0, 0, 0,
+          (SELECT COUNT(DISTINCT ada.actor_id) FROM actor_daily_activity ada WHERE ada.actor_type = 'user' AND ada.date_key >= ${dateKey}::date - 6 AND ada.date_key <= ${dateKey}::date),
+          (SELECT COUNT(DISTINCT ada.actor_id) FROM actor_daily_activity ada WHERE ada.actor_type = 'user' AND ada.date_key >= ${dateKey}::date - 29 AND ada.date_key <= ${dateKey}::date),
+          0,
           ${input.tokenCost},
           ${input.playDurationDeltaSec},
           1,
@@ -273,6 +275,8 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
         ON CONFLICT (date_key) DO UPDATE
         SET
           dau = admin_metrics_daily.dau + EXCLUDED.dau,
+          wau = EXCLUDED.wau,
+          mau = EXCLUDED.mau,
           total_token_cost = admin_metrics_daily.total_token_cost + EXCLUDED.total_token_cost,
           total_play_duration_sec = admin_metrics_daily.total_play_duration_sec + EXCLUDED.total_play_duration_sec,
           chat_actions = admin_metrics_daily.chat_actions + EXCLUDED.chat_actions,
@@ -312,15 +316,18 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
 export async function recordUserRegisteredAnalytics(input: Omit<AnalyticsEventInsertInput, "eventName" | "tokenCost" | "playDurationDeltaSec"> & { eventTime?: Date }): Promise<void> {
   const eventTime = input.eventTime ?? new Date();
   const dateKey = getUtcDateKey(eventTime);
+  const actor = buildActorIdentity({ userId: input.userId });
+  const actorId = actor?.actorId ?? null;
+  const actorType = actor?.actorType ?? null;
 
   try {
     await db.execute(sql`
       WITH ins_event AS (
         INSERT INTO analytics_events (
-          event_id, user_id, session_id, event_name, event_time, page, source, platform,
+          event_id, actor_id, actor_type, user_id, session_id, event_name, event_time, page, source, platform,
           environment, token_cost, play_duration_delta_sec, payload, idempotency_key
         ) VALUES (
-          ${input.eventId}, ${input.userId}, 'system', 'user_registered', ${eventTime},
+          ${input.eventId}, ${actorId}, ${actorType}, ${input.userId}, 'system', 'user_registered', ${eventTime},
           ${input.page}, ${input.source}, ${input.platform},
           ${ANALYTICS_ENVIRONMENT_TAG}, 0, 0, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}
         )

@@ -25,7 +25,9 @@ test("DM_TOOL_SCHEMAS contains all expected tools", () => {
   assert.ok(names.includes("start_combat"));
   assert.ok(names.includes("resolve_combat_action"));
   assert.ok(names.includes("apply_world_event"));
-  assert.equal(names.length, 14);
+  assert.ok(names.includes("lookup_location"));
+  assert.ok(names.includes("check_npc_stock"));
+  assert.equal(names.length, 16);
 });
 
 // ── Tool name enumeration ──
@@ -40,6 +42,7 @@ test("READONLY_DM_TOOL_NAMES contains only read tools", () => {
   const expectedReadonly = [
     "get_player_state", "get_inventory", "get_active_quests",
     "get_world_context", "get_combat_state", "inspect_forge_options",
+    "lookup_location", "check_npc_stock",
   ];
   assert.deepStrictEqual([...READONLY_DM_TOOL_NAMES].sort(), [...expectedReadonly].sort());
 });
@@ -159,7 +162,7 @@ test("grant_item schema has expected params", () => {
 // ── Regression: known tool names are stable ──
 
 test("ALL_DM_TOOL_NAMES is a frozen snapshot", () => {
-  assert.equal(ALL_DM_TOOL_NAMES.length, 14);
-  assert.equal(READONLY_DM_TOOL_NAMES.length, 6);
+  assert.equal(ALL_DM_TOOL_NAMES.length, 16);
+  assert.equal(READONLY_DM_TOOL_NAMES.length, 8);
   assert.equal(WRITE_DM_TOOL_NAMES.length, 8);
 });

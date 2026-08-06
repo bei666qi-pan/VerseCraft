@@ -34,7 +34,12 @@ export function canActorKnowFact(
   }
 
   if (fact.visibleTo.length > 0) {
-    return fact.visibleTo.includes(actor);
+    // visibleTo is a narrowing whitelist — it cannot grant access beyond what
+    // the fact's scope permits.  An actor must be in visibleTo AND pass the
+    // scope check below.  This prevents world-scope facts from leaking to NPCs
+    // through visibleTo alone.
+    if (!fact.visibleTo.includes(actor)) return false;
+    // Fall through to scope-based access check.
   }
 
   switch (fact.scope) {
@@ -46,7 +51,10 @@ export function canActorKnowFact(
       return actor === PLAYER_ACTOR_ID;
     case "npc": {
       const owner = String(fact.ownerId ?? "").trim();
-      return owner.length > 0 && actor === owner;
+      if (owner.length > 0 && actor === owner) return true;
+      // NPC 私域事实若标记 inferableByOthers，在场其他 NPC 可推断片段（置信度较低）
+      if (fact.inferableByOthers && scene.presentNpcIds.includes(actor)) return true;
+      return false;
     }
     case "shared_scene":
       return actor === PLAYER_ACTOR_ID || scene.presentNpcIds.includes(actor);
@@ -61,6 +69,31 @@ export function canActorKnowFact(
     default:
       return false;
   }
+}
+
+/**
+ * 计算 actor 对某事实的置信度（0..1），用于下游叙事时的措辞强度控制。
+ * - 拥有者（owner）置信度 = 1.0
+ * - 通过 inferableByOthers 推断的在场 NPC 置信度较低（0.5）
+ * - DM 置信度 = 1.0
+ * - 其他可访问路径默认 0.8
+ */
+export function getFactConfidenceForActor(
+  fact: KnowledgeFact,
+  actorId: string,
+  scene: EpistemicSceneContext,
+  options?: { nowIso?: string }
+): number {
+  if (!canActorKnowFact(fact, actorId, scene, options)) return 0;
+
+  const actor = String(actorId ?? "").trim();
+  const owner = String(fact.ownerId ?? "").trim();
+
+  if (actor === DM_ACTOR_ID) return 1.0;
+  if (owner.length > 0 && actor === owner) return 1.0;
+  if (fact.inferableByOthers && scene.presentNpcIds.includes(actor)) return 0.5;
+
+  return 0.8;
 }
 
 export function filterFactsForActor(

@@ -97,8 +97,8 @@ export function buildActorSimulationInput(args: BuildActorInputArgs): ActorSimul
     relationEdges: relationEdges.filter(
       (e) => e.targetNpcId !== castActor.npcId // 排除自引用
     ),
-    currentLocation: npcState.currentLocation ?? "unknown",
-    personalAgenda: npcState.personalAgenda ?? null,
+    currentLocation: "unknown",
+    personalAgenda: null,
     scenePublicFacts,
     actorScopedFacts,
     horizonTurns: Math.min(3, Math.max(1, horizonTurns)),

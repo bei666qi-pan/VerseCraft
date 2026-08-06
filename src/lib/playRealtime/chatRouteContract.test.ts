@@ -112,7 +112,10 @@ test("narrative expansion remains a bounded final hook with a p95 deadline", () 
   // Expansion budget logic now inlined into route.ts.
   assert.ok(routeContent.includes("const finalP95RemainingMs"));
   assert.ok(routeContent.includes("CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms"));
-  assert.ok(routeContent.includes("Math.min(configuredExpansionBudgetMs, performanceBudgetMs - 250, finalP95RemainingMs)"));
+  assert.ok(routeContent.includes("configuredExpansionBudgetMs"));
+  assert.ok(routeContent.includes("performanceBudgetMs - 250"));
+  assert.ok(routeContent.includes("ABSOLUTE_EXPANSION_CAP_MS"));
+  assert.ok(routeContent.includes("8_000"));
   assert.ok(logicalTasksContent.includes("Math.min(10_000, args.budgetMs ?? 6_000)"));
 });
 

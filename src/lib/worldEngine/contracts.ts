@@ -144,6 +144,11 @@ export type DirectorPrivateHook = {
   summary: string;
   ttl_turns: number;
   must_not_surface_directly: true;
+  /** 模型输出的伏笔标签，用于 prompt 组装时分类格式化。
+   *  - must_recall: 当前回合应该回收的伏笔
+   *  - forbidden_reveal: 当前回合禁止揭露的内容
+   */
+  tag?: "must_recall" | "forbidden_reveal" | string;
 };
 
 export type DirectorPlan = {
@@ -553,11 +558,13 @@ function normalizeHooks(raw: unknown): DirectorPrivateHook[] {
     const hookCode = sanitizeCode(o.hook_code, "HOOK");
     const summary = clampText(o.summary, 220);
     if (!hookCode || !summary) continue;
+    const tag = typeof o.tag === "string" ? o.tag.trim() : undefined;
     out.push({
       hook_code: hookCode,
       summary,
       ttl_turns: clampInt(o.ttl_turns, 1, 48, 6),
       must_not_surface_directly: true,
+      ...(tag ? { tag } : {}),
     });
     if (out.length >= 12) break;
   }

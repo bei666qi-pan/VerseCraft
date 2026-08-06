@@ -64,6 +64,7 @@ export type AnalyticsEventName =
   | "save_load"
   | "settlement_submitted"
   | "game_settlement"
+  | "game_record_submitted"
   | "feedback_submitted"
   | "compliance_inquiry_submitted"
   | "onboarding_viewed"
@@ -89,6 +90,7 @@ export type AnalyticsEventName =
   | "turn_lane_decided"
   | "lane_side_effect_applied"
   | "director_agenda_injected"
+  | "director_hint_adoption"
   | "turn_commit_summary"
   | "narrative_validator_issue"
   | "narrative_safety_issue"
@@ -99,7 +101,12 @@ export type AnalyticsEventName =
   | "unknown_entity_blocked"
   | "prompt_injection_blocked"
   | "narrative_protocol_leak"
-  | "presence_flaky";
+  | "presence_flaky"
+  | "memory_compression_completed"
+  | "narrative_expansion_skipped"
+  | "storage_degraded"
+  | "world_engine_langgraph_node"
+  | "prompt_assembly_completed";
 
 export type AnalyticsPlatform = "mobile" | "desktop" | "unknown";
 

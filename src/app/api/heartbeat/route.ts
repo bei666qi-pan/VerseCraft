@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     if (userId) {
       memberId = userId;
     } else if (rawGuestId) {
-      memberId = rawGuestId.startsWith("guest_") ? rawGuestId : `guest_${rawGuestId}`;
+      memberId = `g:${rawGuestId}`;
       isGuest = true;
     }
 

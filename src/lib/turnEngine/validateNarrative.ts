@@ -43,6 +43,22 @@
  * commit gates rather than replacing the story text.
  *
  * The caller (`commitTurn`) is responsible for applying overrides.
+ *
+ * NOTE: Narrative length validation (under_min, far_under_min, over_max,
+ * too_few_info_beats) is NOT in this module. It lives in
+ * `src/lib/turnEngine/narrativeLength.ts` (`assessNarrativeLength`) and is
+ * called from `route.ts` post-generation. That validator is purely code-driven:
+ * it counts chars via `countCompactChars` and compares against the server-side
+ * resolved `NarrativeBudget` — it does NOT depend on the model having seen
+ * `narrativeBudgetBlock` guidance in the prompt. The prompt budget block
+ * (`narrative_budget_packet` JSON injected into dynamic suffix) is advisory
+ * guidance to the model; the real enforcement is in `narrativeLength.ts`.
+ *
+ * For telemetry, `narrativeLengthTelemetry.ts` wraps the assessment into
+ * analytics-friendly fields (`narrativeUnderMin`, `narrativeOverMax`, etc.).
+ *
+ * For under-minimum recovery, `narrativeExpansion.ts` may re-request the model
+ * to expand short narratives (gated by tier and safety).
  */
 import { resolveActionsFromNarrative, getBackfillTelemetrySummary, type ActionBackfillResult } from "@/lib/turnEngine/actionResolver";
 import { getVerseCraftStyleProfile, type VerseCraftStyleProfile } from "@/lib/narrativeStyle/styleBible";
@@ -65,6 +81,10 @@ import {
 import { findRegisteredItemById } from "@/lib/registry/itemLookup";
 import { softenPendingCandidateFacts } from "@/lib/worldFacts/candidateNarrativeGuard";
 import { normalizeNarrativeAuditPayload, type NarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
+import {
+  validateItemUseNarrative,
+  type ItemUseValidationReport,
+} from "@/lib/turnEngine/validators/itemUseValidator";
 import { listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
 import type { EpistemicFilterResult } from "@/lib/turnEngine/epistemic/types";
 import type { KnowledgeFact } from "@/lib/epistemic/types";
@@ -154,7 +174,10 @@ export type NarrativeValidationIssueCode =
   | "used_fact_id_missing_from_registry"
   | "fact_commit_gate_blocked"
   | "narrative_unregistered_person_name"
-  | "narrative_alias_misuse";
+  | "narrative_alias_misuse"
+  | "item_not_in_inventory"
+  | "item_effect_type_mismatch"
+  | "item_consumed_not_in_structured";
 
 export type NarrativeValidationIssue = {
   code: NarrativeValidationIssueCode;
@@ -689,6 +712,26 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     }
   }
 
+  // 9.5. item_use_validator: check that narrative-described item use is
+  //       consistent with inventory, effect type, and consumed_items.
+  if (!intentIsSystemTransition && narrative && (args.inventoryItemIds ?? []).length > 0) {
+    const itemUseReport: ItemUseValidationReport = validateItemUseNarrative(
+      narrative,
+      args.inventoryItemIds ?? [],
+      dm,
+    );
+    if (!itemUseReport.ok) {
+      for (const iuIssue of itemUseReport.issues) {
+        issues.push({
+          code: iuIssue.code,
+          detail: `item_use:${iuIssue.detail}`,
+          anchor: iuIssue.itemId,
+          severity: iuIssue.severity,
+        });
+      }
+    }
+  }
+
   // 10. npc_consistency_bridge: absorb upstream `applyNpcConsistencyPostGeneration`
   //     telemetry so downstream analytics get a single unified view.
   if (args.npcConsistencyIssueCount && args.npcConsistencyIssueCount > 0) {
@@ -796,7 +839,11 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     }
   }
 
-  // v4 全链路人名白名单：检测 narrative 中残留未注册人名
+  // v4 全链路人名白名单：检测 narrative 中残留未注册人名。
+  //
+  // 此 validator 不依赖 prompt 引导模型使用已注册人名——它通过 extractChineseNames
+  // 直接扫描 narrative 文本与 NPC_NAME_SET 比对，完全由代码驱动。原"NPC规范名册"类
+  // prompt 规则已在 v6 压缩中移除/collapse，本 validator 现为主力执法点。
   if (narrative) {
     const nameIssues = validateNarrativePersonNames({
       narrative,
@@ -804,6 +851,15 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     });
     issues.push(...nameIssues);
   }
+
+  // NOTE: unsupported_new_fact 检测有两条路径：
+  //   a) _narrative_audit.used_fact_ids / candidate_new_facts — 依赖模型输出此元数据
+  //      （compact prompt 第 190 行仍保留 "须写 _narrative_audit.used_fact_ids" 约束，
+  //       但 full stable prompt 不包含此指令；若模型未输出 _narrative_audit，此路径
+  //       静默跳过，不会误报。）
+  //   b) detectUnsupportedFacts 对 narrative 文本的正则扫描（根因/关系/地点/事件阶段/
+  //      道具获取/NPC深层身份/任务完成/强断言）——完全不依赖 prompt，代码驱动。
+  // 原"强事实审计"类 prompt 规则已压缩为单行；路径 (b) 是主力的代码级兜底执法。
 
   // ---- Decide overrides ----
   const byCode: Partial<Record<NarrativeValidationIssueCode, number>> = {};

@@ -29,6 +29,9 @@ import {
 } from "./gameDomainServices";
 import { ITEMS } from "@/lib/registry/items";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
+import { MAP_ROOMS, FLOORS, NPC_EXCLUSIVE_ITEMS, ENTITY_CARRIED_ITEMS } from "@/lib/registry/world";
+import { NPCS } from "@/lib/registry/npcs";
+import { FLOOR_LORE_BY_ID } from "@/lib/registry/floorLoreRegistry";
 
 import {
   buildServerPlayerStateSnapshot,
@@ -166,6 +169,146 @@ async function handleInspectForgeOptions(
     ok: true,
     data: snapshot,
     narrativeContext: `${locationNote}。有 ${availableCount} 个可执行的配方（共 ${snapshot.availableRecipes.length} 个）。当前原石：${snapshot.playerOriginium}`,
+  };
+}
+
+async function handleLookupLocation(
+  args: Record<string, unknown>,
+  ctx: DmAgentContext
+): Promise<DmToolResult> {
+  void ctx;
+  const locationName = String(args.location_name ?? "").trim();
+  if (!locationName) {
+    return {
+      ok: false,
+      error: "地点名称不能为空",
+      code: "validation_error",
+      narrativeContext: "请提供要查询的地点名称",
+    };
+  }
+
+  const query = locationName.toLowerCase();
+
+  // 1) 尝试精确匹配 MAP_ROOMS 中的 room node
+  let matchedFloor: string | null = null;
+  let matchedRooms: string[] = [];
+
+  for (const [floorId, rooms] of Object.entries(MAP_ROOMS)) {
+    for (const room of rooms) {
+      const roomLower = room.toLowerCase();
+      if (roomLower === query || roomLower.includes(query)) {
+        matchedFloor = floorId;
+        matchedRooms.push(room);
+      }
+    }
+    if (matchedRooms.length > 0) break; // 第一个匹配到的楼层就返回
+  }
+
+  // 2) 如果没有精确匹配到 room，尝试匹配 FLOORS 描述
+  if (matchedRooms.length === 0) {
+    for (const floor of FLOORS) {
+      const floorLabel = floor.label.toLowerCase();
+      const floorDesc = floor.description.toLowerCase();
+      if (floorLabel.includes(query) || floorDesc.includes(query) || floor.id.toLowerCase() === query) {
+        matchedFloor = floor.id;
+        matchedRooms = [...(MAP_ROOMS[floor.id] ?? [])];
+        break;
+      }
+    }
+  }
+
+  // 3) 模糊匹配 MAP_ROOMS key
+  if (matchedRooms.length === 0) {
+    for (const [floorId, rooms] of Object.entries(MAP_ROOMS)) {
+      const floorKey = floorId.toLowerCase();
+      if (floorKey.includes(query) || query.includes(floorKey)) {
+        matchedFloor = floorId;
+        matchedRooms = [...rooms];
+        break;
+      }
+    }
+  }
+
+  if (!matchedFloor || matchedRooms.length === 0) {
+    return {
+      ok: false,
+      error: `未找到匹配的地点：「${locationName}」`,
+      code: "validation_error",
+      narrativeContext: `数据库中未找到与「${locationName}」匹配的地点信息`,
+    };
+  }
+
+  // 获取楼层描述
+  const floorInfo = FLOORS.find((f) => f.id === matchedFloor);
+  const description = floorInfo?.description ?? `${matchedFloor} 楼层`;
+
+  // 获取威胁信息
+  const floorLore = FLOOR_LORE_BY_ID[matchedFloor as keyof typeof FLOOR_LORE_BY_ID];
+  const threats = floorLore
+    ? { linkedAnomaly: floorLore.linkedAnomalyId, mainThreat: floorLore.mainThreatMapping }
+    : { linkedAnomaly: null, mainThreat: "未知" };
+
+  return {
+    ok: true,
+    data: {
+      floorId: matchedFloor,
+      floorLabel: floorInfo?.label ?? matchedFloor,
+      description,
+      roomNodes: matchedRooms,
+      threats,
+    },
+    narrativeContext: `${floorInfo?.label ?? matchedFloor}，共 ${matchedRooms.length} 个房间节点。${threats.linkedAnomaly ? `关联异常：${threats.linkedAnomaly}。` : ""}`,
+  };
+}
+
+async function handleCheckNpcStock(
+  args: Record<string, unknown>,
+  ctx: DmAgentContext
+): Promise<DmToolResult> {
+  void ctx;
+  const npcId = String(args.npc_id ?? "").trim();
+  if (!npcId) {
+    return {
+      ok: false,
+      error: "NPC ID 不能为空",
+      code: "validation_error",
+      narrativeContext: "请提供要查询的 NPC ID",
+    };
+  }
+
+  // 在 NPCS 注册表中查找
+  const npc = NPCS.find((n) => n.id === npcId);
+  if (!npc) {
+    return {
+      ok: false,
+      error: `未找到 NPC：「${npcId}」`,
+      code: "invalid_target",
+      narrativeContext: `注册表中未找到 ID 为「${npcId}」的 NPC`,
+    };
+  }
+
+  // 获取 NPC 专属物品
+  const exclusiveItem = NPC_EXCLUSIVE_ITEMS[npcId] ?? null;
+
+  // 获取 NPC 携带的可掉落物品
+  const carriedItems = ENTITY_CARRIED_ITEMS[npcId] ?? [];
+
+  return {
+    ok: true,
+    data: {
+      npcId: npc.id,
+      name: npc.name,
+      location: npc.location,
+      floor: npc.floor,
+      personality: npc.personality,
+      specialty: npc.specialty,
+      combatPower: npc.combatPower,
+      defaultFavorability: npc.defaultFavorability,
+      exclusiveItem,
+      carriedItemIds: carriedItems,
+      lore: npc.lore,
+    },
+    narrativeContext: `${npc.name}（${npcId}），位于 ${npc.location}。专长：${npc.specialty}。${exclusiveItem ? `专属物品：${exclusiveItem}。` : ""}可掉落 ${carriedItems.length} 件物品。`,
   };
 }
 
@@ -465,6 +608,16 @@ export const DM_TOOL_REGISTRY: Record<string, DmToolRegistration> = {
     definition: buildToolDefinition("inspect_forge_options"),
     handler: handleInspectForgeOptions,
   },
+  lookup_location: {
+    meta: DM_TOOL_SCHEMAS.lookup_location.meta,
+    definition: buildToolDefinition("lookup_location"),
+    handler: handleLookupLocation,
+  },
+  check_npc_stock: {
+    meta: DM_TOOL_SCHEMAS.check_npc_stock.meta,
+    definition: buildToolDefinition("check_npc_stock"),
+    handler: handleCheckNpcStock,
+  },
   // Write tools - Quest
   issue_quest: {
     meta: DM_TOOL_SCHEMAS.issue_quest.meta,
@@ -526,6 +679,8 @@ export function getReadonlyDmToolDefinitions(): ToolDefinition[] {
     "get_world_context",
     "get_combat_state",
     "inspect_forge_options",
+    "lookup_location",
+    "check_npc_stock",
   ]);
   return Object.entries(DM_TOOL_REGISTRY)
     .filter(([name]) => readonlyNames.has(name))

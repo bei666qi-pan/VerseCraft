@@ -1,7 +1,7 @@
 {
   "name": "versecraft",
   "version": "0.1.0",
-  "description": "AI-powered interactive fiction game platform / AI \u9a71\u52a8\u7684\u4e92\u52a8\u5c0f\u8bf4\u6e38\u620f\u5e73\u53f0",
+  "description": "AI-powered interactive fiction game platform / AI 驱动的互动小说游戏平台",
   "author": "VerseCraft Contributors",
   "license": "MIT",
   "homepage": "https://versecraft.cn",
@@ -158,6 +158,14 @@
     "verse:ds:doctor": "node scripts/verse-cli.mjs -ds doctor"
   },
   "dependencies": {
+    "@langchain/langgraph": "^1.4.9",
+    "@langfuse/client": "^5.10.0",
+    "@langfuse/otel": "^5.10.0",
+    "@langfuse/tracing": "^5.10.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/sdk-trace-base": "^2.10.0",
+    "@opentelemetry/sdk-trace-node": "^2.10.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.4",
     "altcha": "^2.3.0",
@@ -196,6 +204,7 @@
     "promptfoo": "^0.100.0",
     "sharp": "^0.35.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

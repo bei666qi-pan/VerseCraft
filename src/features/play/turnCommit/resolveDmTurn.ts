@@ -313,18 +313,14 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   const rollout = getVerseCraftRolloutFlags();
 
   let narrative = baseNarrative;
-  if (hasStrongAcquireSemantics(narrative) && !hasAwards) {
-    if (rollout.enableNarrativeStateConflictDegrade) {
-      const downgraded = downgradeAcquireSemanticsInNarrative(narrative);
-      if (downgraded.applied) {
-        narrative = clampString(downgraded.text, maxNarrativeChars);
-        consistency_flags.push("acquire_without_awards_downgraded");
-      } else {
-        narrative = "你注意到附近有一件尚未确认归属的物品，暂时没有把它记入行囊。";
-        consistency_flags.push("acquire_without_awards_fallback");
-      }
+  if (rollout.enableNarrativeStateConflictDegrade && hasStrongAcquireSemantics(narrative) && !hasAwards) {
+    const downgraded = downgradeAcquireSemanticsInNarrative(narrative);
+    if (downgraded.applied) {
+      narrative = clampString(downgraded.text, maxNarrativeChars);
+      consistency_flags.push("acquire_without_awards_downgraded");
     } else {
-      consistency_flags.push("acquire_without_awards_detected");
+      narrative = "你注意到附近有一件尚未确认归属的物品，暂时没有把它记入行囊。";
+      consistency_flags.push("acquire_without_awards_fallback");
     }
   } else if (hasAwards && !hasStrongAcquireSemantics(narrative)) {
     consistency_flags.push("awards_without_explicit_acquire_text");

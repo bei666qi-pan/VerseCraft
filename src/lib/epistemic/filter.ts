@@ -5,7 +5,7 @@
 import type { EpistemicSceneContext, KnowledgeFact, NpcEpistemicProfile } from "./types";
 import { filterFactsForActor, forbiddenFactsForActor } from "./guards";
 
-export { canActorKnowFact, filterFactsForActor, forbiddenFactsForActor } from "./guards";
+export { canActorKnowFact, filterFactsForActor, forbiddenFactsForActor, getFactConfidenceForActor } from "./guards";
 
 /** 玩家独知层默认不进入 NPC actor 提示（防读剧本） */
 export function shouldOmitPlayerKnownSummaryForNpcActor(_profile: NpcEpistemicProfile | null): boolean {

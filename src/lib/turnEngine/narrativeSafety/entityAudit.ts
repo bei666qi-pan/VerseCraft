@@ -27,8 +27,8 @@ const ENTITY_INJECTION_RE =
 const STRONG_NPC_SURFACE_RE =
   /(?:^|[\s"'“”‘’（(，。！？；:：])([\p{Script=Han}·]{2,8})(?:推门进来|走进来|走了进来|站起来|出现在|忽然出现|开口|低声说|说道|说|问|喊|回答|递给)/gu;
 const GENERIC_DIRECT_SPEECH_RE = /(?:^|[\s"'“”‘’（(，。！？；])(?:他|她|那人|对方)\s*(?:说|问|喊|回答|低声说)\s*[：:]/u;
-const GENERIC_PERSON_SURFACE_RE = /(?:男人|女人|男孩|女孩|男生|女生|少年|少女|老人|青年|中年人)/gu;
-const GENERIC_PERSON_NOUN_RE = /(?:男人|女人|男孩|女孩|男生|女生|少年|少女|老人|青年|中年人)/u;
+const GENERIC_PERSON_SURFACE_RE = /(?:男人|女人|男孩|女孩|男生|女生|少年|少女|老人|青年|中年人|身影|人影|轮廓|影子|身形)/gu;
+const GENERIC_PERSON_NOUN_RE = /(?:男人|女人|男孩|女孩|男生|女生|少年|少女|老人|青年|中年人|身影|人影|轮廓|影子|身形)/u;
 const GENERIC_PERSON_SCENE_ACTION_RE =
   /(?:推门|走(?:进|出|来|去)|出现|探出|站(?:在|起)|靠(?:在|近)|从.{0,12}(?:走|探|钻|闪)出|开口|低声(?:说|问)|(?:说|问|喊)道|(?:往后)?退(?:了|开|半步)?|盯(?:着|住)|(?:抬|转)头|转身)/u;
 const INDIVIDUAL_PERSON_DESCRIPTION_RE =
@@ -771,4 +771,91 @@ export function auditEntityWhitelist(input: NarrativeSafetyInput): NarrativeSafe
 
 export function collectEntityAuditIssues(input: NarrativeSafetyInput): NarrativeSafetyIssue[] {
   return auditEntityWhitelist(input);
+}
+
+/**
+ * Optional cross-validation step that checks whether entities mentioned in the
+ * narrative have a reveal tier above the current {@link maxRevealRank}.  An NPC
+ * can legally mention a registered entity yet still violate epistemic rules if
+ * that entity's facts live at a tier that should not be accessible.  This
+ * checker flags such entities as {@code potential_epistemic_violation} with
+ * {@code low} severity (warning) — the epistemic validator handles the same
+ * boundary more precisely, so this acts as a coarse early signal.
+ *
+ * The cross-check only runs when the input includes both {@link worldFacts} and
+ * a numeric {@link maxRevealRank}; otherwise it returns an empty array.
+ */
+export function collectEpistemicEntityCrossCheck(input: NarrativeSafetyInput): NarrativeSafetyIssue[] {
+  const { worldFacts, maxRevealRank } = input;
+  if (!worldFacts?.length || maxRevealRank == null) return [];
+
+  const issues: NarrativeSafetyIssue[] = [];
+  const surfaceText = extractSurfaceText(input);
+  const dm = input.dmRecord;
+  const options = input.options ?? (Array.isArray(dm?.options) ? dm.options : []);
+
+  // Collect every entity ID visible in this turn.
+  const entityIds = new Set<string>();
+
+  for (const id of extractNpcIdsFromText(surfaceText)) {
+    entityIds.add(normalizeNpcId(id));
+  }
+  for (const id of extractNpcIdsFromOptions(options)) {
+    entityIds.add(normalizeNpcId(id));
+  }
+  for (const id of extractNpcIdsFromDmRecord(dm)) {
+    entityIds.add(normalizeNpcId(id));
+  }
+
+  for (const match of String(surfaceText).matchAll(LOCATION_ID_RE)) {
+    entityIds.add(normalizeText(match[0]));
+  }
+
+  for (const id of scanItemIdsDeep(dm)) {
+    entityIds.add(normalizeText(id));
+  }
+  for (const id of scanRelationshipIdsDeep(dm)) {
+    entityIds.add(normalizeText(id));
+  }
+
+  // Build a quick lookup from factId → revealTier.
+  const factsByRevealTier = new Map(worldFacts.map((fact) => [fact.factId, fact.revealTier]));
+
+  for (const entityId of entityIds) {
+    // Direct lookup: the entity ID itself is a registered world fact.
+    const fact = getWorldFactById(entityId);
+    if (fact && fact.revealTier > maxRevealRank) {
+      issues.push(
+        issue({
+          code: "potential_epistemic_violation",
+          invariant: "potential_epistemic_violation",
+          source: "entityAudit",
+          severity: "low",
+          detail: `entity=${entityId}|revealTier=${fact.revealTier}|maxRevealRank=${maxRevealRank}`,
+          anchor: entityId,
+        })
+      );
+      continue;
+    }
+
+    // Indirect lookup: the entity appears inside a factId whose tier is too high.
+    for (const [factId, revealTier] of factsByRevealTier) {
+      if (revealTier <= maxRevealRank) continue;
+      if (factId.includes(entityId)) {
+        issues.push(
+          issue({
+            code: "potential_epistemic_violation",
+            invariant: "potential_epistemic_violation",
+            source: "entityAudit",
+            severity: "low",
+            detail: `entity=${entityId}|factId=${factId}|revealTier=${revealTier}|maxRevealRank=${maxRevealRank}`,
+            anchor: entityId,
+          })
+        );
+        break;
+      }
+    }
+  }
+
+  return issues;
 }

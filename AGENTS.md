@@ -1,708 +1,174 @@
 # AGENTS.md
 
-## Purpose
+VerseCraft 仓库的长期 AI 编码约束。开始工作前先读本文件；若说明与代码冲突，以当前代码为准，并在任务范围允许时同步修正文档。
 
-这份文件是 VerseCraft 仓库内长期有效的 AI 编码代理上下文入口。无论使用 Codex、Kimi Code、Claude Code、Cursor 或其他会读取 `AGENTS.md` 的代理，都必须先对齐同一套产品定位、接口契约、架构方向与改码边界，再开始动手。
+## 1. 产品与技术基线
 
-如果这里的描述与代码冲突，以当前仓库真实代码为准，并应优先更新本文件，而不是让同类背景知识继续散落在聊天记录里。
+VerseCraft（文界工坊）是单机、浏览器内运行、AI 驱动的中文互动叙事游戏平台原型。当前主世界为「序章·暗月」；玩家通过自然语言行动，服务端生成结构化 DM 回合，客户端提交状态变化。默认 UI 文案使用简体中文。
 
----
+技术栈固定为：Next.js 16 App Router、React 19、Tailwind CSS v4、Zustand 5、PostgreSQL + Drizzle、IndexedDB、OpenAI-compatible gateway。除非任务明确要求，不替换主干技术或建立平行架构。
 
-## 1. 仓库定位
+- 使用 `pnpm@10`、Node.js `>=22.22.0`。
+- 本地开发：`pnpm dev`，默认端口 `666`；生产默认端口 `3000`。
+- lint：`pnpm lint` 或 `npx eslint .`，不要使用 `next lint`。
+- 发布：`pnpm run ship -- "<message>"`；`deploy.sh` 是 Node 脚本，不要用 Bash 执行。
+- 服务端配置只经 `src/lib/config/*`，AI 配置经 `src/lib/ai/config/*`，浏览器配置经 `src/lib/config/publicRuntime.ts`；业务代码不要直接读取 `process.env`。
+- Next.js 16 的 `params`、`searchParams`、`cookies()`、`headers()` 均按异步接口处理。
 
-### 1.1 VerseCraft 是什么
+## 2. 核心架构原则
 
-VerseCraft（文界工坊）是一个**单机、浏览器内运行、AI 驱动的中文互动叙事游戏平台原型**。它不是把小说塞进聊天框，而是把世界规则、角色状态、玩家行动、后果推进交给 AI 作为“故事运行时”来处理。
+1. **Workflow over agent**：在线回合是可验证的阶段式工作流，不改成多 agent 协商系统。
+2. **State delta first**：结构化字段、guard 与 `resolveDmTurn` 是状态真相源；不要解析 narrative 推断状态。
+3. **Model output is candidate**：模型 JSON 必须经过规范化、变更折叠、validator 与 turn commit，不能原样透传。
+4. **Epistemic filtering**：NPC 知识须在生成前过滤、生成后校验，不能依赖 prompt 自觉。
+5. **Background world tick**：在线回合只裁决当前回合；离线推演与世界推进交给后台 worker。
+6. **Single store**：`src/store/useGameStore.ts` 是唯一主游戏 store，不建立平行状态源。
+7. **Small verified changes**：先确认输入、消费者、兼容面与测试，再修改；大枢纽文件优先抽离后加行为。
 
-### 1.2 当前主世界 / 主玩法
+详细 Turn Engine 设计见 `docs/turn-engine-architecture.md`。
 
-- 当前主可玩世界是 **「序章·暗月」**。
-- 当前主玩法是：**玩家用自然语言输入行动，服务端经 `/api/chat` 生成结构化 DM 回合结果，客户端再把这些结果落到日志、任务、图鉴、道具、位置、时间与危险推进上。**
-- 这是一个以悬疑 / 恐怖 / 公寓异变 / 校源谜团为主的中文叙事样板世界，不是 VerseCraft 最终题材边界。
-- 当前玩法已明显依赖这些系统共同工作：
-  - SSE 流式回合输出
-  - 结构化 DM JSON 契约
-  - 客户端统一游戏状态仓库
-  - 世界知识检索与 lore 注入
-  - NPC 认知边界与一致性校验
-  - 后台 world engine tick
+## 3. 不可破坏的契约
 
-### 1.3 当前产品状态
+### 3.1 `/api/chat` 与 SSE
 
-- 仓库是**可游玩原型**，不是纯文档仓库。
-- 所有 UI 文案默认应保持**简体中文**。
-- 目标是把“单个示例世界”逐步抽象成“可持续孵化多个世界的互动叙事基础设施”。
-
----
-
-## 2. 当前技术栈与运行方式
-
-### 2.1 技术栈
-
-- **Next.js 16**（App Router）
-- **React 19**
-- **Node.js >=22.22.0**
-- **Tailwind CSS v4**
-- **Zustand 5**
-- **PostgreSQL + Drizzle**
-- **IndexedDB (`idb-keyval`)**：客户端游戏态持久化
-- **one-api / OpenAI-compatible gateway**：统一 AI 网关
-
-### 2.2 运行事实
-
-- 包管理器固定为 **`pnpm@10`**；锁文件是 `pnpm-lock.yaml`
-- 本地 Node.js 基线为 **`>=22.22.0`**；Browser Use / node_repl 也必须解析到同一基线
-- 本地开发默认端口是 **`666`**：`pnpm dev`
-- 生产 / Docker 默认端口仍是 **`3000`**
-- AI 统一经 `src/lib/ai/*` 发往一个 gateway，不在业务代码里散落模型厂商字符串
-- 服务端数据与 analytics 在 PostgreSQL；客户端游玩态仍然是 client-first
-
-### 2.3 环境变量与配置读取
-
-- 服务端环境变量单一入口：
-  - `src/lib/config/serverConfig.ts`
-  - `src/lib/config/envRaw.ts`
-- AI 环境入口：
-  - `src/lib/ai/config/env.ts`
-  - `src/lib/ai/config/envCore.ts`
-- 浏览器可见环境入口：
-  - `src/lib/config/publicRuntime.ts`
-- `src/` 内除配置层与 Next.js 约定外，**不要直接读 `process.env`**
-
-### 2.4 常用命令
-
-- `pnpm dev`
-- `pnpm build`
-- `pnpm test:unit`
-- `pnpm test:e2e:chat`
-- `pnpm test:e2e:contract`
-- `pnpm test:ci`
-- `pnpm verify:ai-gateway`
-- `pnpm probe:ai-gateway`
-- `pnpm worker:kg`
-- `pnpm worker:kg:once`
-- `pnpm run ship -- "feat: 说明"`
-- `npx eslint .`
-
-### 2.5 已知运行 caveats
-
-- **不要依赖 `pnpm lint` / `next lint`**；Next.js 16 下实际请用 `npx eslint .`
-- `pnpm dev` 默认跑在 `666`；某些无特权 Linux 环境要改用 `3000`
-- Codex Browser Use 依赖 `NODE_REPL_NODE_PATH` 或 PATH 中可解析的合格 Node；低于 `22.22.0` 会导致 node_repl bootstrap 失败。Windows 本机优先将 `NODE_REPL_NODE_PATH` 指向 `D:\node-v22.22.2\node.exe` 或其他 `>=22.22.0` 的可执行文件；如果调整用户环境变量后 Browser Use 仍解析到旧的 `D:\node\node.exe`，需要重启 Codex app 让 MCP 进程继承新环境
-- `pnpm test:unit` 已知可能因 Redis open handle 不主动退出，结果通过不代表进程会自己结束
-- `deploy.sh` 是 Node 脚本；发布请用 `pnpm run ship -- "msg"`，不要手动 `bash ./deploy.sh`
-
----
-
-## 3. 不可破坏契约
-
-这些不是“建议”，而是后续任务必须默认遵守的兼容边界。
-
-### 3.1 不更换技术栈
-
-- 不把 Next.js / React / Tailwind / Zustand / Drizzle / PostgreSQL 替换成别的主干方案
-- 不把 `/api/chat` 从当前 SSE 路径随意改成别的传输协议
-- 不把客户端统一 store 再拆回双 store 或多套平行真相源
-- 不把 AI 网关调用重新散落到业务模块里
-
-### 3.2 `/api/chat` 的 SSE / JSON 契约
-
-当前真实契约来自 `src/app/api/chat/route.ts`、`src/lib/playRealtime/normalizePlayerDmJson.ts`、`e2e/chat-sse-contract.spec.ts`：
-
-- `/api/chat` 返回值类型是 **`text/event-stream; charset=utf-8`**
-- 未配置网关时，接口仍返回 **`200` + SSE**，并带 `X-VerseCraft-Ai-Status: keys_missing`
-- 流中允许出现控制帧：
-  - `__VERSECRAFT_STATUS__:{...}`
-- 最终权威结果可通过终帧输出：
-  - `__VERSECRAFT_FINAL__:<json>`
-- 客户端与 E2E 都按“累积 data chunk，若出现 `__VERSECRAFT_FINAL__` 则以它覆盖之前正文”的规则解析
-- 最低必需 DM JSON 四键是：
-  - `is_action_legal`
-  - `sanity_damage`
-  - `narrative`
-  - `is_death`
-- 服务端会统一补齐 / 规范化默认字段，例如：
-  - `consumes_time`
-  - `options`
-  - `currency_change`
-  - `new_tasks`
-  - `task_updates`
-  - `codex_updates`
-  - `relationship_updates`
-  - `awarded_items`
-  - `awarded_warehouse_items`
-  - `player_location`
-  - `npc_location_updates`
-  - `bgm_track`
-- **不要绕过最终收口链路直接把原始模型 JSON 透传给前端**
-- 当前最终收口顺序是架构事实：
-  - `parseAccumulatedPlayerDmJson`
-  - `normalizePlayerDmJson`
-  - `applyDmChangeSetToDmRecord`
-  - 多层 server guard / task normalization / enhancement
-  - `applyNpcConsistencyPostGeneration`
-  - `resolveDmTurn`
-  - `__VERSECRAFT_FINAL__`
-
-### 3.3 数据库与 analytics 兼容性
-
-`src/db/schema.ts` 显示仓库已经把 analytics 与 world engine 作为正式 schema 的一部分，而不是临时表：
-
-- `analytics_events` 是 append-only 事件基础表，依赖 `idempotencyKey`
-- `actor_sessions` / `actor_daily_activity` / `actor_daily_tokens` / `admin_metrics_daily` 已构成统计口径
-- 旧 `users` 累积字段仍保留做兼容，不应轻易删掉
-- `game_session_memory` 仍是 session 压缩记忆与相关写回的重要表
-- `world_engine_runs`
-- `world_engine_event_queue`
-- `world_engine_agenda_snapshots`
-
-因此：
-
-- 不要随意改表名、删字段、改事件名、改关键 payload 键
-- 尤其不要轻率破坏这些事件与兼容口径：
-  - `chat_request_finished`
-  - `world_engine_enqueued`
-- 如果任务明确要求改 schema，必须同时说明：
-  - 兼容旧数据的方式
-  - analytics / admin 面是否受影响
-  - 是否需要迁移、回填或双写期
-
-### 3.4 AI 路由与 prompt 契约
-
-- 业务代码优先使用 `@/lib/ai/logicalTasks` 或 `@/lib/ai/service`
-- 不要在功能代码里直接写模型厂商 ID
-- `PLAYER_CHAT` 主链路禁止走 `reasoner` / `enhance`
-- `reasoner` 主要用于离线任务与后台 worker，不进入在线主叙事流
-- 上行多轮消息在发给 gateway 前，必须去掉 `reasoning_content`
-- 任何要求结构化 JSON 的 system prompt，必须包含字面量：
-  - **`请严格以 JSON 格式输出`**
-
-### 3.5 前端与状态红线
-
-- `src/store/useGameStore.ts` 是**唯一主游戏 store**
-- Zustand `persist` 必须保留 `skipHydration: true`
-- 客户端 hydration 应通过显式 `rehydrate()` + `isHydrated` 保护完成
-- 开场流程必须保持**单主链**，不能让本地 fallback 与真实 SSE 主流互相竞争写入
-- 注册成功默认应建立服务端 session，而不是补一个前端“自动登录 workaround”
-
-### 3.6 Next.js 16 约束
-
-- App Router 的 `params` / `searchParams` / `cookies()` / `headers()` 都按异步接口处理
-- 不要写同步访问的旧时代代码
-
-### 3.7 实时生成性能红线
-
-`/api/chat` 是 VerseCraft 的实时回合主链路。所有未来 Codex / AI agent / 人工开发都必须把等待体验当成正式契约，而不是事后优化项。预算源头见 `src/lib/perf/waitingConfig.ts` 的 `CHAT_LATENCY_BUDGET`，详细门禁见 `docs/perf/chat-latency-budget.md`。
-
-必须长期满足：
-
-- 点击行动后 300ms 内，`/play` UI 必须有明确可信反馈。
-- `firstPerceivedFeedbackMs` p95 ≤ 800ms。
-- `firstStatusShownMs` p95 ≤ 800ms。
-- 正常 AI gateway 可用时，`firstVisibleTextMs` / first token p50 ≤ 2500ms，p95 ≤ 5000ms。
-- 普通回合 `__VERSECRAFT_FINAL__` p50 ≤ 12000ms，p95 ≤ 20000ms。
-- 玩家不能出现 5 秒以上完全无反馈的空白等待。
-- `keys_missing` 降级场景仍必须 `200 + text/event-stream`，并快速输出 status 与可解析 final。
-
-新增任何昂贵逻辑前，必须回答：
-
-- 是否阻塞首包 / 首个 status frame / 首个可见正文？
-- 是否可以放到 final hooks？
-- 是否可以放到后台 worker / world tick？
-- 是否只应该进入 slow lane？
-- 是否有 budget cap、deadline、cache miss 降级和 telemetry？
-
-禁止做法：
-
-- 不得把新功能直接塞进 `/api/chat` 首字前路径。
-- `PLAYER_CHAT` 不得引入 `reasoner`，不得扩大 role chain 来掩盖失败。
-- 不得用更多重试把普通回合拖到分钟级。
-- 不得为了速度删除安全审查、lore、NPC 一致性、epistemic filtering、post-generation validation、DM JSON 收口或 world tick 后台化。
-- 所有影响等待时间的改动必须跑浏览器 `/play` 验证和 `benchmark:chat-metrics`；live 环境超预算必须修复或显式回滚。
-
----
-
-## 4. 新的执行架构方向
-
-下面这些词是**未来改造方向标签**。它们不要求今天已经存在同名目录，但后续设计和重构应该朝这些方向收敛，并尽量复用现有实现落点，而不是另起一套平行体系。
-
-### 4.1 `workflow over agent`
-
-VerseCraft 当前在线回合已经是一个**确定性工作流**，而不是自由发挥的多 agent 剧本：
-
-- 输入校验
-- 安全检查
-- 风险分 lane
-- control preflight
-- lore / runtime packet 组装
-- 主模型流式输出
-- final hooks
-- validator
-- turn resolve
-- world tick enqueue
-
-后续应继续强化这种“**明确阶段 + 明确输入输出 + 明确 fallback**”的 workflow，而不是把主链路改成难以验证的 agent 协商系统。
-
-### 4.2 `turn compiler`
-
-`/api/chat` 未来应越来越像一个**回合编译器**：
-
-- 模型先给候选 DM JSON
-- 服务端再做变更集折叠、结构规范化、守卫、validator、turn mode 校正、最终 envelope 解析
-- 以 `resolveDmTurn` 产物作为权威提交对象
-
-也就是说：**模型输出只是候选，中间层和收口层才是最终裁决。**
-
-### 4.3 `lane routing`
-
-当前仓库已经真实落地了 `fast` / `slow` lane：
-
-- `src/lib/security/chatRiskLane.ts`
-- `/api/chat` 中的 preflight / runtime packets / lore / TTFT 预算控制
-
-后续新增昂贵逻辑时，优先问自己：
-
-- 这必须阻塞首包吗？
-- 它只该进 slow lane 吗？
-- 它能放到 final hooks 或后台吗？
-
-**不要把所有新逻辑直接堆进首字前路径。**
-
-### 4.4 `state delta first, narrative second`
-
-当前仓库方向应明确为：
-
-- 结构化字段是权威状态变化
-- narrative 是叙事呈现，不是客户端状态真相源
-
-落地含义：
-
-- 客户端不要通过解析 narrative 来脑补状态
-- 新功能优先新增或复用结构化 delta，再决定 narrative 如何表达
-- `dm_change_set`、`resolveDmTurn`、任务 / 线索 / 道具 / 地点 / threat 更新都属于这条原则的现有落点
-
-### 4.5 `epistemic filtering`
-
-NPC 认知边界不是风格要求，而是架构要求。
-
-当前代码与文档已明确两层事实：
-
-- prompt 前要做 actor-scoped / reveal-rank / profile-based 过滤
-- prompt 后还要做 post-generation consistency / epistemic validator
-
-后续任何 lore、memory、NPC 发言相关改动，都要默认经过：
-
-- `src/lib/epistemic/*`
-- `src/lib/npcConsistency/*`
-
-而不是把更多全局摘要塞进 prompt 指望模型自觉。
-
-### 4.6 `post-generation validation`
-
-VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验**”。
-
-已存在的方向包括：
-
-- `applyNpcConsistencyPostGeneration`
-- narrative protocol guard
-- POV / gender / continuity / foreshadow / task-mode / time-feel 等 validator
-
-后续如果出现一致性问题，优先考虑：
-
-- 更窄的 validator
-- 更明确的 telemetry
-- 更保守的 rewrite / degrade
-
-而不是只继续加长 system prompt。
-
-### 4.7 `background world tick`
-
-后台世界推进已经有真实落点，不是概念图：
-
-- 在线回合末尾只做 `enqueueWorldEngineTick`
-- worker 由 `scripts/vc-worker.ts` 消费 `WORLD_ENGINE_TICK`
-- 持久化落到：
-  - `world_engine_runs`
-  - `world_engine_event_queue`
-  - `world_engine_agenda_snapshots`
-
-所以未来方向是：
-
-- **在线回合只负责当前回合裁决**
-- **世界后续演化交给后台 tick**
-- 不要把离线 reasoner 重新塞回 `/api/chat` 首包路径
-
----
-
-## 5. 代码修改原则
-
-### 5.1 先抽离大文件，再加行为
-
-如果改动目标位于这些“超大枢纽文件”，优先先做拆分，再做新功能：
+真实契约入口：
 
 - `src/app/api/chat/route.ts`
-- `src/app/play/page.tsx`
-- `src/store/useGameStore.ts`
-- `src/lib/playRealtime/playerChatSystemPrompt.ts`
-
-不要在已经很重的文件上继续直接叠加数百行逻辑。
-
-### 5.2 小步提交
-
-- 一次只做一个清晰、可验证的目标
-- 一次 PR / 一次 Codex 回合尽量只跨一个主问题
-- 能拆成“重构准备”和“行为变化”两步时，优先拆开
-
-### 5.3 每次只做一个可验证目标
-
-可验证目标示例：
-
-- 不改变行为，只提取模块并补测试
-- 修复某个明确 contract bug
-- 给某个 validator 增加一类规则和对应测试
-- 给某个 lane 增加预算守卫和 telemetry
-
-避免“顺手把架构全重写”。
-
-### 5.4 能写测试就写测试
-
-优先补的测试类型：
-
-- unit：纯函数、parser、validator、routing、turn resolve
-- contract：`/api/chat` SSE / DM JSON 形状
-- integration：world tick、knowledge writeback、epistemic filtering
-
-如果不写测试，至少说明为什么当前改动难以自动验证。
-
-### 5.5 不了解代码路径前，不要直接大改
-
-- 先确认输入从哪里来
-- 再确认谁消费输出
-- 再确认是否有 E2E / analytics / admin 口径依赖
-- 最后才动代码
-
-在 VerseCraft，这一点尤其适用于：
-
-- `/api/chat`
-- `useGameStore`
-- `page.tsx`
-- `schema.ts`
-- `analytics`
-
-### 5.6 Prompt 改动要克制
-
-- Prompt 不是无成本配置文件，而是全局行为面
-- 修改 `playerChatSystemPrompt.ts` 前先判断能否用 packet、guard、validator、typed delta 解决
-- 如果确实修改 stable prompt 语义边界，考虑同步处理 `VERSECRAFT_DM_STABLE_PROMPT_VERSION`
-
-### 5.7 配置优先于散改业务
-
-- 切模型优先改 one-api 或 `AI_MODEL_*`
-- 切任务角色优先改 `taskPolicy`
-- 改环境解析优先改 config 层
-
-不要把同一类策略散落进多个 feature 文件。
-
----
-
-## 6. 文件级建议
-
-### 6.1 后续大概率会成为核心改造点
-
-- `src/app/api/chat/route.ts`
-  - 在线回合主工作流、SSE、final hooks、analytics、world tick enqueue
-- `src/lib/playRealtime/playerChatSystemPrompt.ts`
-  - Stable / dynamic prompt 边界、运行时 packet 拼装
+- `src/lib/playRealtime/normalizePlayerDmJson.ts`
 - `src/features/play/turnCommit/resolveDmTurn.ts`
-  - 最终 turn envelope 收口
-- `src/lib/dmChangeSet/*`
-  - 候选变更集折叠、state-delta 化
-- `src/lib/security/chatRiskLane.ts`
-  - lane routing 入口
-- `src/lib/ai/tasks/taskPolicy.ts`
-  - task -> role / budget / stream / forbidden 路由矩阵
-- `src/lib/worldKnowledge/runtime/getRuntimeLore.ts`
-  - 运行时 lore 检索入口
-- `src/lib/epistemic/*`
-  - actor-scoped knowledge、reveal gating、认知过滤
-- `src/lib/npcConsistency/*`
-  - post-generation validators
-- `src/lib/turnEngine/*`
-  - **Phase-2/4/5 新增的结构化执行主干**：
-    - `normalizePlayerInput.ts` / `routeTurnLane.ts` / `computeStateDelta.ts`
-    - `epistemic/filterFacts.ts` / `epistemic/buildEpistemicInput.ts` —— 认知分桶
-    - `validateNarrative.ts` —— Phase-8.5 post-generation validator（11 条规则）
-    - `commitTurn.ts` —— Phase-8.5 显式提交 + `TurnCommitSummary`
-    - `enqueueBackgroundTick.ts` —— Phase-9 非阻塞后台 world tick
-    - `sse.ts` —— SSE 帧工具
-  - 详见 `docs/turn-engine-architecture.md`
-- `src/lib/worldEngine/*`
-  - 后台世界推进
-- `scripts/vc-worker.ts`
-  - 后台 job / world tick worker
-
-### 6.2 只允许谨慎修改的文件 / 区域
-
-- `src/db/schema.ts`
-  - 任何改动都可能影响 migration、analytics、admin、worker、历史数据兼容
-- `src/app/api/chat/route.ts`
-  - 它是核心改造点，但也是最高风险文件；每次改动都要先想 contract 与 TTFT
-- `src/app/play/page.tsx`
-  - 客户端 SSE 解析、状态应用、日志与 turn 提交都在这里收口
-- `src/store/useGameStore.ts`
-  - 单一 store、hydration、客户端真相源，极易产生连锁回归
-- `src/lib/analytics/*`
-  - 管理端与事件统计都依赖现有口径
-- `src/lib/playRealtime/playerChatSystemPrompt.ts`
-  - 每一次 prompt 边界变化都会影响全部回合行为
-
-### 6.3 关于 registry / knowledge / DB 的边界
-
-- `src/lib/registry/*` 现在更适合作为 **bootstrap seed / fallback / 展示常量**
-- 运行时事实源应继续向 **DB + retrieval + packet** 收敛
-- 不要把更多“完整世界事实”重新硬塞回前端静态 TS
-
-### 6.4 Mobile Reading UI / Play Shell 改造约定
-
-`/play` 的主视觉入口是移动端优先的阅读 / 游玩壳层，不是桌面后台页。后续改视觉与交互时，先从这些文件进入：
-
-- `src/app/play/page.tsx`
-  - 仍是 `/play` 全栈接线点：SSE、回合提交、状态写入、菜单状态、音频与天赋效果都在这里收口。
-  - 这里只应做必要接线，不要继续堆大段视觉 JSX。
-- `src/features/play/mobileReading/*`
-  - 移动端阅读壳层主目录；具体组件和测试选择器以当前真实文件为准，不把历史组件组或某次视觉稿写成长期事实。
-  - 该目录只负责移动端呈现与局部 UI 状态，不接管 SSE、回合提交、store 持久化、任务/图鉴/仓库写回或选项再生成。
-  - 图鉴页是 `/play` 壳层内的展示视图，必须保留现有图鉴数据、楼层过滤、选中卡片、底部导航和存档兼容，视觉样式可按当前产品稿整体替换。
-
-输入、选项、天赋、底部导航和菜单打开的责任边界：
-
-- 手动输入值仍来自 `useGameStore` / `src/app/play/page.tsx` 的 `input`、`setInput`、`onSubmit` 接线。
-- 行动选项仍来自 `currentOptions`，选择后走 `onPickOption`，不得绕过既有 `sendAction`、职业认证、终局选项和 guest gate。
-- 选项按钮只切换 `optionsExpanded`；缺选项时仍由 `requestFreshOptions("manual_button")` 触发既有 options regen 链路。
-- 天赋按钮只触发 `onUseTalent`；`onUseTalent` 仍留在 `page.tsx`，不要把天赋业务效果塞进 UI 图标组件。
-- 底部“角色”通过 `setActiveMenu("character")` 打开 `MobileCharacterPanel`，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`。属性加点只调用现有 `upgradeAttribute`，不要新建第二套加点规则。
-- 底部“剧情”只收起选项并回到阅读态。
-- 底部“图鉴”通过 `setActiveMenu("codex")` 打开壳层内图鉴视图，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`；图鉴展示 helper 位于 `codexCatalog.ts`、`codexPortraits.ts`、`codexFormat.ts`。
-- 底部“设置”通过 `setActiveMenu("settings")` 打开现有 `UnifiedMenuModal`；`UnifiedMenuModal` 当前只保留设置可见入口。
+- `src/lib/turnEngine/sse.ts`
+- `e2e/chat-sse-contract.spec.ts`
 
-仍然禁止重新暴露这些主动 UI 入口：
+必须保持：
 
-- 任务栏
-- 游戏指南
-- 灵感手记
-- 仓库
-- 成就
-- 武器
+- 响应类型为 `text/event-stream; charset=utf-8`。
+- 网关未配置时仍返回 `200 + SSE`，并带 `X-VerseCraft-Ai-Status: keys_missing`。
+- 控制帧格式：`__VERSECRAFT_STATUS__:{...}`。
+- 权威终帧格式：`__VERSECRAFT_FINAL__:<json>`；解析器以终帧覆盖此前累积正文。
+- DM JSON 最低必需字段：`is_action_legal`、`sanity_damage`、`narrative`、`is_death`。
+- 服务端继续规范化其他状态字段，并以 `resolveDmTurn` 的结果作为最终提交对象。
+- 不用模板冒充正常 AI 叙事，不用本地通用选项伪造正常链路成功。
 
-移动端阅读壳层改动必须保护现有 E2E 依赖的可见行为与 `data-testid` 契约；如确需改名，必须同步更新对应测试和浏览器验证脚本，不能让测试选择器清单变成过期文档。
+### 3.2 AI routing 与 prompt
 
-该区域改动的最低验证要求：
+- 业务调用经 `@/lib/ai/logicalTasks` 或 `@/lib/ai/service`，不要散落模型厂商 ID。
+- `PLAYER_CHAT` 禁止使用 `reasoner` / `enhance`；reasoner 只用于离线任务或 worker。
+- 发往 gateway 前必须移除上行消息中的 `reasoning_content`。
+- 要求结构化 JSON 的 system prompt 必须包含字面量 `请严格以 JSON 格式输出`。
+- stable prompt 前缀必须位于动态上下文之前；语义边界变化时检查 `VERSECRAFT_DM_STABLE_PROMPT_VERSION`。
+- prompt、完整 narrative、原始玩家输入不得写入线上日志；只记录必要的结构化指标与 hash。
 
-- `npx eslint .`
-- 相关 `/play` 或 mobile reading E2E，至少覆盖 `390×844`、`393×852`、`430×932`
-- 能使用 Browser Use 时，必须用 in-app browser 做移动端截图 / DOM 验证；若本机插件运行环境不可用，必须记录阻塞原因并用 Playwright 浏览器验证兜底。
+### 3.3 状态、存档与认证
 
----
+- Zustand persist 保留 `skipHydration: true`，通过显式 `rehydrate()` 与 `isHydrated` 防护 hydration。
+- 开场只保留一条主请求链，避免本地 fallback 与 SSE 竞争写入。
+- 注册成功应建立服务端 session，不添加仅前端的自动登录补丁。
+- 改跨端存档或状态结构时，必须说明旧数据迁移与兼容策略。
 
-## 7. Prompt 与任务模式约定
+### 3.4 数据库与 analytics
 
-### 7.1 Ask 模式
+- 不随意改表名、删字段、改事件名或关键 payload 键。
+- `analytics_events` 保持 append-only 与 `idempotencyKey` 语义。
+- 保持既有统计、session memory 与 world engine 表的兼容性。
+- 特别保护 `chat_request_finished`、`turn_lane_decided`、`turn_commit_summary`、`narrative_validator_issue`、`world_engine_enqueued`。
+- schema 变更必须同时说明迁移、旧数据兼容、回填/双写需求及 admin/analytics 影响。
 
-后续 AI 编码代理任务如果明确写了 **“Ask 模式”**，默认行为是：
+### 3.5 实时性能
 
-- 先给计划
-- 说明会改哪些文件
-- 说明风险与验证方式
-- **不直接写代码**
+预算事实源为 `src/lib/perf/waitingConfig.ts` 与 `docs/perf/chat-latency-budget.md`：
 
-### 7.2 Code 模式
+- 点击行动后 300ms 内提供可信反馈。
+- `firstPerceivedFeedbackMs`、`firstStatusShownMs` p95 ≤ 800ms。
+- 正常网关下 first visible text p50 ≤ 2500ms、p95 ≤ 5000ms。
+- 普通回合 final p50 ≤ 12000ms、p95 ≤ 20000ms。
+- 不出现 5 秒以上无反馈等待；`keys_missing` 也要快速产生 status 与可解析 final。
 
-后续 AI 编码代理任务如果明确写了 **“Code 模式”**，默认行为是：
+不得把 reasoner、DB 写入、analytics rollup、world tick、重型 RAG 或无预算重试放到首字前路径。昂贵逻辑优先放入 slow lane、final hooks 或后台，并具备 deadline、降级与 telemetry。性能优化不得删除安全审查、lore、NPC 一致性、认知过滤、生成后校验或最终 JSON 收口。
 
-- 按最小可验证路径直接实施
-- 回报改动文件
-- 回报风险
-- 回报测试结果或未测原因
+## 4. 叙事治理
 
-### 7.3 未显式说明模式时
+- 在现有 `src/lib/epistemic/*`、`src/lib/npcConsistency/*`、`src/lib/turnEngine/epistemic/*` 与 `validateNarrative` 上增量改进，不建立替代链路。
+- 文学描写可自由生成；剧情真相、NPC 关系、事件阶段、地点异常、物品归属和关键历史必须来自可审计事实源。
+- 剧情真相没有 `factId`、`source`、`revealTier` 时只能作为 candidate/audit 数据，不能 commit。
+- NPC 仅能使用 scene-public、actor-scoped、belief/relation graph 与 reveal tier 允许的知识；`rumor`、`hypothesis`、`false_belief` 不得写成确定事实。
+- 新增叙事治理能力必须有 `VERSECRAFT_ENABLE_*` 灰度开关；关闭后不破坏主链路。
+- 新增 validator 必须是纯函数：无 IO、数据库、文件、网络或 LLM 调用；外部事实由调用方传入。
+- 使用 VerseCraft 自有抽象文风，不复制或引用现成小说原文。
+- 新模块需覆盖通过、阻断、低 reveal tier、误伤与开关关闭场景；维护对应 golden scene。
 
-- 如果用户显式要求“先讨论 / 先评审 / 先给方案”，按 Ask 处理
-- 否则默认按 Code 处理，但仍应先理解代码路径，再动手
+执行细节见 `docs/codex-narrative-safety-playbook.md`。
 
-### 7.4 OpenSpec 默认自动分流
+## 5. `/play` 前端边界
 
-VerseCraft 默认使用 OpenSpec。所有 AI 编码代理（包括 Codex、Kimi Code、Claude Code、Cursor 和其他读取本文件的客户端）不要求用户显式输入 `/opsx:*` 或提及 OpenSpec，必须先按以下规则自动选择工作流。根 `AGENTS.md` 是跨客户端的规则事实源；项目级 adapter 位于 `.codex/`、`.kimi/`、`.claude/` 与 `.cursor/`。
+`/play` 是移动端优先的阅读/游玩壳层。
 
-- **直接执行（不创建 OpenSpec change）**：纯问答、只读检查、文案/拼写/格式修正、无行为变化的单文件小改动、已有 OpenSpec change 内的明确后续小任务，或单个已定位 bug 的最小修复。仍须遵守本文件的测试与契约要求。
-- **OpenSpec 轻量变更**：新增或改变可见行为、涉及两个及以上模块、需要权衡实现方案、需要新增/调整测试、或可能影响产品规则但不触及核心高风险契约时，先使用可用的 OpenSpec skill / command，或直接运行 `openspec new change <name>`，创建 proposal、design、tasks 与 delta spec，再实施并更新任务清单。
-- **OpenSpec 强制变更**：任何涉及 `/api/chat`、SSE/DM JSON 契约、AI routing 或 prompt、`useGameStore` / hydration、数据库 schema、analytics 事件、epistemic filtering、post-generation validation、world tick、认证/权限、跨端存档，或影响等待体验与性能预算的改动，必须使用 OpenSpec change；不得绕过 proposal、design、tasks 与验证记录。
-- **复用与收口**：若已有匹配的未归档 change，先使用 `openspec-update-change` 更新现有 artifacts，不新建重复 change。功能完成且验证通过后，使用 `openspec-sync-specs` 将 delta 同步至主 specs；归档由用户请求、PR 收口或明确的完成流程触发，使用 `openspec-archive-change`。
-- **Ask / Code 协作**：Ask 模式或需求尚不明确时，只完成 explore/propose 并等待用户确认。明确的 Code 模式或明确要求“实现/修复/修改”时，用户请求本身视为实施授权：coding agent 先生成 OpenSpec artifacts，再在同一任务中按 tasks 实施；若 proposal 暴露出需要新的产品选择、外部权限或明显扩大范围，则停下请求用户决定。
+- `src/app/play/page.tsx` 负责 SSE、回合提交、状态写入等接线，不继续堆积大段视觉 JSX。
+- `src/features/play/mobileReading/*` 只负责呈现与局部 UI 状态，不接管 SSE、store 持久化或业务写回。
+- 手动输入、行动选项、选项再生成、天赋和属性升级必须复用现有 actions，不建立第二套规则。
+- 角色与图鉴留在 play shell；设置继续使用现有设置入口，不新增路由。
+- 不重新暴露已裁剪的任务栏、游戏指南、灵感手记、仓库、成就、武器入口，除非用户明确要求产品变更。
+- 保持 E2E 依赖的可见行为与 `data-testid`；改名时同步测试。
 
-客户端 adapter 的维护命令为：`openspec init . --tools codex,kimi,claude,cursor --force`。只在团队实际采用新的客户端时，才通过 `openspec init . --tools <tool> --force` 添加其 adapter；不要用 `--tools all` 产生未使用的配置噪声。升级 OpenSpec 后可运行 `openspec update . --force` 更新已安装 adapter，并审查生成 diff。
+章节系统：
 
-OpenSpec 是本仓库所有编码代理的默认变更工作流，但不替代其中的 SSE、状态、性能、数据兼容、叙事治理和验证红线；发生冲突时，以本文件其他明确的不可破坏契约为准。
+- 逻辑在 `src/lib/chapters/*`，UI 在 `src/features/play/chapters/*`。
+- 章节推进只使用规范化结构化信号，不解析 narrative，也不要求 AI 新增必填字段。
+- 章节状态继续进入主 store、存档槽和 `RunSnapshotV2`；旧存档须可迁移。
+- 回顾章节是只读操作，不回滚当前进度。
 
----
+前端实现完成且可运行后，按仓库级指令使用 `frontend-design-review` 的 Mode 1 做定向复核，不在初始设计或实现阶段加载它。
 
-## 8. 给未来 Codex 的八条最重要约束
+## 6. 高风险入口
 
-1. **不要破坏 `/api/chat` 的 SSE 契约。** 维持 `event-stream`、`keys_missing` 降级、status 帧、`__VERSECRAFT_FINAL__` 终帧覆盖规则。
-2. **不要把 narrative 当成状态真相源。** 结构化 delta、guard 与 `resolveDmTurn` 才是权威。
-3. **不要把在线主链路改成 agent 协商系统。** 继续做可验证的 staged workflow。
-4. **不要让 `reasoner` 回到 `PLAYER_CHAT` 主流。** 离线推演与 world tick 走后台。
-5. **不要破坏 analytics 与现有 schema 兼容。** 事件名、payload 键、表结构变更必须有兼容计划。
-6. **不要绕过 epistemic filtering 和 post-generation validation。** NPC 一致性不能只靠 prompt 自觉。
-7. **不要重新拆散统一 store 或破坏 hydration 约定。**
-8. **不要在没看清调用链前直接大改大文件。** 先抽离，再加行为，再验证。
+修改下列区域前必须先检查调用链、契约测试与性能影响：
 
----
+- `src/app/api/chat/route.ts`：SSE 主工作流、final hooks、analytics、world tick enqueue。
+- `src/app/play/page.tsx`：客户端解析、状态应用与回合提交。
+- `src/store/useGameStore.ts`：唯一游戏状态源、hydration、存档。
+- `src/lib/playRealtime/playerChatSystemPrompt.ts`：stable/dynamic prompt 边界。
+- `src/features/play/turnCommit/resolveDmTurn.ts`、`src/lib/dmChangeSet/*`、`src/lib/turnEngine/*`：权威回合收口。
+- `src/db/schema.ts`、`src/lib/analytics/*`：数据兼容与统计口径。
+- `src/lib/epistemic/*`、`src/lib/npcConsistency/*`、`src/lib/worldEngine/*`：认知一致性与后台推进。
 
-## 8.5 Turn Engine 入口（Phase 2–5 新增）
+`src/lib/registry/*` 只适合作为 bootstrap seed、fallback 或展示常量；运行时事实优先来自 DB + retrieval + packet，不把完整世界事实重新硬编码进前端。
 
-> 详见：`docs/turn-engine-architecture.md`
+## 7. 工作流分流
 
-**结构化主干**：
+### Ask / Code
 
-- `src/lib/turnEngine/types.ts` —— `TurnLane`、`NormalizedPlayerIntent`、`StateDelta`、`TurnExecutionContext` 等全部核心类型
-- `src/lib/turnEngine/normalizePlayerInput.ts` —— raw input → 结构化意图
-- `src/lib/turnEngine/routeTurnLane.ts` —— intent + risk → `TurnLaneDecision`
-- `src/lib/turnEngine/computeStateDelta.ts` —— pre / post-narrative delta 合成
+- 用户要求“先讨论、评审、给方案”或明确 Ask 模式：只分析、列计划、影响文件、风险和验证方式，不写代码。
+- 用户明确要求实现、修复、修改或使用 Code 模式：按最小可验证路径直接实施。
+- 未说明时默认 Code 模式。
 
-**认知过滤**：
+### OpenSpec
 
-- `src/lib/turnEngine/epistemic/filterFacts.ts` —— 5 桶分类（dmOnly / scenePublic / playerOnly / actorScoped / residue）
-- `src/lib/turnEngine/epistemic/buildEpistemicInput.ts` —— 事实源汇聚
+- **直接执行**：问答、只读检查、文案/格式修正、无行为变化的单文件小改、已定位 bug 的最小修复、现有 change 内的明确后续任务。
+- **轻量 change**：新增/改变可见行为、跨两个及以上模块、需要方案权衡或新增/调整测试。先创建或更新 proposal、design、tasks 与 delta spec，再实施。
+- **强制 change**：涉及 `/api/chat`、SSE/DM JSON、AI routing/prompt、主 store/hydration、schema、analytics、认知过滤、生成后校验、world tick、认证/权限、跨端存档或等待性能预算。
+- 先复用匹配的未归档 change；完成后同步 delta specs。归档仅在用户请求、PR 收口或明确完成流程中执行。
+- proposal 暴露新的产品选择、外部权限或明显扩围时，停止实施并请求用户决定。
 
-**Post-generation validator（Phase 8.5）**：
+## 8. 验证与交付
 
-- `src/lib/turnEngine/validateNarrative.ts` —— 11 条规则，包含 DM-only leak、location conflict、reveal tier、options affordance、inventory/time/task 一致性、npcConsistency bridge
-- `src/lib/turnEngine/commitTurn.ts` —— 显式 `commitTurn` + `TurnCommitSummary`（deltaSummary / commitFlags / validatorIssueCounts）
+按改动风险选择最小充分验证：
 
-**后台推进（Phase 9）**：
+- 纯文档：`git diff --check`。
+- 普通代码：相关 unit tests + `pnpm lint`；跨模块或发布前运行 `pnpm build`。
+- `/play` UI：相关 E2E，并验证 `390×844`、`393×852`、`430×932`；优先使用 in-app browser，环境不可用时用 Playwright 并说明原因。
+- `/api/chat`、AI routing、prompt、SSE、状态提交、world tick 或性能：相关 unit/contract tests、`pnpm test:e2e:contract`、`pnpm benchmark:chat:mock`；有条件时再做 live eval。
+- 叙事治理：相关 unit/golden tests，并按范围选择 `eval:npc-consistency:mock`、`eval:narrative-safety:mock` 或其他对应 eval。
 
-- `src/lib/turnEngine/enqueueBackgroundTick.ts` —— 同步 `decideBackgroundTick` + 非阻塞 `scheduleBackgroundWorldTick`
-- `src/lib/worldEngine/queue.ts` —— 实际入队
-- `scripts/vc-worker.ts` —— 消费 worker
+测试规则：
 
-**Analytics 事件（已正式化）**：
+- 不删减或放宽真实契约的断言来制造通过。
+- 正常链路测试不得用 `keys_missing`、`CHAIN_EXHAUSTED` 等降级结果冒充成功；降级由专门测试覆盖。
+- 本任务导致的失败必须修复并复测。环境阻塞或预有失败需报告具体命令、原因和归属，不得声称全绿。
+- 交付说明列出实际运行的命令与结果；无法运行的验证说明阻塞原因。
 
-- `turn_lane_decided` / `turn_commit_summary` / `narrative_validator_issue` / `world_engine_enqueued`
+## 9. 改码纪律
 
-**关键测试**：
-
-- `src/lib/turnEngine/*.test.ts` —— 单元与 smoke（含 TTFT < 50ms p95）
-- `src/lib/turnEngine/sse.test.ts` —— SSE envelope 契约（status 过滤 / final 覆盖 / 大尺寸 round-trip）
-- `src/lib/playRealtime/chatRouteContract.test.ts` —— route.ts 关键字段静态快照
-- `src/app/api/chat/controlPreflightBudget.contract.test.ts` —— control preflight 预算契约
-
----
-
-## 8.6 叙事治理工程规则
-
-这些规则适用于 Style Bible、NPC belief / relation graph、world fact registry、unsupported fact detector、fact commit gate、post-generation validator 与 golden regression 的后续改造。
-
-长期入口：
-
-- 叙事安全 12 阶段升级计划见 `docs/narrative-safety-upgrade-plan.md`。
-- 后续 Codex / 人类开发者执行手册见 `docs/codex-narrative-safety-playbook.md`。
-- 两份文档不替代本节红线；如果发生冲突，以当前代码与 AGENTS.md 的不可破坏契约为准。
-
-1. 不要推倒现有 long narrative、`npcConsistency`、`validateNarrative`、`filterEpistemicFacts` / `filterFacts`。叙事治理只能在现有链路上增量接入、补窄 validator、补 telemetry 或补回归测试。
-2. 所有叙事治理改造必须保留灰度开关。新增 prompt packet、validator、commit gate、fact registry 规则或 telemetry 行为时，必须能通过 `VERSECRAFT_ENABLE_*` 风格的开关单独关闭，关闭后不得破坏 `/api/chat` 主链路。
-3. 文风协议只使用 VerseCraft 自有抽象风格，不引用任何现成小说原文，也不要把外部作品片段放进 prompt、测试、fixture 或文档。允许的表达只能抽象为冷峻悬疑、规则游戏压迫感、少年宿命感、克制对白、章节钩子等自有风格约束。
-4. 文学描写可以自由，世界事实不能自由。气味、光线、动作、节奏、心理压力可以由模型发挥；剧情真相、NPC 关系、公寓根因、事件阶段、楼层异常、物品归属、关键历史必须来自可审计事实源。
-5. 没有 `factId` / `source` / `revealTier` 的剧情真相不得 commit。模型输出只能先进入 candidate / audit 字段，必须经过 registry、validator 与 commit gate 才能成为正式状态。
-6. NPC 只能知道 belief graph、relation graph、scene public、actor scoped 允许的事实。不得让 NPC 凭空认识陌生 NPC、凭空知道其他楼层私事、凭空发明关系或把玩家私有知识当作自己的记忆。
-7. 普通 NPC 不得知道公寓根因。核心 NPC 也只能按 `revealTier` 和 belief profile 暗示 cause fragment，不得越级直接解释 root truth。
-8. `rumor` / `hypothesis` / `false_belief` 不得写成确定事实。谣言必须是不确定语气，假设必须保留推测性质，错误认知必须表现为角色误解而不是叙事真相。
-9. 所有新增 validator 必须是纯函数，不做 IO，不访问数据库，不读写文件，不调用 LLM，不依赖网络。需要外部事实时，由调用方以结构化参数传入。
-10. 所有新增叙事治理模块必须有单元测试和 golden scene。测试至少覆盖通过样例、阻断样例、低 reveal tier、误伤风险与回滚开关行为。
-11. Codex 修改后必须运行相关测试，并在总结中报告失败或未运行原因。纯文档改动至少运行 `git diff --check`；代码、prompt、validator、commit gate 或 `/api/chat` 改动必须运行对应 unit / contract / lint，无法运行时要说明具体命令与阻塞原因。
-
----
-
-## 9. 仓库内仍然有效的老红线
-
-这些内容来自旧版 `AGENTS.md`，在当前仓库中仍然成立，应继续保留：
-
-- Next.js 16 App Router 异步 request API 规则
-- Zustand `skipHydration: true` + 手动 rehydrate
-- `useGameStore` 作为唯一主 store
-- opening 只保留一个主请求链
-- 注册成功直接建立服务端 session
-- 上行消息必须剥离 `reasoning_content`
-- JSON prompt 必须包含 `请严格以 JSON 格式输出`
-
----
-
-## 10. `/play` 章节系统入口
-
-章节功能是 `/play` 移动阅读壳层内的状态层，不是新路由、小说目录或关卡大厅。
-
-- 纯逻辑入口在 `src/lib/chapters/*`：章节定义、进度计算、完成判断、章末总结、旧存档迁移都应在这里维护。
-- UI 入口在 `src/features/play/chapters/*`：`ChapterNavigator`、`ChapterTocList`（章节行的唯一渲染实现，`ChapterSwitchModal` 也复用它）、`ChapterEndSheet`、`ChapterSummaryList` 只负责移动端呈现和调用 store action。
-- `src/app/play/page.tsx` 只负责在结构化回合提交完成后，把 `/api/chat` 已规范化的 DM JSON 与 store 前后状态信号传给 `recordChapterTurn`。
-- 章节推进不得要求 AI 新增必填字段；v1 默认不修改 `/api/chat` SSE / JSON 契约。
-- 不要通过解析 narrative 推进章节。可用信号包括有效回合数、选项/手输来源、位置变化、任务/图鉴/线索/关系/道具/理智/风险等结构化变化。
-- 章节状态进入 `useGameStore.chapterState`、存档槽与 `RunSnapshotV2.chapterState`；旧存档缺省迁移为第一章 active。
-- 回顾上一章是安全只读回顾，不回滚存档，不清空当前章节进度。
-- 章节导航不得重新暴露任务栏、游戏指南、灵感手记、仓库、成就、武器等已裁剪主动入口。
-- 修改章节区域后必须做移动端浏览器验证，至少覆盖 390×844、393×852、430×932。
-
----
-
-## 11. 最后提醒
-
-VerseCraft 不是普通聊天应用，也不是只有 prompt 的 demo。它现在已经是一个带有：
-
-- 在线 SSE 回合引擎
-- 结构化状态提交
-- analytics 兼容层
-- epistemic filtering
-- post-generation validators
-- background world tick
-
-的叙事系统原型。
-
-后续任务最容易犯的错误，不是“代码写不出来”，而是**忽略了这些系统之间已经存在的契约**。进入任务前，先确认自己改的是哪一层；动手时，尽量只改那一层。
-
----
-
-## 12. `/api/chat` 大模型生成链路护栏
-
-任何 Codex / AI agent / 人工开发只要改动 `/api/chat`、`PLAYER_CHAT`、SSE、prompt、options repair、waiting UX、RAG/lore、AI routing 或相关 benchmark/eval，默认必须保留以下硬规则：
-
-- 不破坏 `200 + text/event-stream`、`__VERSECRAFT_STATUS__`、`__VERSECRAFT_FINAL__` 和 keys_missing degraded SSE。
-- 不用模板冒充主叙事，不用本地通用选项补齐 4 条 options。
-- 不把 `reasoner`、DB 写入、analytics rollup、world tick 或重型 RAG 塞回首字前路径。
-- 不为了速度删除安全审查、NPC/世界观一致性、epistemic filtering 或 post-generation validation。
-- options repair 必须有 wall-clock budget；repair 失败时展示失败态或让玩家手输，不能无限重试。
-- prompt stable prefix 必须在动态上下文之前，并记录 `promptVersion` / stable prefix hash。
-- 线上日志只能记录结构化指标与 hash，不能记录原始玩家输入、完整 narrative 或完整 prompt。
-
-改动后至少运行：
-
-```bash
-pnpm lint
-pnpm test:unit
-pnpm build
-pnpm test:e2e:contract
-AI_PROVIDER=mock pnpm test:e2e:mock
-AI_PROVIDER=mock pnpm benchmark:chat-metrics -- --mode mock --assert-budget --include-all --json-out .runtime-data/chat-benchmark-mock.json
-AI_PROVIDER=mock pnpm eval:chat-quality -- --mode mock --assert --json-out .runtime-data/eval-chat-quality-mock.json
-```
-
-真实网关 benchmark/eval 只在有 secrets 的 main / workflow_dispatch / nightly 中运行；PR 不依赖真实 AI key。新增线上失败样本时，先匿名化，再回流到 `benchmarks/llm-evals/cases.json`。
-
-
-## 13. 测试交付红线（不可协商）
-
-1. **不得为了通过测试而放宽测试标准。** 测试断言必须反映真实契约（SSE 形状、DM JSON 必需字段、延迟预算、叙事安全门等），不能因为"改完后测试不过"就把断言改松、删掉或者注释掉。
-2. **未通过的测试必须修复后复测，直到通过才可交付。** 如果某个测试因为环境差异（如缺少网关密钥、本地无数据库）无法在本机运行，必须：
-   - 明确记录具体命令、阻塞原因和缺失的环境变量
-   - 区分「本任务导致的失败」与「预有失败」
-   - 本任务导致的一律修复；预有失败且不能安全修复的，记录具体文件、行号和错误，不得伪称全绿
-3. **E2E 与 benchmark 不是可选项。** 只要改动涉及 `/api/chat`、AI routing、prompt、SSE 契约、状态提交链、world tick 或性能预算，至少运行 `pnpm test:e2e:contract` 和 `pnpm benchmark:chat:mock`（或 live，取决于是否有网关密钥）。无法运行时，在 PROGRESS 中明确记录原因。
-4. **复测证据必须可审计。** 交付时 PROGRESS 必须包含：运行了哪些命令、退出码、通过/失败数、失败归属（本任务 or 预有）、以及无法运行的命令及阻塞原因。
-5. **不得通过降级 fallback 来伪造通过。** 测试必须验证真实链路成功，不能依赖 `CHAIN_EXHAUSTED`、`keys_missing`、`AI router failed` 等降级路径产出"看起来合法"的 SSE/JSON 就算通过。如果网关不可达导致 AI 调用失败，必须修复网关连接，不能把降级响应当作测试通过的证据。降级路径的正确性由专门的降级测试（如 `keys_missing stays 200 + SSE`）单独验证，不应与正常链路测试混淆。
+- 一次只解决一个清晰、可验证的问题；不要顺手重写架构。
+- 保护用户已有改动，不覆盖无关 worktree 内容。
+- 行为变化优先补测试；无法自动验证时说明原因。
+- 策略优先落在配置、task policy、packet、guard 或 validator，不把同类规则散落到业务代码。
+- 不为“优化”删除兼容层、安全门或 telemetry。
