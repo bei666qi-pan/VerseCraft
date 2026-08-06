@@ -662,7 +662,7 @@ export async function POST(req: Request) {
                 `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
                   kind: "site_unavailable",
                   requestId,
-                  reason: "early_status_invalid_content_type",
+                  reason: `early_status_invalid_content_type(status=${inner.status},ct=${innerContentType || "none"})`,
                   language: outputLanguage,
                 })}`
               )
