@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } fr
 import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume, startAmbientDrone, stopAmbientDrone } from "@/lib/audioEngine";
+import type { StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
+import {
+  usePlayUIState,
+  useChapterEndingState,
+} from "@/hooks/useGameStoreBatch";
 import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
 import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
@@ -52,18 +57,7 @@ import {
   isOpeningSystemUserMessage,
 } from "@/features/play/opening/openingCopy";
 import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
-import { MAX_INPUT } from "@/features/play/playConstants";
-import {
-  usePlayUIState,
-  usePlayerStats,
-  useOptionsState,
-  useChapterEndingState,
-  useWorldState,
-  useCodexState,
-  useTaskState,
-  useProfessionState,
-  useSaveSettingsState,
-} from "@/hooks/useGameStoreBatch";
+import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
 import {
   buildPersistedProfessionCertificationChoice,
@@ -509,56 +503,56 @@ function PlayContent() {
     router.prefetch("/");
   }, [router]);
 
-  // ---- Batched state-value selectors (one subscription per group) ----
+  // State-value selectors (reverted to individual useGameStore for reliability)
 
-  const {
-    isHydrated,
-    isGameStarted,
-    activeMenu,
-    inputMode,
-    isGuest,
-    guestId,
-  } = usePlayUIState();
+  const isHydrated = useGameStore((s) => s.isHydrated);
+  const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
+  const isGuest = useGameStore((s) => s.isGuest ?? false);
+  const guestId = useGameStore((s) => s.guestId ?? null);
+  const activeMenu = useGameStore((s) => s.activeMenu);
+  const inputMode = useGameStore((s) => s.inputMode ?? "options");
 
-  const {
-    stats,
-    talent,
-    talentCooldowns,
-    historicalMaxSanity,
-    originium,
-  } = usePlayerStats();
+  const rawStats = useGameStore((s) => s.stats) ?? FALLBACK_STATS;
+  const stats = useMemo(() => {
+    const base = rawStats ?? FALLBACK_STATS;
+    const safe: Record<StatType, number> = { ...FALLBACK_STATS };
+    for (const key of STAT_ORDER) {
+      const v = (base as Record<StatType, number> | undefined)?.[key];
+      safe[key] = Number.isFinite(v as number) ? (v as number) : FALLBACK_STATS[key];
+    }
+    return safe;
+  }, [rawStats]);
+  const talent = useGameStore((s) => s.talent);
+  const talentCooldowns = useGameStore((s) => s.talentCooldowns ?? {});
+  const historicalMaxSanity = useGameStore((s) => s.historicalMaxSanity ?? 50);
+  const originium = useGameStore((s) => s.originium ?? 0);
 
-  const {
-    currentOptions: currentOptionsFromStore,
-    recentOptions,
-    pendingClientAction,
-  } = useOptionsState();
+  const currentOptionsFromStore = useGameStore((s) => s.currentOptions ?? []);
+  const recentOptions = useGameStore((s) => s.recentOptions ?? []);
+  const pendingClientAction = useGameStore((s) => s.pendingClientAction ?? null);
 
-  const { endingState } = useChapterEndingState();
+  const endingState = useGameStore((s) => s.endingState);
 
-  const {
-    playerLocation,
-    time,
-    dynamicNpcStates,
-    mainThreatByFloor,
-    intrusionFlashUntil,
-    dialogueCount,
-  } = useWorldState();
+  const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
+  const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
+  const dynamicNpcStates = useGameStore((s) => s.dynamicNpcStates ?? {});
+  const mainThreatByFloor = useGameStore((s) => s.mainThreatByFloor ?? {});
+  const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
+  const dialogueCount = useGameStore((s) => s.dialogueCount ?? 0);
 
-  const { codex, viewedCodexIds } = useCodexState();
+  const codex = useGameStore((s) => s.codex ?? {});
+  const viewedCodexIds = useGameStore((s) => s.viewedCodexIds ?? {});
 
-  const {
-    tasks,
-    taskUnviewedCount,
-    taskPanelFirstOpen,
-  } = useTaskState();
+  const tasks = useGameStore((s) => s.tasks ?? []);
+  const taskUnviewedCount = useGameStore((s) => s._taskUnviewedCount ?? 0);
+  const taskPanelFirstOpen = useGameStore((s) => s._taskPanelFirstOpen ?? true);
 
-  const {
-    professionState,
-    hasMetProfessionCertifier,
-  } = useProfessionState();
+  const professionState = useGameStore((s) => s.professionState);
+  const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
 
-  const { volume, readingPreferences, language } = useSaveSettingsState();
+  const volume = useGameStore((s) => s.volume ?? 50);
+  const language = useGameStore((s) => s.language);
+  const readingPreferences = useGameStore((s) => s.readingPreferences);
 
   // ---- Derived selectors (one subscription each; infrequent writers) ----
 
