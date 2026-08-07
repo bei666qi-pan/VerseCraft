@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import {
   Activity,
+  Zap,
   BarChart3,
   Bot,
   ChevronLeft,
@@ -23,6 +24,7 @@ import { clearAdminShadowSession } from "@/app/actions/admin";
 import type { AdminApiEnvelope } from "@/lib/admin/apiEnvelope";
 import { readAdminResponseJson } from "@/lib/admin/parseAdminEnvelope";
 import { formatDurationSeconds } from "@/lib/time/durationUnits";
+import LangfuseDashboardTab from "@/components/admin/LangfuseDashboardTab";
 
 type ChartPoint = { date: string; tokens: number; activeUsers?: number; dailyTokens?: number };
 type DashboardUserRow = { id: string; name: string; tokensUsed: number; playTime: number; lastActive: string | Date; isOnline: number; feedbackContent: string; feedbackCreatedAt: string | null };
@@ -292,7 +294,7 @@ type AiReport = {
   };
 } | null;
 
-const TABS = ["总览", "玩家旅程", "AI 体验", "内容质量", "数据质量", "玩家 / 游客", "系统健康", "AI 运营助手", "审计日志"] as const;
+const TABS = ["总览", "玩家旅程", "AI 体验", "内容质量", "数据质量", "玩家 / 游客", "系统健康", "AI 运营助手", "审计日志", "Langfuse 可观测"] as const;
 type Tab = (typeof TABS)[number];
 type Range = "today" | "yesterday" | "7d" | "30d";
 
@@ -306,6 +308,7 @@ const tabIcons: Record<Tab, ComponentType<{ className?: string }>> = {
   系统健康: ShieldCheck,
   "AI 运营助手": Bot,
   审计日志: Database,
+  "Langfuse 可观测": Zap,
 };
 
 function percent(v: number | null | undefined): string {
@@ -1584,6 +1587,10 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               </div>
             </Panel>
           </section>
+        ) : null}
+
+        {tab === "Langfuse 可观测" ? (
+          <LangfuseDashboardTab />
         ) : null}
 
         {tab === "审计日志" ? (

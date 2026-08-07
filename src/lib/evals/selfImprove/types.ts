@@ -255,6 +255,10 @@ export interface SelfImproveTrace {
   /** Token/latency info */
   tokenUsage: { prompt: number; completion: number; total: number } | null;
   latencyMs: number;
+  /** Langfuse trace ID (set after upload). */
+  langfuseTraceId?: string;
+  /** Langfuse observation ID (set after upload). */
+  langfuseObservationId?: string;
 }
 
 // ── Judge Ensemble ────────────────────────────────────
@@ -514,3 +518,10 @@ export interface FinalReport {
   /** Git diff summary */
   gitDiffSummary: string;
 }
+
+// ── Langfuse Eval Integration Fields ──────────────────
+
+// SelfImproveTrace already defined above; these fields are appended:
+//   langfuseTraceId?: string;
+//   langfuseObservationId?: string;
+// They are optional — added to the interface definition inline below.

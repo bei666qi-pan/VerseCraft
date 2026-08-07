@@ -79,3 +79,12 @@ export interface RunFilterOptions {
   maxRounds?: number;
   profile?: SelfImproveProfile;
 }
+
+// ── Langfuse Eval Integration ─────────────────────────
+
+export function isLangfuseEvalEnabled(): boolean {
+  const v = process.env["VERSECRAFT_LANGFUSE_EVAL_ENABLED"];
+  if (!v) return false;
+  const l = v.toLowerCase();
+  return l === "1" || l === "true" || l === "yes" || l === "on";
+}

@@ -15,13 +15,29 @@ export type {
   StageSpanMetadata,
   GenerationMetadata,
   PromptSourceMode,
+  // Query client types
+  QueryResult,
+  TraceListItem,
+  TraceDetail,
+  ObservationNode,
+  ScoreStats,
+  DailyMetrics,
+  ModelObservationStats,
+  CostBreakdown,
+  ListTracesParams,
+  PaginatedTraces,
 } from "./types";
 
 // No-op (always safe to import)
 export { noopTracingAdapter } from "./noop";
 
 // Config (always safe to import — reads env, no side effects)
-export { getLangfuseConfig, isLangfuseReady, resetLangfuseConfig } from "./config";
+export {
+  getLangfuseConfig,
+  isLangfuseReady,
+  isLangfuseReadEnabled,
+  resetLangfuseConfig,
+} from "./config";
 export type { LangfuseConfig as LangfuseConfigType } from "./config";
 
 // Privacy (always safe to import — pure functions)
@@ -31,8 +47,6 @@ export { hashIdentity, hashContent, isSensitiveKey, sanitizeAttributes } from ".
 export { shouldSample } from "./sampling";
 
 // Tracing adapter (loads Langfuse SDK lazily)
-// Primary API: createTracingAdapter() per request, registers in AsyncLocalStorage.
-// Convenience functions (startTurnTrace etc.) use getCurrentAdapter() from storage.
 export {
   createTracingAdapter,
   getTracingAdapter,
@@ -59,6 +73,16 @@ export type { PromptFetchResult } from "./prompts";
 
 // Scores
 export { uploadScores, buildEvalScores, buildModelJudgeScore, buildHumanScore } from "./scores";
+
+// Query client (Langfuse Read API)
+export {
+  listTraces,
+  getTrace,
+  listObservations,
+  listScores,
+  getScoreStats,
+  getMetricsDaily,
+} from "./queryClient";
 
 // Client lifecycle (only for instrumentation.ts)
 export { initLangfuse, shutdownLangfuse } from "./client";

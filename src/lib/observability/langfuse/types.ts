@@ -135,4 +135,115 @@ export interface LangfuseConfig {
   promptSource: PromptSourceMode;
   flushTimeoutMs: number;
   hashSalt: string;
+  /** Enable Dashboard read access (independent of write-side `enabled`). */
+  enableRead: boolean;
+  /** Timeout in ms for read queries. */
+  readTimeoutMs: number;
+}
+
+// ── Query Client Types (Langfuse Read API) ─────────────
+
+/** Generic query result wrapper — all read operations fail-open. */
+export interface QueryResult<T> {
+  data: T;
+  degraded: boolean;
+  reason: string | null;
+}
+
+/** Lightweight trace summary for list views. */
+export interface TraceListItem {
+  id: string;
+  name: string;
+  userId: string | null;
+  sessionId: string | null;
+  timestamp: string;
+  latency: number;
+  totalTokens: number;
+  totalCost: number;
+  observationCount: number;
+  scores: { name: string; value: number | string }[];
+}
+
+/** Full trace detail including observation tree and scores. */
+export interface TraceDetail extends TraceListItem {
+  observations: ObservationNode[];
+  scoreList: LangfuseScore[];
+}
+
+/** Observation node in the trace tree. */
+export interface ObservationNode {
+  id: string;
+  name: string;
+  type: "GENERATION" | "SPAN" | "EVENT";
+  startTime: string;
+  endTime: string | null;
+  model: string | null;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+  inputCost: number;
+  outputCost: number;
+  parentObservationId: string | null;
+}
+
+/** Score statistics with trend data. */
+export interface ScoreStats {
+  name: string;
+  dataType: "NUMERIC" | "CATEGORICAL" | "BOOLEAN";
+  avg: number;
+  min: number;
+  max: number;
+  p50: number;
+  p95: number;
+  count: number;
+  trend: { date: string; avg: number }[];
+}
+
+/** Daily metrics aggregation. */
+export interface DailyMetrics {
+  date: string;
+  traceCount: number;
+  totalTokens: number;
+  totalCost: number;
+  avgLatencyMs: number;
+}
+
+/** Model performance aggregation. */
+export interface ModelObservationStats {
+  model: string;
+  role: string;
+  count: number;
+  avgLatencyMs: number;
+  p50LatencyMs: number;
+  p95LatencyMs: number;
+  successRate: number;
+  totalTokens: number;
+  avgTokens: number;
+  totalCost: number;
+}
+
+/** Cost breakdown by model/role. */
+export interface CostBreakdown {
+  model: string;
+  role: string;
+  totalCost: number;
+  traceCount: number;
+  tokenCount: number;
+}
+
+/** Query parameters for listTraces. */
+export interface ListTracesParams {
+  q?: string;
+  model?: string;
+  lane?: string;
+  fromTimestamp?: string;
+  toTimestamp?: string;
+  page?: number;
+  limit?: number;
+}
+
+/** Paginated result for trace lists. */
+export interface PaginatedTraces {
+  traces: TraceListItem[];
+  total: number;
+  page: number;
+  limit: number;
 }
