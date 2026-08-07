@@ -29,8 +29,6 @@ import { clusterOracleMismatches, clustersToTriagedDefects } from "./defectClust
 import { buildRepairPlan } from "./repairPlan";
 import { runQualityGate } from "./qualityGate";
 import { writeTrace, clearTraces, writeDeterministicResults, type DeterministicCaseResult } from "./traceStore";
-import { uploadTracesToLangfuse } from "./langfuseTraceUpload";
-import { isLangfuseEvalEnabled } from "./config";
 import { classifyTraceErrors, NON_GAMEPLAY_CLASSES } from "./errorClassification";
 import { evaluateStopPolicy, recordRoundScore, computeDeterministicMetrics, SMOKE_CAMPAIGN_CONFIG, type CampaignStopConfig } from "./stopPolicy";
 import { checkBudget, resetBudgetTimer } from "./budget";
@@ -137,15 +135,6 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
       const traces = await runScenarios(scenarios, runId, round);
       for (const trace of traces) { writeTrace(runId, trace); }
       console.log(`[SelfImprove] Collected ${traces.length} traces.`);
-
-      // Upload traces to Langfuse if --langfuse flag is set
-      if (isLangfuseEvalEnabled() && process.argv.includes("--langfuse")) {
-        uploadTracesToLangfuse(traces).then((result) => {
-          console.log(`[SelfImprove] Langfuse upload: ${result.uploaded} uploaded, ${result.skipped} skipped, ${result.failed} failed`);
-        }).catch((err) => {
-          console.warn("[SelfImprove] Langfuse upload failed (non-blocking)", err);
-        });
-      }
 
       // Run deterministic oracle on traces
       const detResults: DeterministicCaseResult[] = [];

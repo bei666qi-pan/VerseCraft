@@ -54,10 +54,6 @@ export function loadLangfuseConfig(): LangfuseConfig {
 
   const hashSalt = envStr("VERSECRAFT_LANGFUSE_HASH_SALT") ?? "versecraft-langfuse-default";
 
-  // Read-side config (independent of write-side `enabled`)
-  const enableRead = envBool("VERSECRAFT_ENABLE_LANGFUSE_READ", false);
-  const readTimeoutMs = envNum("VERSECRAFT_LANGFUSE_READ_TIMEOUT_MS", 5000);
-
   return {
     enabled,
     publicKey,
@@ -70,8 +66,6 @@ export function loadLangfuseConfig(): LangfuseConfig {
     promptSource: promptSourceVal,
     flushTimeoutMs,
     hashSalt,
-    enableRead,
-    readTimeoutMs,
   };
 }
 
@@ -89,12 +83,6 @@ export function getLangfuseConfig(): LangfuseConfig {
 export function isLangfuseReady(): boolean {
   const cfg = getLangfuseConfig();
   return cfg.enabled && !!cfg.publicKey && !!cfg.secretKey;
-}
-
-/** Check if Langfuse read (Dashboard) is enabled. Independent of write-side. */
-export function isLangfuseReadEnabled(): boolean {
-  const cfg = getLangfuseConfig();
-  return cfg.enableRead && !!cfg.publicKey && !!cfg.secretKey;
 }
 
 /** Reset cached config (for testing). */
