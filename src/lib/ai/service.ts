@@ -36,7 +36,6 @@ export {
   resolveAiEnv,
   anyAiProviderConfigured,
   resolveGatewayPrimaryBinding,
-  resolveDeepSeekLegacyConfig,
 } from "@/lib/ai/config/env";
 export { sanitizeMessagesForUpstream } from "@/lib/ai/stream/sanitize";
 export {

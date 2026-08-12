@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { ClientStructuredContextV1, OptionsRegenContextPayload } from "@/lib/security/chatValidation";
 
 function clip(s: string, max: number): string {
@@ -44,7 +45,7 @@ export function buildClientOptionsRegenContext(args: {
       .map((x) => clip(String(x ?? ""), 40))
       .filter((x) => x.length > 0)
       .slice(0, 6),
-    repairNeedCount: Math.max(0, Math.min(4, Math.trunc(Number(args.repairNeedCount ?? 0)))),
+    repairNeedCount: clamp(Math.trunc(Number(args.repairNeedCount ?? 0)), 0, 4),
     repairLockedOptions: (Array.isArray(args.repairLockedOptions) ? args.repairLockedOptions : [])
       .map((x) => clip(String(x ?? ""), 40))
       .filter((x) => x.length > 0)

@@ -1,3 +1,4 @@
+import { fireAndForget } from "@/lib/fireAndForget";
 // src/lib/presence/applyPresenceHeartbeat.ts
 import "server-only";
 
@@ -153,8 +154,8 @@ async function applyForUser(args: {
       )
       ON CONFLICT (session_id) DO NOTHING
     `);
-    void markUserActive(userId).catch(() => {});
-    void recordDailyActiveUser(userId, getUtcDateKey(now)).catch(() => {});
+    fireAndForget(() => markUserActive(userId), "markUserActive");
+    fireAndForget(() => recordDailyActiveUser(userId, getUtcDateKey(now)), "recordDailyActiveUser");
     void upsertActorDailyActivityHeartbeat({ userId, guestId: null, now, playDeltaSec: 0 });
     return { kind: "ok", playDeltaSec: 0 };
   }
@@ -175,10 +176,10 @@ async function applyForUser(args: {
   `);
 
   if (playDelta > 0) {
-    void recordPlayDurationToRollups({ userId, playDeltaSec: playDelta, at: now }).catch(() => {});
+    fireAndForget(() => recordPlayDurationToRollups({ userId, playDeltaSec: playDelta, at: now }), "recordPlayDuration");
   }
-  void markUserActive(userId).catch(() => {});
-  void recordDailyActiveUser(userId, getUtcDateKey(now)).catch(() => {});
+  fireAndForget(() => markUserActive(userId), "markUserActive");
+  fireAndForget(() => recordDailyActiveUser(userId, getUtcDateKey(now)), "recordDailyActiveUser");
   void upsertActorDailyActivityHeartbeat({ userId, guestId: null, now, playDeltaSec: playDelta });
 
   return { kind: "ok", playDeltaSec: playDelta };
@@ -251,8 +252,8 @@ async function applyForGuest(args: {
       )
       ON CONFLICT (session_id) DO NOTHING
     `);
-    void markUserActive(`g:${guestId}`).catch(() => {});
-    void recordDailyActiveUser(`g:${guestId}`, getUtcDateKey(now)).catch(() => {});
+    fireAndForget(() => markUserActive(`g:${guestId}`), "markUserActive");
+    fireAndForget(() => recordDailyActiveUser(`g:${guestId}`, getUtcDateKey(now)), "recordDailyActiveUser");
     void upsertGuestRegistryRow({
       guestId,
       now,
@@ -279,10 +280,10 @@ async function applyForGuest(args: {
   `);
 
   if (playDelta > 0) {
-    void recordPlayDurationToRollups({ userId: null, guestId, playDeltaSec: playDelta, at: now }).catch(() => {});
+    fireAndForget(() => recordPlayDurationToRollups({ userId: null, guestId, playDeltaSec: playDelta, at: now }), "recordPlayDuration");
   }
-  void markUserActive(`g:${guestId}`).catch(() => {});
-  void recordDailyActiveUser(`g:${guestId}`, getUtcDateKey(now)).catch(() => {});
+  fireAndForget(() => markUserActive(`g:${guestId}`), "markUserActive");
+  fireAndForget(() => recordDailyActiveUser(`g:${guestId}`, getUtcDateKey(now)), "recordDailyActiveUser");
   void upsertGuestRegistryRow({
     guestId,
     now,

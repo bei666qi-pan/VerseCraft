@@ -1,4 +1,5 @@
 import { normalizeForHash } from "@/lib/kg/normalize";
+import { clamp } from "@/lib/clamp";
 import { WORLD_KNOWLEDGE_MAX_WRITEBACK_FACTS } from "../constants";
 
 export type FactSource =
@@ -66,7 +67,7 @@ function pushFact(target: ExtractedFact[], item: Omit<ExtractedFact, "normalized
 
 export function extractFactsFromTurn(input: ExtractFactsInput): ExtractedFact[] {
   const out: ExtractedFact[] = [];
-  const maxFacts = Math.max(1, Math.min(WORLD_KNOWLEDGE_MAX_WRITEBACK_FACTS, input.maxFacts ?? 12));
+  const maxFacts = clamp(input.maxFacts ?? 12, 1, WORLD_KNOWLEDGE_MAX_WRITEBACK_FACTS);
 
   const userText = asString(input.latestUserInput);
   if (userText) {

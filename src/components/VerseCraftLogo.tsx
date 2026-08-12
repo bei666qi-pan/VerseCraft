@@ -59,7 +59,7 @@ export function VerseCraftLogoMark({
   return (
     <span
       aria-hidden={decorative ? true : undefined}
-      data-testid={dataTestId}
+      data-testid={dataTestId ?? "versecraft-brand-mark"}
       className={`relative inline-block shrink-0 overflow-visible ${hasHeight ? "" : "h-10"} ${hasWidth ? "" : "w-10"} ${className}`}
       style={style}
     >

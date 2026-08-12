@@ -5,6 +5,7 @@ import { buildPeerRelationalCuesForNpc } from "@/lib/playRealtime/npcSocialSurfa
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { buildNpcBaselineAttitude, mergeNpcBaselineWithRelation } from "@/lib/npcBaselineAttitude/builders";
 import { buildNpcHeartProfile, normalizeRelationStatePartial } from "./build";
+import { clamp } from "@/lib/clamp";
 import { buildPersonalityRuntimeHints, buildWhatNpcWantsFromScenarios } from "./personalityRuntime";
 import type { NpcHeartRuntimeView } from "./types";
 
@@ -127,7 +128,7 @@ export function selectRelevantNpcHearts(args: {
   volatileNpcIds: string[];
   maxNpc?: number;
 }): string[] {
-  const maxNpc = Math.max(1, Math.min(5, args.maxNpc ?? 3));
+  const maxNpc = clamp(args.maxNpc ?? 3, 1, 5);
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (id: string) => {

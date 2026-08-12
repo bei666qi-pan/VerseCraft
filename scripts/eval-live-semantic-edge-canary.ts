@@ -20,7 +20,7 @@ import {
   isDirectlyDeniedOccurrence,
   sanitizeDenialAwareFinalJson,
   visibleTextFromFinalJson,
-} from "./eval-live-hallucination-canary";
+} from "../src/lib/evals/denialDetection";
 
 for (const name of [".env", ".env.local"]) {
   const candidate = path.resolve(process.cwd(), name);

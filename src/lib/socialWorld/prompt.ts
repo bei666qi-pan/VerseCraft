@@ -1,4 +1,5 @@
 import { normalizeSocialWorldBudget } from "@/lib/socialWorld/budget";
+import { clamp } from "@/lib/clamp";
 import { projectSocialEventToPlayerProjection } from "@/lib/socialWorld/projection";
 import type { SocialEvent, SocialWorldBudget } from "@/lib/socialWorld/types";
 
@@ -87,11 +88,8 @@ export function buildSocialWorldHintBlockWithMeta(
   }
 ): SocialWorldHintBuildResult {
   const budget = normalizeSocialWorldBudget(opts?.budget);
-  const maxChars = Math.max(0, Math.min(420, opts?.maxChars ?? budget.maxSocialPromptChars, budget.maxSocialPromptChars));
-  const maxItems = Math.max(
-    0,
-    Math.min(2, opts?.maxItems ?? budget.maxVisibleSocialEventsPerTurn, budget.maxVisibleSocialEventsPerTurn)
-  );
+  const maxChars = clamp(opts?.maxChars ?? budget.maxSocialPromptChars, 0, 420);
+  const maxItems = clamp(opts?.maxItems ?? budget.maxVisibleSocialEventsPerTurn, 0, 2);
   if (events.length === 0) return emptyResult("no_due_events");
   if (maxItems <= 0) return emptyResult("disabled");
   if (SOCIAL_HINT_TITLE.length >= maxChars) return emptyResult("budget_exhausted");

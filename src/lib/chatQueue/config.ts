@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import { envBoolean, envNumber, envRaw } from "@/lib/config/envRaw";
 
 export type ChatQueueConfig = {
@@ -12,7 +13,7 @@ export type ChatQueueConfig = {
 
 function clampInt(value: number, min: number, max: number): number {
   const safe = Number.isFinite(value) ? Math.trunc(value) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function sanitizeRedisPrefix(value: string | undefined): string {

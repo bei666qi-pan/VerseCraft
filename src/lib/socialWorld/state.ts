@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import {
   NPC_AGENT_STATUSES,
   SOCIAL_ESCAPE_RELEVANCE,
@@ -22,7 +23,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   const numeric = typeof value === "number" ? value : Number(value);
   const safe = Number.isFinite(numeric) ? numeric : fallback;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {

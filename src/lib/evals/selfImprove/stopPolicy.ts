@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Stop Policy (v2 — Campaign Mode)
+ * Evaluation & Regression Campaign — Stop Policy
  *
  * Rewritten to enforce:
  * - minRounds before PASS
@@ -34,15 +34,6 @@ export interface CampaignStopConfig {
   maxDurationMinutes: number;
   maxLiveModelCalls: number;
   noImprovementRounds: number;
-  /**
-   * Whether the DRAIN_REPAIR_QUEUE continuation is allowed when eval rounds
-   * are exhausted but defects are pending. Only meaningful when the loop can
-   * actually apply repairs between rounds; eval-only entry points (run.ts,
-   * whose repairs happen at supervisor level) must set this to false,
-   * otherwise the loop re-measures the same defects until the live-model
-   * budget is exhausted and holdout execution is skipped.
-   */
-  drainRepairQueue?: boolean;
 }
 
 export const SMOKE_CAMPAIGN_CONFIG: CampaignStopConfig = {
@@ -120,20 +111,6 @@ export function evaluateStopPolicy(
   const timeExhausted = budget.elapsedMin >= config.maxDurationMinutes;
   const evalRoundsExhausted = completedRounds >= config.maxRounds;
 
-  // If only eval rounds exhausted but defects are pending → DRAIN_REPAIR_QUEUE
-  if (config.drainRepairQueue !== false && evalRoundsExhausted && !liveCallsExhausted && !timeExhausted) {
-    const hasRecentDefects = roundHistory.length > 0 &&
-      roundHistory[roundHistory.length - 1]!.criticalIssues + roundHistory[roundHistory.length - 1]!.majorIssues > 0;
-    if (hasRecentDefects) {
-      return {
-        shouldStop: false, shouldContinue: false, shouldExpandScenarios: false,
-        isBlocked: false, isSuccess: false, isCleanButInsufficient: false,
-        reason: null,
-        finalStatus: null, // Continue to drain repair queue
-      };
-    }
-  }
-
   if (liveCallsExhausted || timeExhausted || evalRoundsExhausted) {
     let reason: StopReason;
     let status: FinalStatus;
@@ -148,7 +125,7 @@ export function evaluateStopPolicy(
     };
   }
 
-  // ── Consecutive repair failures ──
+  // ── Repeated severe evaluation failures ──
 
   const recentFailures = roundHistory.slice(-config.noImprovementRounds);
   if (
@@ -197,8 +174,7 @@ export function evaluateStopPolicy(
       shouldStop: true, shouldContinue: false, shouldExpandScenarios: false,
       isBlocked: true, isSuccess: false, isCleanButInsufficient: false,
       reason: success.blockReason ?? "human_review_required",
-      finalStatus: success.blockReason === "live_blocked"
-        ? "IMPLEMENTED_BUT_LIVE_BLOCKED" : "BLOCKED",
+      finalStatus: "BLOCKED",
     };
   }
 
@@ -391,7 +367,6 @@ export function computeDeterministicMetrics(
   let unexpectedPasses = 0;
 
   for (const result of results) {
-    let allExpectationsMatched = true;
     for (const inv of result.invariantResults) {
       totalExpectations++;
       const expected = inv.expected;
@@ -399,7 +374,6 @@ export function computeDeterministicMetrics(
       if (matched) {
         expectationMatches++;
       } else {
-        allExpectationsMatched = false;
         if (expected === "pass") unexpectedFailures++;
         else unexpectedPasses++;
       }

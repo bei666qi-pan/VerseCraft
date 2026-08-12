@@ -12,6 +12,7 @@
  * - 为避免误杀复杂输入，本层仅覆盖短输入 + 明确模式。
  */
 
+import { clamp } from "@/lib/clamp";
 import type { PlayerControlPlane, PlayerIntentKind, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
 
 export type DeterministicControlFastPath =
@@ -27,7 +28,7 @@ function clampText(s: string, max: number): string {
 function basePlane(intent: PlayerIntentKind, confidence: number): PlayerControlPlane {
   return {
     intent,
-    confidence: Math.max(0, Math.min(1, confidence)),
+    confidence: clamp(confidence, 0, 1),
     extracted_slots: {},
     risk_tags: [],
     risk_level: "low",

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { clamp } from "@/lib/clamp";
 import { pool } from "@/db";
 
 type QueryRow = Record<string, unknown>;
@@ -16,7 +17,7 @@ export async function listWorldKnowledgeEntities(input: {
   limit?: number;
   offset?: number;
 }) {
-  const limit = Math.max(1, Math.min(200, input.limit ?? 50));
+  const limit = clamp(input.limit ?? 50, 1, 200);
   const offset = Math.max(0, input.offset ?? 0);
   const where: string[] = [];
   const params: unknown[] = [];
@@ -115,7 +116,7 @@ export async function getWorldKnowledgeEntityDetail(entityId: number) {
 }
 
 export async function listWorldKnowledgeCandidates(input: { status?: string; limit?: number; offset?: number }) {
-  const limit = Math.max(1, Math.min(200, input.limit ?? 50));
+  const limit = clamp(input.limit ?? 50, 1, 200);
   const offset = Math.max(0, input.offset ?? 0);
   const status = input.status?.trim();
   const where = status ? `WHERE COALESCE(wpf.conflict_status, 'none') = $1` : "";

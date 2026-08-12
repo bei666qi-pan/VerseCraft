@@ -86,6 +86,9 @@ export function MobileCharacterPanel({
       : getEscapeStageLabel(escapeStage)
     : null;
 
+  const DD_VALUE_CLASS = {DD_VALUE_CLASS};
+  const DD_ROW_CLASS = {DD_ROW_CLASS};
+
   return (
     <section
       data-testid="mobile-character-panel"
@@ -96,47 +99,47 @@ export function MobileCharacterPanel({
         <section data-testid="character-identity-section" className="shrink-0 px-1">
           <CardTitle>{languageText(language, "身份信息", "Profile")}</CardTitle>
           <dl className="mt-3 divide-y divide-[#ded8ce] border-t border-[#ded8ce]">
-            <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+            <div className={DD_ROW_CLASS}>
               <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                 {languageText(language, "职业", "Role")}
               </dt>
               <dd
                 data-testid="character-current-profession"
-                className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
+                className={DD_VALUE_CLASS}
               >
                 {professionLabel}
               </dd>
             </div>
-            <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+            <div className={DD_ROW_CLASS}>
               <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                 {languageText(language, "时间", "Time")}
               </dt>
               <dd
                 data-testid="character-current-time"
-                className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
+                className={DD_VALUE_CLASS}
               >
                 {timeLabel}
               </dd>
             </div>
-            <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+            <div className={DD_ROW_CLASS}>
               <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                 {languageText(language, "位置", "Location")}
               </dt>
               <dd
                 data-testid="character-current-location"
-                className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
+                className={DD_VALUE_CLASS}
               >
                 {locationLabel}
               </dd>
             </div>
             {escapeStageLabel ? (
-              <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+              <div className={DD_ROW_CLASS}>
                 <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                   {languageText(language, "出口主线", "Escape Route")}
                 </dt>
                 <dd
                   data-testid="character-escape-stage"
-                  className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
+                  className={DD_VALUE_CLASS}
                 >
                   {escapeStageLabel}
                 </dd>

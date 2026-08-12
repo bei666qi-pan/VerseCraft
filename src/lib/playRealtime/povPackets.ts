@@ -1,3 +1,4 @@
+import { clamp as clampNumber } from "@/lib/clamp";
 function clamp(s: string, max: number): string {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
   if (!t) return "";
@@ -15,7 +16,6 @@ export function buildPovPacketBlock(args: { maxChars?: number }): string {
       "叙事描述层只能用“我”写玩家动作与感受；引号对白里允许出现“你”。若不确定，一律按第一人称续写上一段。",
   };
   const text = `## 【pov_packet】\n${JSON.stringify(packet)}`;
-  const max = Math.max(160, Math.min(800, args.maxChars ?? 420));
+  const max = clampNumber(args.maxChars ?? 420, 160, 800);
   return text.length <= max ? text : `${clamp(text, max - 1)}…`;
 }
-

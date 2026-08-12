@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Core Types
+ * Evaluation & Regression Campaign — Core Types
  *
  * Defines the complete data model for the eval-driven multi-agent
  * self-repair closed loop. All types live here as the single source
@@ -315,21 +315,21 @@ export interface TriagedDefect {
   sourceVerdicts: SelfImproveJudgeVerdict[];
   /** Whether deterministic oracle reproduced it */
   oracleReproduced: boolean;
-  /** Whether sufficient evidence exists for auto-repair */
-  autoRepairable: boolean;
-  /** If not auto-repairable, why */
+  /** Whether sufficient evidence exists for an explicit implementation recommendation */
+  recommendationEligible: boolean;
+  /** If no implementation recommendation can be made, why */
   blockReason?: string;
   /** Disposition */
   disposition:
-    | "auto_repair"
+    | "explicit_implementation_recommended"
     | "human_review_required"
     | "inconclusive"
     | "duplicate";
 }
 
-// ── Repair Plan ───────────────────────────────────────
+// ── Evaluation Recommendation ─────────────────────────
 
-export interface RepairPlan {
+export interface EvaluationRecommendation {
   defectSignature: DefectSignature;
   rootCause: string;
   candidateFiles: string[];
@@ -337,27 +337,8 @@ export interface RepairPlan {
   risks: string[];
   requiredTests: string[];
   impactOnNormalPlay: string;
-  selected: boolean;
-}
-
-export interface RepairResult {
-  defectSignature: DefectSignature;
-  success: boolean;
-  /** Added regression test paths */
-  addedTests: string[];
-  /** Modified production code paths */
-  modifiedFiles: string[];
-  /** Test-before evidence: did old code fail? */
-  testFailedBeforeRepair: boolean;
-  /** Did new test pass after repair? */
-  testPassedAfterRepair: boolean;
-  /** Did all regression tests pass? */
-  regressionTestsPassed: boolean;
-  /** Notes */
-  notes: string;
-  /** If repair was reverted */
-  reverted: boolean;
-  revertReason?: string;
+  /** Recommendations never authorize or imply repository mutation. */
+  handoff: "explicit_implementation_task_required";
 }
 
 // ── Quality Gate ──────────────────────────────────────
@@ -461,13 +442,9 @@ export type FinalStatus =
   | "PASS"
   | "BLOCKED"
   | "CLEAN_BUT_INSUFFICIENT_EVIDENCE"
-  | "IMPLEMENTED_BUT_LIVE_BLOCKED"
-  | "IMPLEMENTED_BUT_CALIBRATION_FAILED"
   | "BUDGET_EXHAUSTED"
   | "MAX_ROUNDS_REACHED"
   | "REGRESSION_DETECTED"
-  | "FULL_REPAIR_LOOP_VERIFIED"
-  | "LIVE_CAMPAIGN_PASS"
   | "HUMAN_RULE_DECISION_REQUIRED";
 
 export interface FinalReport {
@@ -489,10 +466,14 @@ export interface FinalReport {
   roundDetails: {
     round: number;
     defectsFound: number;
+    recommendationsGenerated: number;
+    /** Legacy artifact field; evaluation campaigns never apply repairs. */
     defectsRepaired: number;
     testsAdded: string[];
     rootCauses: string[];
   }[];
+  /** Evidence-backed handoffs; these never imply that code was changed. */
+  recommendations: EvaluationRecommendation[];
   /** Deterministic test final results */
   deterministicResults: Record<string, unknown>;
   /** Live eval final results */

@@ -2,12 +2,13 @@ import { ITEMS } from "@/lib/registry/items";
 import { LIGHT_FORGE_RECIPES, type LightForgeRecipe } from "@/lib/registry/forge";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import type { ForgeMaterialTag, ForgeResult, ItemTier, StatRequirement, Weapon, WeaponTier } from "@/lib/registry/types";
+import { clamp } from "@/lib/clamp";
 import { WEAPON_TEMPLATES } from "@/lib/registry/weapons";
 
 type ParsedWeapon = { weaponId: string | null; stability: number | null };
 
 function clampPct(v: number): number {
-  return Math.max(0, Math.min(100, Math.trunc(v)));
+  return clamp(Math.trunc(v), 0, 100);
 }
 
 function isTierGte(a: ItemTier, min: WeaponTier): boolean {

@@ -1,8 +1,9 @@
+import { clamp } from "@/lib/clamp";
 import type { MemorySpineChapterRole, MemorySpineEntry, MemorySpineState } from "./types";
 
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
+  return clamp(n, 0, 1);
 }
 
 function asFiniteInt(n: unknown, fallback = 0): number {
@@ -69,7 +70,7 @@ export function normalizeMemorySpineEntry(raw: unknown, nowHour: number): Memory
 
   const createdAtHour = asFiniteInt(o.createdAtHour, nowHour);
   const lastTouchedAtHour = asFiniteInt(o.lastTouchedAtHour, createdAtHour);
-  const ttlHours = Math.max(0, Math.min(24 * 30, asFiniteInt(o.ttlHours, 72)));
+  const ttlHours = clamp(asFiniteInt(o.ttlHours, 72), 0, 24 * 30);
   const anchors = o.anchors && typeof o.anchors === "object" && !Array.isArray(o.anchors) ? (o.anchors as any) : {};
   const recallTags = Array.isArray(o.recallTags)
     ? o.recallTags.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()).slice(0, 12)
@@ -114,7 +115,7 @@ export function normalizeMemorySpineEntry(raw: unknown, nowHour: number): Memory
 }
 
 export function pruneMemorySpine(state: MemorySpineState, nowHour: number, opts?: { maxEntries?: number }): MemorySpineState {
-  const maxEntries = Math.max(16, Math.min(128, opts?.maxEntries ?? 64));
+  const maxEntries = clamp(opts?.maxEntries ?? 64, 16, 128);
   const normalized: MemorySpineEntry[] = [];
   for (const e of state.entries ?? []) {
     const ne = normalizeMemorySpineEntry(e, nowHour);
@@ -131,7 +132,7 @@ export function pruneMemorySpine(state: MemorySpineState, nowHour: number, opts?
   if (alive.length <= maxEntries) return { v: 1, entries: alive };
 
   const scored = alive.map((e) => {
-    const recency = Math.max(0, Math.min(1, 1 - Math.max(0, nowHour - e.lastTouchedAtHour) / Math.max(1, e.ttlHours)));
+    const recency = clamp(1 - Math.max(0, nowHour - e.lastTouchedAtHour) / Math.max(1, e.ttlHours), 0, 1);
     const unresolvedBonus = e.status === "active" ? 0.12 : 0;
     const score = e.salience * 0.55 + e.confidence * 0.25 + recency * 0.2 + unresolvedBonus;
     return { e, score };

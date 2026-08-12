@@ -5,6 +5,7 @@ import type {
   SocialEvent,
   SocialWorldWriteResult,
 } from "@/lib/socialWorld/types";
+import { clamp } from "@/lib/clamp";
 import type { MemorySpineEntry } from "@/lib/memorySpine/types";
 
 export type SocialWorldPersistenceOptions = {
@@ -66,7 +67,7 @@ function normalizeUserId(userId: string | null | undefined): string | null {
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const numeric = typeof value === "number" ? value : Number(value);
   const safe = Number.isFinite(numeric) ? Math.trunc(numeric) : fallback;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function canonicalNpcKey(ids: readonly string[]): string {
@@ -100,7 +101,7 @@ function isPromptEligible(event: SocialEvent, nowTurn: number): boolean {
 }
 
 function normalizeLimit(maxItems: number): number {
-  return Math.max(0, Math.min(8, Math.trunc(maxItems || 0)));
+  return clamp(Math.trunc(maxItems || 0), 0, 8);
 }
 
 function emptyLoad<T>(): T[] {

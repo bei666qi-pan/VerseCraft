@@ -75,9 +75,9 @@ async function maybeCoolifyEvidence() {
 }
 
 function renderPrompt(evidence) {
-  return `# VerseCraft Auto-Ops Local Codex Repair Task
+  return `# VerseCraft Auto-Ops Implementation Evidence
 
-You are working in the local repository \`bei666qi-pan/VerseCraft\` on \`main\`. This project does not use \`OPENAI_API_KEY\`, and GitHub Actions must not run cloud Codex. Code repair is executed by local Codex Pro / local Codex CLI.
+This artifact is a non-mutating handoff. Auto-Ops does not authorize an agent to edit, commit, push, merge, or deploy code. Open an explicit implementation task before making repository changes.
 
 Prefer the smallest compatible fix. First decide whether this is a code problem. If it is not a code problem, update a runbook, workflow guard, or incident note instead of forcing a business-code change.
 
@@ -183,9 +183,9 @@ async function main() {
     runtime_files: await readRuntimeFiles(),
   };
   await writeRuntimeJson("runtime-evidence.json", evidence);
-  const prompt = renderPrompt(evidence);
-  await writeRuntimeText("codex-prompt.md", prompt);
-  logJson("autoops.evidence.collected", { incident_key: incidentPayload.incident_key, prompt_path: ".ops/autoops/runtime/codex-prompt.md" });
+  const handoff = renderPrompt(evidence);
+  await writeRuntimeText("implementation-handoff.md", handoff);
+  logJson("autoops.evidence.collected", { incident_key: incidentPayload.incident_key, handoff_path: ".ops/autoops/runtime/implementation-handoff.md" });
 }
 
 main().catch((error) => {

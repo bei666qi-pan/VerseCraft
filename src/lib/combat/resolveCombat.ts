@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type {
   CombatActorScore,
   CombatConflictKind,
@@ -5,10 +6,6 @@ import type {
   CombatResolution,
   SceneCombatContext,
 } from "./types";
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
-}
 
 function bandFromDelta(delta: number): CombatResolution["advantageBand"] {
   const d = Math.abs(delta);
@@ -124,4 +121,3 @@ export function resolveCombat(args: {
     },
   };
 }
-

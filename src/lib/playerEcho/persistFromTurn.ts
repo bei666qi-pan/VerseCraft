@@ -8,6 +8,7 @@ import {
   readPlayerEchoCanon,
   upsertPlayerEchoCanon,
 } from "./repository";
+import { clamp } from "@/lib/clamp";
 import type { EchoFragment, PlayerEchoCanon } from "./types";
 
 export type PlayerEchoPersistRepository = {
@@ -86,7 +87,7 @@ function npcBondsFromFragments(fragments: readonly EchoFragment[]): NonNullable<
       npcId: fragment.targetId!,
       memoryPrivilege: "normal" as const,
       recognitionMode: "emotional_residue" as const,
-      bondScore: Math.max(0.2, Math.min(1, fragment.emotionalWeight * 0.6 + fragment.salience * 0.4)),
+      bondScore: clamp(fragment.emotionalWeight * 0.6 + fragment.salience * 0.4, 0.2, 1),
       fragmentIds: [fragment.id],
     }))
     .slice(0, 8);

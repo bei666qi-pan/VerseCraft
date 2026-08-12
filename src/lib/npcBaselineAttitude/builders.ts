@@ -14,11 +14,8 @@ import type {
   NpcBaselineSceneContext,
   NpcPlayerBaselinePacket,
 } from "./types";
+import { clamp } from "@/lib/clamp";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
-}
 
 const DEFAULT_SCENE: NpcBaselineSceneContext = {
   locationId: "unknown",

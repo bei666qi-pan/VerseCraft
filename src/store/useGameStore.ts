@@ -170,6 +170,7 @@ import {
   type ReadingPreferenceKey,
   type ReadingPreferences,
 } from "@/features/play/mobileReading/readingPreferences";
+import { clamp } from "@/lib/clamp";
 import { normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
 
 const DB_KEY = "versecraft-storage";
@@ -309,7 +310,7 @@ export function migratePersistedState(
     saveSlots: pruneVisibleSaveSlots(migratedSlots as Record<string, SaveSlotData>),
     pendingHourProgress:
       typeof raw.pendingHourProgress === "number" && Number.isFinite(raw.pendingHourProgress)
-        ? Math.max(0, Math.min(0.999999, raw.pendingHourProgress))
+        ? clamp(raw.pendingHourProgress, 0, 0.999999)
         : 0,
   };
 }
@@ -954,7 +955,7 @@ const DEFAULT_STATS: Record<StatType, number> = {
 
 function clampRelation(n: number): number {
   if (!Number.isFinite(n)) return 0;
-  return Math.max(-100, Math.min(100, Math.trunc(n)));
+  return clamp(Math.trunc(n), -100, 100);
 }
 
 function applyTaskRelationshipConsequencesToCodex(
@@ -1157,7 +1158,7 @@ function createGuestId(): string {
 
 function clampVolume(n: number): number {
   if (!Number.isFinite(n)) return 50;
-  return Math.max(0, Math.min(100, Math.round(n)));
+  return clamp(Math.round(n), 0, 100);
 }
 
 const DEFAULT_WORLD_OVERLAY = createDefaultWorldOverlay();
@@ -1880,7 +1881,7 @@ export const useGameStore = create<GameState>()(
               ...(typeof row.threatId === "string" ? { threatId: row.threatId } : {}),
               phase,
               ...(typeof row.suppressionProgress === "number"
-                ? { suppressionProgress: Math.max(0, Math.min(100, Math.trunc(row.suppressionProgress))) }
+                ? { suppressionProgress: clamp(Math.trunc(row.suppressionProgress), 0, 100) }
                 : {}),
               ...(typeof row.lastResolvedAtHour === "number" && Number.isFinite(row.lastResolvedAtHour)
                 ? { lastResolvedAtHour: Math.trunc(row.lastResolvedAtHour) }
@@ -1931,7 +1932,7 @@ export const useGameStore = create<GameState>()(
             }
             if (!next) continue;
             if (typeof row.stability === "number" && Number.isFinite(row.stability)) {
-              next.stability = Math.max(0, Math.min(100, Math.trunc(row.stability)));
+              next.stability = clamp(Math.trunc(row.stability), 0, 100);
             }
             if (row.calibratedThreatId === null || typeof row.calibratedThreatId === "string") {
               next.calibratedThreatId = row.calibratedThreatId;
@@ -1948,7 +1949,7 @@ export const useGameStore = create<GameState>()(
                 }));
             }
             if (typeof row.contamination === "number" && Number.isFinite(row.contamination)) {
-              next.contamination = Math.max(0, Math.min(100, Math.trunc(row.contamination)));
+              next.contamination = clamp(Math.trunc(row.contamination), 0, 100);
             }
             if (typeof row.repairable === "boolean") {
               next.repairable = row.repairable;
@@ -3567,104 +3568,6 @@ export const useGameStore = create<GameState>()(
 
       // ---- legacy multi-slot actions (disabled) ----
       // 下面的旧实现保留在 git 历史中；当前版本强制单线推进。
-      /*
-      renameSaveSlot: (slotId, label) => {
-        const name = String(label ?? "").trim();
-        if (!slotId || !name) return false;
-        const s = get();
-        const slot = s.saveSlots?.[slotId];
-        if (!slot) return false;
-        const nextMeta = normalizeSaveSlotMeta(slot.slotMeta, {
-          slotId,
-          label: name,
-          kind: inferSaveSlotKind(slotId),
-          createdAt: slot.runSnapshotV2?.meta?.startedAt ?? new Date().toISOString(),
-          runId: slot.runSnapshotV2?.meta?.runId ?? createRunId(),
-          parentSlotId: slot.runSnapshotV2?.meta?.branchMeta?.parentSlotId ?? null,
-          branchFromDecisionId: slot.runSnapshotV2?.meta?.branchMeta?.branchFromDecisionId ?? null,
-          snapshotSummary: buildFallbackSummaryFromLegacy(slot),
-        });
-        set((prev) => ({
-          saveSlots: {
-            ...prev.saveSlots,
-            [slotId]: {
-              ...slot,
-              slotMeta: { ...nextMeta, label: name, updatedAt: new Date().toISOString() },
-            },
-          },
-        }));
-        return true;
-      },
-      deleteSaveSlot: (slotId) => {
-        const s = get();
-        if (!slotId || !s.saveSlots?.[slotId]) return false;
-        const next = { ...s.saveSlots };
-        delete next[slotId];
-        const autoPair = createAutoSlotIdFor(slotId);
-        if (autoPair !== slotId) delete next[autoPair];
-        const visibleIds = Object.keys(next).filter((id) => !id.startsWith("auto_"));
-        set({
-          currentSaveSlot:
-            slotId === s.currentSaveSlot ? (visibleIds[0] ?? "main_slot") : s.currentSaveSlot,
-          isGameStarted: slotId === s.currentSaveSlot && visibleIds.length === 0 ? false : s.isGameStarted,
-          saveSlots: pruneVisibleSaveSlots(next),
-        });
-        return true;
-      },
-      createBranchSlot: (input) => {
-        const s = get();
-        const location = s.playerLocation ?? "B1_SafeZone";
-        const floorId = location.startsWith("B1_")
-          ? "B1"
-          : location.startsWith("B2_")
-            ? "B2"
-            : location.match(/^(\d)F_/)?.[1] ?? "";
-        const currentThreat = floorId ? (s.mainThreatByFloor?.[floorId] ?? null) : null;
-        const anchorUnlocks =
-          s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2?.world?.anchorUnlocks ??
-          { B1: true, "1": true, "7": false };
-        const guard = canCreateManualBranch({
-          playerLocation: location,
-          revivePending: Boolean(s.reviveContext?.pending),
-          isAlive: (s.stats?.sanity ?? 0) > 0,
-          anchorUnlocks,
-          currentFloorThreat: currentThreat,
-        });
-        if (!guard.ok) return { ok: false, reason: guard.reason ?? "当前状态不可创建分支" };
-        const existing = Object.keys(s.saveSlots ?? {});
-        const slotId = createBranchSlotId(existing);
-        const nowIso = new Date().toISOString();
-        const branchLabel = String(input?.label ?? "").trim() || `分支 ${slotId.replace("branch_", "")}`;
-        const parentSlotId = s.currentSaveSlot || "main_slot";
-        set((prev) => ({ currentSaveSlot: slotId, saveSlots: { ...prev.saveSlots } }));
-        get().saveGame(slotId);
-        set((prev) => {
-          const slot = prev.saveSlots?.[slotId];
-          if (!slot) return {};
-          const normalized = normalizeSaveSlotMeta(slot.slotMeta, {
-            slotId,
-            label: branchLabel,
-            kind: inferSaveSlotKind(slotId),
-            createdAt: nowIso,
-            updatedAt: nowIso,
-            runId: slot.runSnapshotV2?.meta?.runId ?? createRunId(),
-            parentSlotId,
-            branchFromDecisionId: input?.branchFromDecisionId ?? null,
-            snapshotSummary: buildFallbackSummaryFromLegacy(slot),
-          });
-          return {
-            saveSlots: {
-              ...prev.saveSlots,
-              [slotId]: {
-                ...slot,
-                slotMeta: normalized,
-              },
-            },
-          };
-        });
-        return { ok: true, slotId };
-      },
-      */
 
       saveGame: (slotId) => {
         const s = get();

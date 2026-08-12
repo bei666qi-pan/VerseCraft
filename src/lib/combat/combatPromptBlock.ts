@@ -21,6 +21,7 @@ import {
 import { NPCS } from "@/lib/registry/npcs";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import type { CombatConflictKind, CombatPrecheck, MainThreatPhase } from "./types";
+import { clamp } from "@/lib/clamp";
 import { resolveCombat } from "./resolveCombat";
 
 function clampText(s: string, max: number): string {
@@ -108,7 +109,7 @@ export function buildCombatPromptBlockV1(args: {
   /** 本回合职业主动是否已发动 */
   professionActiveEngaged?: boolean;
 }): string {
-  const maxChars = Math.max(180, Math.min(700, args.maxChars ?? 420));
+  const maxChars = clamp(args.maxChars ?? 420, 180, 700);
   const locationId = String(args.locationId ?? "").trim() || "unknown";
   const floorId = floorIdFromLocation(locationId);
   const threatPhase = threatPhaseForFloor(args.mainThreatByFloor as any, floorId);

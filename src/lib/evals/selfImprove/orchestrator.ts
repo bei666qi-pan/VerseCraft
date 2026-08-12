@@ -1,15 +1,15 @@
 /**
- * Self-Improving Agent System — Orchestrator
+ * Evaluation & Regression Campaign — Orchestrator
  *
- * Main coordinator that runs the full self-improvement pipeline:
+ * Main coordinator for the staged evaluation pipeline:
  *
  * 1. Initialize state and scenario pool
  * 2. Run baseline (existing tests)
  * 3. For each round:
  *    a. Execute scenarios → traces
  *    b. Run judge ensemble → verdicts
- *    c. Triage defects → prioritized repair list
- *    d. Generate repair plans
+ *    c. Triage defects → prioritized evidence
+ *    d. Generate explicit implementation recommendations
  *    e. Run quality gate
  *    f. Evaluate stop policy
  * 4. Generate final report
@@ -26,13 +26,13 @@ import { atomicWriteJsonSync } from "./atomicWrite";
 import { runJudgeEnsemble } from "./judgeEnsemble";
 import { arbitrateDefects, checkOracleReproduction } from "./defectTriage";
 import { clusterOracleMismatches, clustersToTriagedDefects } from "./defectClustering";
-import { buildRepairPlan } from "./repairPlan";
+import { buildEvaluationRecommendation } from "./recommendation";
 import { runQualityGate } from "./qualityGate";
 import { writeTrace, clearTraces, writeDeterministicResults, type DeterministicCaseResult } from "./traceStore";
 import { classifyTraceErrors, NON_GAMEPLAY_CLASSES } from "./errorClassification";
 import { evaluateStopPolicy, recordRoundScore, computeDeterministicMetrics, SMOKE_CAMPAIGN_CONFIG, type CampaignStopConfig } from "./stopPolicy";
 import { checkBudget, resetBudgetTimer } from "./budget";
-import { generateRunId, resolveSelfImproveBudget, resolveStopPolicy, isMockMode } from "./config";
+import { generateRunId, resolveSelfImproveBudget, resolveStopPolicy } from "./config";
 
 import type {
   SelfImproveProfile,
@@ -51,6 +51,7 @@ export interface OrchestratorOptions {
   scenarioIds?: string[];
   dryRun: boolean;
   maxRounds?: number;
+  campaignConfig?: Partial<CampaignStopConfig>;
   /** Extra scenarios registered right after pool initialization (targeted replay variants). */
   extraScenarios?: SelfImproveScenario[];
 }
@@ -83,15 +84,15 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
 
   const iterationLog: IterationLogEntry[] = [];
   const allDefects: { round: number; defects: ReturnType<typeof arbitrateDefects> }[] = [];
-  const allRepairs: { round: number; plans: ReturnType<typeof buildRepairPlan>[] }[] = [];
+  const allRecommendations: { round: number; items: ReturnType<typeof buildEvaluationRecommendation>[] }[] = [];
 
   try {
     // Phase 1: Discovery → Baseline
     transitionTo("baseline");
-    console.log(`[SelfImprove] Run ${runId} started. Profile: ${options.profile}`);
+    console.log(`[Evaluation] Run ${runId} started. Profile: ${options.profile}`);
 
     if (options.dryRun) {
-      console.log("[SelfImprove] DRY RUN — no code modifications will be made.");
+      console.log("[Evaluation] Legacy --dry-run flag accepted; campaigns are always non-mutating.");
     }
 
     // Load scenario pool
@@ -106,7 +107,14 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
     console.log(`[SelfImprove] Loaded ${scenarioCount()} scenarios, ${scenarios.length} in dev set.`);
 
     // Main improvement loop
-    let stopDecision = evaluateStopPolicy(null, null, SMOKE_CAMPAIGN_CONFIG);
+    const campaignConfig: CampaignStopConfig = {
+      ...SMOKE_CAMPAIGN_CONFIG,
+      ...options.campaignConfig,
+      maxRounds: budget.maxRounds,
+      maxDurationMinutes: budget.maxDurationMinutes,
+      maxLiveModelCalls: budget.maxLiveModelCalls,
+    };
+    let stopDecision = evaluateStopPolicy(null, null, campaignConfig);
 
     // Fresh run: clear any stale trace file once, before the first round.
     clearTraces(runId);
@@ -218,20 +226,21 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
         }
       }
 
-      const autoRepairable = defects.filter((d) => d.autoRepairable);
-      console.log(`[SelfImprove] Found ${defects.length} defects (${oracleDefects.length} Oracle + ${judgeDefects.length} Judge), ${autoRepairable.length} auto-repairable.`);
+      const recommendationEligible = defects.filter((d) => d.recommendationEligible);
+      console.log(`[Evaluation] Found ${defects.length} defects (${oracleDefects.length} Oracle + ${judgeDefects.length} Judge), ${recommendationEligible.length} ready for explicit implementation handoff.`);
       for (const d of defects) {
-        console.log(`[SelfImprove]   defect: ${d.signature.ruleId} (${d.signature.category}) severity=${d.severity} autoRepairable=${d.autoRepairable} oracleReproduced=${d.oracleReproduced} expected="${d.signature.normalizedExpected.slice(0, 120)}" actual="${d.signature.normalizedActual.slice(0, 120)}"`);
+        console.log(`[Evaluation]   defect: ${d.signature.ruleId} (${d.signature.category}) severity=${d.severity} recommendationEligible=${d.recommendationEligible} oracleReproduced=${d.oracleReproduced} expected="${d.signature.normalizedExpected.slice(0, 120)}" actual="${d.signature.normalizedActual.slice(0, 120)}"`);
       }
 
-      // Phase: Repair Planning
+      // Phase: Recommendation building. This is a report-only handoff: the
+      // evaluator never launches a writer or modifies tracked repository files.
       transitionTo("repair");
-      const repairPlans = autoRepairable.map((d) => buildRepairPlan(d));
+      const recommendations = recommendationEligible.map((d) => buildEvaluationRecommendation(d));
 
-      if (options.dryRun && repairPlans.length > 0) {
-        console.log(`[SelfImprove] DRY RUN: Would repair ${repairPlans.length} defects:`);
-        for (const plan of repairPlans) {
-          console.log(`  - ${plan.defectSignature.ruleId}: ${plan.approach}`);
+      if (recommendations.length > 0) {
+        console.log(`[Evaluation] Generated ${recommendations.length} implementation recommendation(s):`);
+        for (const recommendation of recommendations) {
+          console.log(`  - ${recommendation.defectSignature.ruleId}: ${recommendation.approach}`);
         }
       }
 
@@ -269,9 +278,9 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
         majorIssues: majorCount,
       });
 
-      // Track confirmed defects for DRAIN_REPAIR_QUEUE
+      // Track confirmed defects for explicit implementation handoff.
       if (defects.length > 0) {
-        console.log(`[SelfImprove] ⚠️  ${defects.length} confirmed defects pending repair`);
+        console.log(`[Evaluation] ⚠️  ${defects.length} confirmed defects require explicit implementation review`);
       }
 
       // Log iteration
@@ -287,20 +296,21 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
         repairsFailed: 0,
         qualityGateResult: qualityGate,
         stopReason: null,
-        notes: options.dryRun
-          ? "DRY RUN — no repairs applied."
-          : oracleClusters.length > 0
+        notes: oracleClusters.length > 0
             ? `Oracle clusters: ${oracleClusters.map(c => c.clusterId).join(", ")}`
-            : "",
+            : "Evaluation-only run — no repository repairs applied.",
       });
 
       // Evaluate stop policy
-      // Evaluate stop policy. drainRepairQueue=false: this loop never applies
-      // repairs (defectsRepaired is always 0; repair is the supervisor's job),
-      // so "draining" here would only burn live-model budget re-measuring the
-      // same defects and skip holdout execution.
-      const campaignConfig: CampaignStopConfig = { ...SMOKE_CAMPAIGN_CONFIG, maxRounds: budget.maxRounds, drainRepairQueue: false };
+      // Evaluation campaigns do not apply repairs. Re-measuring the same
+      // defect cannot drain an implementation queue, so stop after evidence
+      // collection and hand off recommendations explicitly.
       stopDecision = evaluateStopPolicy(qualityGate, qualityGate.liveEval, campaignConfig);
+
+      // Record the current round before evaluating a terminal decision so the
+      // final report cannot lose the last round's defects/recommendations.
+      allDefects.push({ round, defects });
+      allRecommendations.push({ round, items: recommendations });
 
       if (stopDecision.shouldStop) {
         console.log(`[SelfImprove] Stopping: ${stopDecision.reason} (status: ${stopDecision.finalStatus})`);
@@ -315,20 +325,18 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
         console.log(`[SelfImprove] Status: CLEAN_BUT_INSUFFICIENT_EVIDENCE — continuing campaign`);
       }
 
-      allDefects.push({ round, defects });
-      allRepairs.push({ round, plans: repairPlans });
     }
 
     // Phase: Holdout execution (once, after the dev-set campaign ends, before
     // reporting — the phase machine only allows reporting -> stopped).
-    // Holdout expectations never enter repair prompts; results bind to the
-    // manifest hashes via saveManifest().
+    // Holdout expectations never enter implementation recommendations;
+    // results bind to the manifest hashes via saveManifest().
     transitionTo("game_execution");
     const holdoutResult = await executeHoldoutCorpus(runId);
 
     // Phase: Reporting
     transitionTo("reporting");
-    const finalStatus = determineFinalStatus(stopDecision, options.dryRun);
+    const finalStatus = determineFinalStatus(stopDecision);
 
     // Phase: Stopped
     transitionTo("stopped");
@@ -345,7 +353,7 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
       stopDecision.reason ?? "completed",
       iterationLog,
       allDefects,
-      allRepairs,
+      allRecommendations,
     );
     report.holdoutRegressed = holdoutResult.regressed;
 
@@ -363,7 +371,7 @@ export async function runSelfImprovement(options: OrchestratorOptions): Promise<
       "human_review_required",
       iterationLog,
       allDefects,
-      allRepairs,
+      allRecommendations,
     );
   }
 }
@@ -450,13 +458,10 @@ export function checkDeterministicInvariant(
 
 function determineFinalStatus(
   stopDecision: ReturnType<typeof evaluateStopPolicy>,
-  dryRun: boolean,
 ): FinalStatus {
   if (stopDecision.finalStatus) return stopDecision.finalStatus;
   if (stopDecision.isCleanButInsufficient) return "CLEAN_BUT_INSUFFICIENT_EVIDENCE";
-  if (stopDecision.isBlocked && isMockMode()) return "IMPLEMENTED_BUT_LIVE_BLOCKED";
   if (stopDecision.isBlocked) return "BLOCKED";
-  if (dryRun) return "IMPLEMENTED_BUT_LIVE_BLOCKED";
   return "MAX_ROUNDS_REACHED";
 }
 
@@ -674,22 +679,25 @@ function buildFinalReport(
   stopReason: StopReason,
   iterationLog: IterationLogEntry[],
   allDefects: { round: number; defects: ReturnType<typeof arbitrateDefects> }[],
-  allRepairs: { round: number; plans: ReturnType<typeof buildRepairPlan>[] }[],
+  allRecommendations: { round: number; items: ReturnType<typeof buildEvaluationRecommendation>[] }[],
 ): FinalReport {
   const totalDefects = allDefects.reduce((sum, d) => sum + d.defects.length, 0);
-  const totalAutoRepairable = allDefects.reduce(
-    (sum, d) => sum + d.defects.filter((def) => def.autoRepairable).length,
+  const totalRecommendations = allDefects.reduce(
+    (sum, d) => sum + d.defects.filter((def) => def.recommendationEligible).length,
     0,
   );
 
   const roundDetails = iterationLog.map((log) => ({
     round: log.round,
     defectsFound: log.defectsFound,
+    recommendationsGenerated: allRecommendations
+      .filter((entry) => entry.round === log.round)
+      .reduce((sum, entry) => sum + entry.items.length, 0),
     defectsRepaired: log.defectsRepaired,
     testsAdded: [],
-    rootCauses: allRepairs
-      .filter((r) => r.round === log.round)
-      .flatMap((r) => r.plans.map((p) => p.rootCause)),
+    rootCauses: allRecommendations
+      .filter((entry) => entry.round === log.round)
+      .flatMap((entry) => entry.items.map((item) => item.rootCause)),
   }));
 
   const budget = checkBudget();
@@ -702,23 +710,23 @@ function buildFinalReport(
       profile: options.profile,
       seed: Date.now(),
     },
-    architecture: "Eval-Driven Multi-Agent Self-Repair System (v1)",
+    architecture: "Staged Evaluation & Regression Campaign (non-mutating)",
     filesChanged: [],
     commandsAdded: [
-      "pnpm self-improve:dry-run",
-      "pnpm self-improve:baseline",
-      "pnpm self-improve:run",
-      "pnpm self-improve:resume",
-      "pnpm self-improve:report",
+      "pnpm eval:campaign",
+      "pnpm eval:baseline",
+      "pnpm eval:report",
+      "pnpm eval:verify:strict",
     ],
     baseline: { established: true },
     final: {
       totalRounds: iterationLog.length,
       totalDefects,
-      totalAutoRepairable,
+      totalRecommendations,
       status,
     },
     roundDetails,
+    recommendations: allRecommendations.flatMap((entry) => entry.items),
     deterministicResults: {},
     liveEvalResults: null,
     holdoutRegressed: false,

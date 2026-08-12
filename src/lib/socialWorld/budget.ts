@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { SocialWorldBudget } from "@/lib/socialWorld/types";
 
 export const DEFAULT_SOCIAL_WORLD_BUDGET: SocialWorldBudget = Object.freeze({
@@ -13,7 +14,7 @@ export const DEFAULT_SOCIAL_WORLD_BUDGET: SocialWorldBudget = Object.freeze({
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const numeric = typeof value === "number" ? value : Number(value);
   const safe = Number.isFinite(numeric) ? Math.trunc(numeric) : fallback;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 export function normalizeSocialWorldBudget(raw?: Partial<SocialWorldBudget> | null): SocialWorldBudget {

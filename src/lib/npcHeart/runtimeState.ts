@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { CanonEvidenceRefV1, CanonTruthClass } from "@/lib/worldKnowledge/canon/types";
 import type { NpcHeartRuntimeView } from "./types";
 
@@ -74,7 +75,7 @@ type NpcRuntimeMemoryHintsV1 = NonNullable<NpcRuntimeStateV1["memoryHints"]>;
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   const n = typeof value === "number" && Number.isFinite(value) ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
+  return clamp(Math.trunc(n), min, max);
 }
 
 function compactText(value: unknown, max = 90): string {
@@ -135,7 +136,7 @@ export function buildNpcRuntimeStateV1(args: {
     mood: {
       label: view.attitudeLabel,
       stress,
-      volatility: view.context.hotThreatPresent ? 60 : Math.max(10, Math.min(50, Math.abs(fear - trust))),
+      volatility: view.context.hotThreatPresent ? 60 : clamp(Math.abs(fear - trust), 10, 50),
       recentEmotionalCause: view.context.hotThreatPresent ? "scene_threat" : undefined,
     },
     relationToPlayer: {
@@ -207,7 +208,7 @@ export function renderNpcRuntimeStatePromptBlock(args: {
 }): string {
   const states = args.states.slice(0, 5);
   if (states.length === 0) return "";
-  const maxChars = Math.max(160, Math.min(900, args.maxChars ?? 560));
+  const maxChars = clamp(args.maxChars ?? 560, 160, 900);
   const lines = ["## npc_runtime_state_v1"];
   for (const state of states) {
     lines.push(

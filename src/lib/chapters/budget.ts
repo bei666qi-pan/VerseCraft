@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { ChapterDefinition } from "./types";
 
 export type ChapterNarrativeBudget = {
@@ -27,7 +28,7 @@ export function resolveChapterNarrativeBudget(
     ? Math.max(MIN_CHAPTER_NARRATIVE_CHARS + 20, Math.trunc(definition.hardTextChars))
     : CHAPTER_TEXT_BUDGETS.standard.hardTextChars;
   const [rawMin, rawMax] = definition.targetTextChars ?? CHAPTER_TEXT_BUDGETS.standard.targetTextChars;
-  const min = Math.max(MIN_CHAPTER_NARRATIVE_CHARS, Math.min(hardTextChars - 20, Math.trunc(rawMin)));
-  const max = Math.max(min + 20, Math.min(hardTextChars, Math.trunc(rawMax)));
+  const min = clamp(Math.trunc(rawMin), MIN_CHAPTER_NARRATIVE_CHARS, hardTextChars - 20);
+  const max = clamp(Math.trunc(rawMax), min + 20, hardTextChars);
   return { targetTextChars: [min, max], hardTextChars };
 }

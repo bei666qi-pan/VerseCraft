@@ -272,6 +272,7 @@ import { findOffscreenNpcDialogueViolations } from "@/lib/npcConsistency/validat
 import { insertPacingLedgerRow } from "@/lib/turnEngine/pacing/pacingLedger";
 import { insertForeshadowLedgerRows, expireOverdueForeshadows } from "@/lib/narrativeGovernance/foreshadowLedger";
 import { shouldAttemptDmAgent } from "@/lib/ai/tools/dmMechanicsIntentRouter";
+import { fireAndForget } from "@/lib/fireAndForget";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -420,7 +421,7 @@ async function resolveChatQueueGate(
     reason: "manual",
   });
   if (!admission.ok) {
-    void recordGenericAnalyticsEvent({
+    fireAndForget(() => recordGenericAnalyticsEvent({
       eventId: `${requestId}:chat_request_finished_queue_rejected`,
       idempotencyKey: `${requestId}:chat_request_finished_queue_rejected`,
       userId,
@@ -446,7 +447,7 @@ async function resolveChatQueueGate(
         firstChunkLatencyMs: null,
         totalLatencyMs: Date.now() - queueGateStartedAt,
       },
-    }).catch(() => {});
+    }), "recordAnalytics");
     return {
       queueId: null,
       response: createChatQueueJsonResponse(
@@ -590,7 +591,7 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
       .where(eq(users.id, userId));
 
     // Best-effort telemetry for admin charts: tokens only; play duration comes from presence heartbeat.
-    void recordDailyTokenUsage(getUtcDateKey(), tokenDelta, 0).catch(() => {});
+    fireAndForget(() => recordDailyTokenUsage(getUtcDateKey(), tokenDelta, 0), "recordDailyTokenUsage");
   } catch (error) {
     const err = error as Error;
     const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
@@ -807,7 +808,7 @@ async function postChatInternal(req: Request) {
   await Promise.race([
     ensureLangfuseSdk(),
     new Promise<void>((r) => setTimeout(r, 2000)),
-  ]).catch(() => {});
+  ]).catch((err) => { console.error("[fireAndForget]", "ensureLangfuseSdk", err instanceof Error ? err.message : String(err)); });
   createTracingAdapter();
   startTurnTrace({
     requestId,
@@ -889,6 +890,8 @@ async function postChatInternal(req: Request) {
       clientTurnModeHint,
       options: regen.ok ? regen.options : [],
       generatorOk: regen.ok,
+      requestId,
+      traceId: getLangfuseTraceId(requestId),
       debugReasonCodes: regen.ok
         ? (regen.repairUsed ? ["repair_pass_used"] : [])
         : (regen.debugReasonCodes ?? ["parse_failed"]),
@@ -928,6 +931,21 @@ async function postChatInternal(req: Request) {
       /auto/i.test(clientReason);
     if (isAuto) recordOptionsAutoRegenOutcome(ok);
     else recordOptionsManualRegenOutcome(ok);
+    try {
+      endTurnTrace({
+        finalJsonParsed: true,
+        turnCommitted: false,
+        narrativeCharLen: 0,
+        optionsCount: shaped.options.length,
+        optionsQualityPass: shaped.ok,
+        fallbackUsed: !regen.ok,
+        degradedMode: !regen.ok,
+        validatorIssueCount: 0,
+        npcConsistencyIssueCount: 0,
+        firstStatusMs: Date.now() - requestStartedAt,
+        finalMs: optionsRegenLatencyMs,
+      });
+    } catch { /* tracing is non-critical */ }
     const statusFrames = [
       buildStatusFramePayload({ stage: "request_sent", message: "选项请求已送出", requestId }),
       buildStatusFramePayload({ stage: "context_building", message: "正在分析局势", requestId }),
@@ -1091,7 +1109,7 @@ async function postChatInternal(req: Request) {
   const shouldRunHeavyPreInput = riskLane === "slow";
 
   // chat_request_started analytics（请求开始处理，在 AI 调用之前）
-  void recordGenericAnalyticsEvent({
+  fireAndForget(() => recordGenericAnalyticsEvent({
     eventId: `${requestId}:chat_request_started`,
     idempotencyKey: `${requestId}:chat_request_started`,
     userId,
@@ -1109,7 +1127,7 @@ async function postChatInternal(req: Request) {
       riskLane: riskLane === "fast" ? "fast" : "slow",
       isFirstAction: isFirstAction ? true : false,
     },
-  }).catch(() => {});
+  }), "recordAnalytics");
 
   if (shouldRunHeavyPreInput) {
     const preInputStartAt = nowMs();
@@ -1494,7 +1512,7 @@ async function postChatInternal(req: Request) {
       if (!quotaResult.ok) {
         const status = quotaResult.reason === "banned" ? 403 : 429;
         const msg = buildQuotaLimitMessage(quotaResult);
-        void recordGenericAnalyticsEvent({
+        fireAndForget(() => recordGenericAnalyticsEvent({
           eventId: `${requestId}:chat_request_finished_quota`,
           idempotencyKey: `${requestId}:chat_request_finished_quota`,
           userId,
@@ -1525,7 +1543,7 @@ async function postChatInternal(req: Request) {
             firstChunkLatencyMs: null,
             totalLatencyMs: Date.now() - requestStartedAt,
           },
-        }).catch(() => {});
+        }), "recordAnalytics");
         return createSseResponse({
           requestId,
           status,
@@ -1576,7 +1594,7 @@ async function postChatInternal(req: Request) {
                 npcRelationships: dbRow.npcRelationships,
               },
             });
-          void recordGenericAnalyticsEvent({
+          fireAndForget(() => recordGenericAnalyticsEvent({
             eventId: `${requestId}:memory_compression_completed`,
             idempotencyKey: `${requestId}:memory_compression_completed`,
             userId,
@@ -1596,7 +1614,7 @@ async function postChatInternal(req: Request) {
               newPlayerStatusChars: JSON.stringify(dbRow.playerStatus ?? {}).length,
               newNpcRelationsChars: JSON.stringify(dbRow.npcRelationships ?? {}).length,
             },
-          }).catch(() => {});
+          }), "recordAnalytics");
         }
       } catch (e) {
         console.error("[api/chat] async memory compress failed", e);
@@ -1606,8 +1624,8 @@ async function postChatInternal(req: Request) {
 
   // Update lastActive and presence so admin can see online users
   if (userId) {
-    void db.update(users).set({ lastActive: new Date() }).where(eq(users.id, userId)).catch(() => {});
-    void markUserActive(userId).catch(() => {});
+    fireAndForget(() => db.update(users).set({ lastActive: new Date() }).where(eq(users.id, userId)), "dbUpdate");
+    fireAndForget(() => markUserActive(userId), "markUserActive");
   }
 
   let playerEchoReadFailed = false;
@@ -2238,7 +2256,7 @@ async function postChatInternal(req: Request) {
               enqueueFn: enqueueWorldEngineTick,
               onSettled: ({ result: _tickResult }) => {
                 if (!_tickResult.enqueued) return;
-                void recordGenericAnalyticsEvent({
+                fireAndForget(() => recordGenericAnalyticsEvent({
                   eventId: `${requestId}:world_engine_enqueued`,
                   idempotencyKey: `${requestId}:world_engine_enqueued`,
                   userId, guestId: userId ? null : chatGuestId,
@@ -2247,7 +2265,7 @@ async function postChatInternal(req: Request) {
                   eventTime: new Date(), page: "/play", source: "chat", platform,
                   tokenCost: 0, playDurationDeltaSec: 0,
                   payload: { requestId, source: "dm_agent" },
-                }).catch(() => {});
+                }), "recordAnalytics");
               },
             });
             void _bgTick.pending;
@@ -2353,7 +2371,7 @@ async function postChatInternal(req: Request) {
         message: first.message,
         lastHttpStatus: first.lastHttpStatus,
       });
-      void recordGenericAnalyticsEvent({
+      fireAndForget(() => recordGenericAnalyticsEvent({
         eventId: `${requestId}:chat_request_finished_error`,
         idempotencyKey: `${requestId}:chat_request_finished_error`,
         userId,
@@ -2412,7 +2430,7 @@ async function postChatInternal(req: Request) {
               }
             : undefined,
         },
-      }).catch(() => {});
+      }), "recordAnalytics");
 
       const upstreamStatus = first.lastHttpStatus ?? 0;
       const attemptsForHint = first.httpAttempts ?? [];
@@ -2516,7 +2534,7 @@ async function postChatInternal(req: Request) {
       // Event-driven analytics rollups: best-effort and idempotent.
       const digest = buildPlayerContextDigest(playerContext ?? "");
       const lastUserText = safeMessages.slice().reverse().find((m) => m.role === "user")?.content ?? "";
-      void recordChatActionCompletedAnalytics({
+      fireAndForget(() => recordChatActionCompletedAnalytics({
         eventId: `${requestId}:chat_action_completed`,
         idempotencyKey: `${requestId}:chat_action_completed`,
 
@@ -2553,11 +2571,11 @@ async function postChatInternal(req: Request) {
             linzSeen: digest.guideHitLinz ? 1 : 0,
           },
         },
-      }).catch(() => {});
+      }), "asyncOp");
 
       const finishedAt = Date.now();
       // 缁堝抚闃舵锛堥瀛楀悗锛夎€楁椂鐢诲儚锛氱敤浜庝笌棣栧瓧鍓嶉樆濉炴媶鍒嗭紝閬垮厤璇妸鍚庡鐞嗗綋 TTFT 闂銆?      emitTtftProfileSummary("stream_end", finishedAt);
-      void recordGenericAnalyticsEvent({
+      fireAndForget(() => recordGenericAnalyticsEvent({
         eventId: `${requestId}:chat_request_finished`,
         idempotencyKey: `${requestId}:chat_request_finished`,
         userId,
@@ -2743,7 +2761,7 @@ async function postChatInternal(req: Request) {
             },
           };
         })(),
-      }).catch(() => {});
+      }), "recordAnalytics");
 
       logChatGenerationMetrics({
         requestId,
@@ -3148,7 +3166,7 @@ async function postChatInternal(req: Request) {
               flags: sanitized.flags,
               role: routingReport.actualLogicalRole ?? streamSource.logicalRole,
             });
-            void recordGenericAnalyticsEvent({
+            fireAndForget(() => recordGenericAnalyticsEvent({
               eventId: `${requestId}:narrative_protocol_leak`,
               idempotencyKey: `${requestId}:narrative_protocol_leak`,
               userId: userId,
@@ -3166,7 +3184,7 @@ async function postChatInternal(req: Request) {
                 flags: sanitized.flags,
                 role: routingReport.actualLogicalRole ?? streamSource.logicalRole,
               },
-            }).catch(() => {});
+            }), "recordAnalytics");
           } else {
             dmRecord.narrative = sanitized.narrative;
           }
@@ -3743,7 +3761,7 @@ async function postChatInternal(req: Request) {
               ? Math.max(1, directorStallCountForPacing)
               : 0;
           const directorDueAgendaHintForPacing =
-            dueDirectorAgendaForPrompt
+            dueDirectorAgendaForPrompt.items
               .map((item) => `${item.eventCode}:${item.priority}:${item.revealPolicy}`)
               .filter(Boolean)
               .join("|") || null;
@@ -4371,7 +4389,7 @@ async function postChatInternal(req: Request) {
           // Non-blocking; errors are swallowed.
           if (sessionId) {
             const capturedSessionIdAnalytics = sessionId;
-            void recordGenericAnalyticsEvent({
+            fireAndForget(() => recordGenericAnalyticsEvent({
               eventId: `${requestId}:turn_commit_summary`,
               idempotencyKey: `${requestId}:turn_commit_summary`,
               userId: userId,
@@ -4414,7 +4432,7 @@ async function postChatInternal(req: Request) {
                   fallbackApplied: false,
                 },
               },
-            }).catch(() => {});
+            }), "recordAnalytics");
             const narrativeSafetyTelemetryEvents = buildNarrativeSafetyTelemetryEvents({
               requestId: requestId,
               sessionId: capturedSessionIdAnalytics,
@@ -4431,7 +4449,7 @@ async function postChatInternal(req: Request) {
             });
             for (const event of narrativeSafetyTelemetryEvents) {
               pushNarrativeSafetyTelemetryEvent(event);
-              void recordGenericAnalyticsEvent({
+              fireAndForget(() => recordGenericAnalyticsEvent({
                 eventId: `${requestId}:${event.eventName}`,
                 idempotencyKey: `${requestId}:${event.eventName}`,
                 userId: userId,
@@ -4445,10 +4463,10 @@ async function postChatInternal(req: Request) {
                 tokenCost: 0,
                 playDurationDeltaSec: 0,
                 payload: event.payload,
-              }).catch(() => {});
+              }), "recordAnalytics");
             }
             if (effectiveValidatorReport.telemetry.totalIssues > 0) {
-              void recordGenericAnalyticsEvent({
+              fireAndForget(() => recordGenericAnalyticsEvent({
                 eventId: `${requestId}:narrative_validator_issue`,
                 idempotencyKey: `${requestId}:narrative_validator_issue`,
                 userId: userId,
@@ -4479,7 +4497,7 @@ async function postChatInternal(req: Request) {
                   narrativeGovernanceFinalSafe: commitResult.summary.narrativeGovernanceTelemetry.narrativeGovernanceFinalSafe,
                   issueCodes: effectiveValidatorReport.issues.map((x) => x.code),
                 },
-              }).catch(() => {});
+              }), "recordAnalytics");
             }
           }
         } catch (e) {
@@ -4891,19 +4909,19 @@ async function postChatInternal(req: Request) {
                 },
               })
             )
-            .catch(() => {});
+            .catch((err) => { console.error("[fireAndForget]", "asyncChain", err instanceof Error ? err.message : String(err)); });
         }
-        if (sessionId && dueDirectorAgendaForPrompt.length > 0 && typeof dmRecord.narrative === "string") {
+        if (sessionId && dueDirectorAgendaForPrompt.items.length > 0 && typeof dmRecord.narrative === "string") {
           const adoption = detectDirectorHintAdoption(
             String(dmRecord.narrative),
-            dueDirectorAgendaForPrompt
+            dueDirectorAgendaForPrompt.items
           );
           directorAdoptionTelemetry = {
             adoptedCount: adoption.adoptedCount,
             adoptionRate: adoption.adoptionRate,
-            directorAgendaCount: dueDirectorAgendaForPrompt.length,
+            directorAgendaCount: dueDirectorAgendaForPrompt.items.length,
           };
-          void recordGenericAnalyticsEvent({
+          fireAndForget(() => recordGenericAnalyticsEvent({
             eventId: `${requestId}:director_hint_adoption`,
             idempotencyKey: `${requestId}:director_hint_adoption`,
             userId: userId,
@@ -4918,13 +4936,13 @@ async function postChatInternal(req: Request) {
             playDurationDeltaSec: 0,
             payload: {
               requestId: requestId,
-              agendaCount: dueDirectorAgendaForPrompt.length,
+              agendaCount: dueDirectorAgendaForPrompt.items.length,
               adoptedCount: adoption.adoptedCount,
               adoptionRate: adoption.adoptionRate,
               missedItems: adoption.missedItems,
               directorMode: worldDirectorConfig.mode,
             },
-          }).catch(() => {});
+          }), "recordAnalytics");
         }
         if (sessionId && injectedSocialEventIds.length > 0) {
           const capturedSocialEventIds = [...injectedSocialEventIds];
@@ -4956,10 +4974,10 @@ async function postChatInternal(req: Request) {
                 },
               })
             )
-            .catch(() => {});
+            .catch((err) => { console.error("[fireAndForget]", "asyncChain", err instanceof Error ? err.message : String(err)); });
         }
         if (sessionId && worldDirectorConfig.enabled) {
-          void expireStaleDirectorAgenda({ sessionId: sessionId, turnIndex: totalRounds }).catch(() => {});
+          fireAndForget(() => expireStaleDirectorAgenda({ sessionId: sessionId, turnIndex: totalRounds }), "expireStaleDirectorAgenda");
         }
         if (
           epistemicResiduePlan.persistEntry &&
@@ -5071,7 +5089,7 @@ async function postChatInternal(req: Request) {
             enqueueFn: enqueueWorldEngineTick,
             onSettled: ({ decision, result }) => {
               if (!result.enqueued) return;
-              void recordGenericAnalyticsEvent({
+              fireAndForget(() => recordGenericAnalyticsEvent({
                 eventId: `${requestId}:world_engine_enqueued`,
                 idempotencyKey: `${requestId}:world_engine_enqueued`,
                 userId: userId,
@@ -5092,7 +5110,7 @@ async function postChatInternal(req: Request) {
                   socialWorldMode: socialWorldConfig.mode,
                   socialTickEligible: socialWorldConfig.backgroundEnabled,
                 },
-              }).catch(() => {});
+              }), "recordAnalytics");
             },
           });
           // Intentionally do NOT await `pending`: online turn must not block
@@ -5146,7 +5164,7 @@ async function postChatInternal(req: Request) {
             ttlSec: 86_400,
           })
             .then(() => {
-              void recordGenericAnalyticsEvent({
+              fireAndForget(() => recordGenericAnalyticsEvent({
                 eventId: `${requestId}:kg_cache_write`,
                 idempotencyKey: `${requestId}:kg_cache_write`,
                 userId: userId,
@@ -5164,12 +5182,15 @@ async function postChatInternal(req: Request) {
                   scope: "global",
                   worldRevision: wr.toString(),
                 },
-              }).catch(() => {});
+              }), "recordAnalytics");
             })
-            .catch(() => {});
+            .catch((err) => { console.error("[fireAndForget]", "asyncChain", err instanceof Error ? err.message : String(err)); });
         }
       }
-      return true;
+      // The final frame has been written, but this helper has not closed the
+      // response. Return false so the stream loop performs the single
+      // authoritative writer.close() after token telemetry is flushed.
+      return false;
     };
 
     let streamTtftTelemetrySent = false;
@@ -5252,7 +5273,7 @@ async function postChatInternal(req: Request) {
             accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
             streamRound < MAX_STREAM_SOURCE_ROUNDS
           ) {
-            await reader.cancel().catch(() => {});
+            fireAndForget(() => reader.cancel(), "readerCancel");
             const reconnected = await scheduleStreamReconnect(logicalRole, "EMPTY_CONTENT");
             if (reconnected) {
               continue stream_pass;
@@ -5324,7 +5345,7 @@ async function postChatInternal(req: Request) {
               accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
               streamRound < MAX_STREAM_SOURCE_ROUNDS
             ) {
-              await reader.cancel().catch(() => {});
+              fireAndForget(() => reader.cancel(), "readerCancel");
               const reconnected = await scheduleStreamReconnect(logicalRole, "EMPTY_CONTENT");
               if (reconnected) {
                 continue stream_pass;
@@ -5403,7 +5424,7 @@ async function postChatInternal(req: Request) {
               );
               pushAiRoutingReport(routingReport);
               await flushThisRound();
-              await reader.cancel().catch(() => {});
+              fireAndForget(() => reader.cancel(), "readerCancel");
               await writer.close();
               return;
             } else if (postChunkModeration.policy.blocked) {
@@ -5465,7 +5486,7 @@ async function postChatInternal(req: Request) {
                 );
                 pushAiRoutingReport(routingReport);
                 await flushThisRound();
-                await reader.cancel().catch(() => {});
+                fireAndForget(() => reader.cancel(), "readerCancel");
                 await writer.close();
                 return;
               } else if (postChunkModeration.policy.blocked) {
@@ -5667,7 +5688,7 @@ async function tryServeCodexFromGlobalCache(args: {
   });
 
   if (!got.hit || !got.responseText) {
-    void recordGenericAnalyticsEvent({
+    fireAndForget(() => recordGenericAnalyticsEvent({
       eventId: `${args.requestId}:kg_cache_miss`,
       idempotencyKey: `${args.requestId}:kg_cache_miss`,
       userId: args.userId,
@@ -5685,7 +5706,7 @@ async function tryServeCodexFromGlobalCache(args: {
         scope: "global",
         worldRevision: worldRevision.toString(),
       },
-    }).catch(() => {});
+    }), "recordAnalytics");
     return null;
   }
 
@@ -5693,7 +5714,7 @@ async function tryServeCodexFromGlobalCache(args: {
     void touchSemanticCacheHit(got.cacheId);
   }
 
-  void recordGenericAnalyticsEvent({
+  fireAndForget(() => recordGenericAnalyticsEvent({
     eventId: `${args.requestId}:kg_cache_hit`,
     idempotencyKey: `${args.requestId}:kg_cache_hit`,
     userId: args.userId,
@@ -5712,7 +5733,7 @@ async function tryServeCodexFromGlobalCache(args: {
       worldRevision: worldRevision.toString(),
       similarity: got.similarity,
     },
-  }).catch(() => {});
+  }), "recordAnalytics");
 
   const dmNorm = normalizePlayerDmJson({
     is_action_legal: true,

@@ -1,4 +1,5 @@
 /** 等待期展示阶段（与后端 `__VERSECRAFT_STATUS__` 的 `stage` 对齐，含纯前端兜底）。 */
+import { clamp } from "@/lib/clamp";
 export type PlayWaitUxStage =
   | "idle"
   | "request_sent"
@@ -25,7 +26,7 @@ export function rankWaitUxStage(s: PlayWaitUxStage): number {
 
 export function waitUxStageAtRank(r: number): PlayWaitUxStage {
   const order = PLAY_WAIT_UX_STAGE_ORDER;
-  const clamped = Math.max(0, Math.min(order.length - 1, Math.floor(r)));
+  const clamped = clamp(Math.floor(r), 0, order.length - 1);
   return order[clamped]!;
 }
 

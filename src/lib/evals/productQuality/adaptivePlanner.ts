@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { Scenario } from "@/lib/evals/playthrough/scenarios";
 
 export type FeatureId = "tasks" | "weapons" | "combat" | "codex" | "economy" | "profession" | "location";
@@ -44,7 +45,7 @@ const SIMPLIFY_THRESHOLD = 0.10;
 const STRONG_TRUST_TURNS = 40;
 
 function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
+  return clamp(value, 0, 1);
 }
 
 function decisionSafety(decision: FeatureDecision, interval: { lower: number; upper: number } | null): number {
@@ -67,7 +68,7 @@ export function inferScenarioFeatures(scenario: Scenario): FeatureId[] {
 
 export function wilsonInterval(successes: number, trials: number, z = 1.96): { lower: number; upper: number } | null {
   if (trials <= 0) return null;
-  const p = Math.max(0, Math.min(trials, successes)) / trials;
+  const p = clamp(successes, 0, trials) / trials;
   const z2 = z * z;
   const denominator = 1 + z2 / trials;
   const center = (p + z2 / (2 * trials)) / denominator;
@@ -101,7 +102,7 @@ export function featureDecisionWithConfidence(
 ): FeatureDecisionSummary {
   const touchedTurns = Math.max(0, Math.round(Number(evidence.touchedTurns)));
   const progressionRaw = Math.max(0, Math.round(Number(evidence.progressionTurns)));
-  const progressionTurns = Math.max(0, Math.min(progressionRaw, touchedTurns));
+  const progressionTurns = clamp(touchedTurns, 0, progressionRaw);
   const safeEvidence = { touchedTurns, progressionTurns };
   const decision = featureDecision(safeEvidence);
   const interval = safeEvidence.touchedTurns > 0 ? wilsonInterval(safeEvidence.progressionTurns, safeEvidence.touchedTurns) : null;
@@ -148,7 +149,7 @@ export function planAdaptiveFeatureTests(args: {
   maxCalls: number;
   maxStepsPerScenario?: number;
 }): { plans: PlannedScenario[]; estimatedCalls: number; uncoveredFeatures: FeatureId[] } {
-  const maxSteps = Math.max(1, Math.min(12, args.maxStepsPerScenario ?? 6));
+  const maxSteps = clamp(args.maxStepsPerScenario ?? 6, 1, 12);
   let remaining = Math.max(0, Math.floor(args.maxCalls));
   const deficits = Object.fromEntries((Object.keys(args.evidence) as FeatureId[]).map((feature) => [feature, Math.max(0, 20 - args.evidence[feature].touchedTurns)])) as Record<FeatureId, number>;
   const candidates = args.scenarios.filter((scenario) => (scenario.scriptedActions?.length ?? 0) > 0).map((scenario) => {

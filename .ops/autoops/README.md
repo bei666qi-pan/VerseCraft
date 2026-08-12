@@ -1,139 +1,41 @@
 # VerseCraft Auto-Ops
 
-## Architecture
+Auto-Ops 负责可审计的健康检查、证据采集和有限的确定性运维修复。它不会调用生成式代码 writer，也不会自动修改、commit 或 push 仓库代码。
 
 ```mermaid
 flowchart LR
-  A["GitHub Actions autoops-schedule.yml (every 10 min)"] --> B["Health check + Disk check"]
-  B -->|healthy| C["continue"]
-  B -->|unhealthy| D["repository_dispatch autoops-runbook.yml"]
-  D -->|needs code repair| E["autoops-codex.yml"]
-  E --> F["incident issue + evidence artifact + local Codex prompt"]
-  F --> G["local Codex runner"]
-  G --> H["validation + commit + push main + healthcheck"]
-
-  subgraph Manual / On-Demand
-    I["workflow_dispatch"] --> D
-    J["pnpm autoops:disk:remediate -- --mode auto"] --> B
-  end
+  A["Scheduled health and disk checks"] --> B{"Healthy?"}
+  B -->|yes| C["Record evidence"]
+  B -->|no| D["Run bounded runbook"]
+  D --> E["Recheck health"]
+  E -->|restored| C
+  E -->|still failing| F["Create/update incident with evidence"]
+  F --> G["Explicit reviewed implementation task"]
 ```
 
-## No Cloud Codex
+保留的确定性动作包括：
 
-VerseCraft does not use `OPENAI_API_KEY` for auto-ops. GitHub Actions never runs `openai/codex-action`.
+- HTTP/Coolify 健康检查
+- ECS 诊断
+- 受边界保护的磁盘清理
+- o11y agent 重启
+- Coolify restart/deploy
+- `deploy-selfheal.mjs` 对瞬时基础设施失败的有限重试
 
-Code repair is local:
-
-```bash
-pnpm autoops:local-codex -- --issue <issue_number> --push-main
-```
-
-Long-running local polling:
-
-```bash
-pnpm autoops:local-loop -- --interval-ms 300000 --push-main
-```
-
-If the local machine is off, server runbooks can still execute in GitHub Actions, but local Codex code repair will not run until the local runner is started again.
-
-## Local Commands
+常用命令：
 
 ```bash
 pnpm autoops:discover
 pnpm autoops:sync-secrets
-pnpm autoops:provision
 pnpm autoops:self-test
-pnpm autoops:simulate -- --type app_health_failed --dry-run
-pnpm autoops:simulate -- --type disk_high --dry-run
 pnpm autoops:healthcheck
+pnpm autoops:start
+pnpm autoops:disk:remediate -- --mode auto
+pnpm autoops:coolify:selfheal
 ```
 
-## GitHub Secrets and Variables
+当 runbook 无法恢复服务时，工作流可以创建或更新 incident，并上传 `.ops/autoops/runtime/` 证据。后续代码修改必须通过显式、可审阅的实现任务进行。
 
-Secrets:
+已退役：本地 Codex/Claude polling runner、自动验证后 commit/push main、`AUTOOPS_CODE_FIX_MODE` 和 `AUTOOPS_CODEX_COMMAND`。
 
-- `VOLC_AK`
-- `VOLC_SK`
-- `VOLC_REGION`
-- `COOLIFY_API_KEY`
-- `COOLIFY_BASE_URL`
-- `COOLIFY_APP_UUID`
-- `VOLC_ECS_INSTANCE_IDS`
-Do not sync `GITHUB_TOKEN`; workflows use the built-in `github.token`.
-Do not configure `OPENAI_API_KEY` for this flow.
-
-Variables:
-
-- `AUTOOPS_DEPLOY_MODE=observe`
-- `AUTOOPS_CODE_FIX_MODE=local`
-- `AUTOOPS_SITE_URL=https://versecraft.cn`
-- `AUTOOPS_HEALTH_URL=https://versecraft.cn/api/health`
-
-## Coolify
-
-`COOLIFY_BASE_URL` can be the Coolify root URL or the `/api/v1` URL. Scripts try:
-
-- `GET /health`
-- `GET /resources`
-- `GET /deployments`
-- `GET /deploy?uuid=...`
-- `GET /deployments/{uuid}`
-- `GET/POST /applications/{uuid}/restart`
-- `GET/POST /applications/{uuid}/start`
-
-Current default is `AUTOOPS_DEPLOY_MODE=observe` because this repo already has `Sync Gitee Branches` triggering Coolify after CI success. Switch to `api` only after confirming there is no duplicate deploy path.
-
-## Scheduled Checks (replaces CloudMonitor + APIG + VeFaaS)
-
-APIG and VeFaaS have been removed (saving ¥1,050/month). Auto-ops now uses
-GitHub Actions scheduled workflows instead of push-based webhooks.
-
-The `autoops-schedule.yml` workflow runs every 10 minutes and performs:
-- Health check (HTTP 200 on versecraft.cn + Coolify API)
-- Hourly disk check via `disk-remediate --mode auto`
-- Auto-dispatch `autoops-runbook` on failures
-
-## Volc OpenAPI Basis
-
-`scripts/autoops/lib/volc-openapi.mjs` uses HMAC-SHA256 OpenAPI signing against `https://open.volcengineapi.com`.
-
-References:
-
-- RunCommand: `https://www.volcengine.com/docs/6396/170753`
-- DescribeInvocationResults: `https://www.volcengine.com/docs/6396/170924`
-- CLI format: `https://www.volcengine.com/docs/6396/1149352`
-- OpenAPI signing: `https://www.volcengine.com/docs/6348/69827`
-
-If veFaaS or APIG API parameters are uncertain, do not guess. Use the generated package and the shortest console steps in `provision-result.json`.
-
-## Scheduled Workflow
-
-No provisioning needed. The `autoops-schedule.yml` workflow runs automatically
-once pushed to `main`. Enable it immediately via:
-
-```bash
-gh workflow enable autoops-schedule.yml
-```
-
-Or trigger manually from the GitHub Actions UI (`workflow_dispatch`).
-
-## Windows Local Loop
-
-PowerShell foreground loop:
-
-```powershell
-cd D:\versecraft
-pnpm autoops:local-loop -- --interval-ms 300000 --push-main
-```
-
-Windows Task Scheduler action:
-
-```text
-Program: powershell.exe
-Arguments: -NoProfile -ExecutionPolicy Bypass -Command "cd D:\versecraft; pnpm autoops:local-loop -- --interval-ms 300000 --push-main"
-```
-
-## Disable Auto-Ops
-
-- Disable `autoops-schedule.yml`, `autoops-runbook.yml`, `autoops-codex.yml`, and `autoops-postdeploy.yml`.
-- Stop the local Codex loop.
+`autoops-codex.yml` 保留历史文件名以避免外部 dispatch 断裂，但其行为现在仅为 evidence handoff，不会运行或指示自动代码修复。

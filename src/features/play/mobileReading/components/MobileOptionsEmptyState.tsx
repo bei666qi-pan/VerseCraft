@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { VcSpinner } from "@/features/play/components/VcSpinner";
 import { mobileReadingTheme } from "../theme";
 import type { MobileOptionsEmptyStateProps } from "../types";
+import { clamp } from "@/lib/clamp";
 import { useGameStore } from "@/store/useGameStore";
 
 const STAGE_PROGRESS: Record<NonNullable<MobileOptionsEmptyStateProps["stage"]>, number> = {
@@ -46,9 +47,9 @@ function StageLabels({ activeIndex, labels }: { activeIndex: number; labels: rea
   return <>{nodes}</>;
 }
 
-export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle" }: MobileOptionsEmptyStateProps) {
+export function MobileOptionsEmptyState({ busy, message, onRetry, progress, stage = "idle" }: MobileOptionsEmptyStateProps) {
   const isEnglish = useGameStore((state) => state.language) === "en-US";
-  const safeProgress = Math.max(6, Math.min(100, progress ?? STAGE_PROGRESS[stage] ?? 8));
+  const safeProgress = clamp(progress ?? STAGE_PROGRESS[stage] ?? 8, 6, 100);
   const activeIndex = STAGE_INDEX[stage] ?? 0;
 
   if (busy) {
@@ -110,8 +111,18 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
   }
 
   return (
-    <div data-testid="mobile-options-empty-fallback" className={mobileReadingTheme.optionsEmptyState} role="status">
-      {message?.trim() || (isEnglish ? "Refreshing action options…" : "正在重新整理可选行动…")}
+    <div data-testid="mobile-options-empty-fallback" className={`${mobileReadingTheme.optionsEmptyState} flex items-center justify-between gap-3`} role="status">
+      <span>{message?.trim() || (isEnglish ? "Refreshing action options…" : "正在重新整理可选行动…")}</span>
+      {message?.trim() && onRetry ? (
+        <button
+          type="button"
+          data-testid="mobile-options-retry-button"
+          onClick={onRetry}
+          className="shrink-0 rounded-full border border-[#b9cfc9] bg-white/80 px-3 py-1.5 text-sm font-semibold text-[#0f6a60]"
+        >
+          {isEnglish ? "Retry" : "重试"}
+        </button>
+      ) : null}
     </div>
   );
 }

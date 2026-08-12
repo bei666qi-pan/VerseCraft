@@ -2,6 +2,7 @@ import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { rebuildAdminMetricsDailyForDateKey } from "@/lib/analytics/aggregation";
 import { adminJson, adminOk } from "@/lib/admin/apiEnvelope";
 import { verifyAdminCronRequest } from "@/lib/admin/authGuard";
+import { clamp } from "@/lib/clamp";
 import { recordAdminAuditLog } from "@/lib/admin/auditLog";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
   if (!guard.ok) return guard.response;
 
   const url = new URL(req.url);
-  const days = Math.max(1, Math.min(30, Number(url.searchParams.get("days") ?? 3) || 3));
+  const days = clamp(Number(url.searchParams.get("days") ?? 3) || 3, 1, 30);
   const end = new Date();
 
   const results: Array<{ dateKey: string; ok: boolean; error?: string }> = [];

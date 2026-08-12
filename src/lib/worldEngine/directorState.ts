@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { clamp } from "@/lib/clamp";
 import { pool } from "@/db/index";
 import type { DirectorPhase, DirectorPlan } from "./contracts";
 
@@ -34,7 +35,7 @@ const DEFAULT_PACING: WorldDirectorPacingState = {
 function clamp01(n: unknown, fallback: number): number {
   const v = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(v)) return fallback;
-  return Math.max(0, Math.min(1, v));
+  return clamp(v, 0, 1);
 }
 
 function normalizePacing(raw: unknown): WorldDirectorPacingState {

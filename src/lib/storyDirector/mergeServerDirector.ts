@@ -12,6 +12,7 @@
  *   const updatedDirector = mergeServerDirectorState(localDirector, serverDirectorState);
  */
 
+import { clamp } from "@/lib/clamp";
 import type { StoryDirectorState } from "./types";
 
 /** Shape of the `server_director_state` field injected into the turn SSE payload. */
@@ -58,11 +59,11 @@ export type MergedDirectorResult = {
 
 function clampInt(n: number, min: number, max: number): number {
   const safe = Number.isFinite(n) ? Math.trunc(n) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function clamp01(n: number): number {
-  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  return Number.isFinite(n) ? clamp(n, 0, 1) : 0;
 }
 
 /**

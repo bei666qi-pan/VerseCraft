@@ -11,6 +11,7 @@ import type {
   NpcPrivateMemoryIndex,
   RevealTierSensitiveFactRef,
 } from "@/lib/epistemic/types";
+import { clamp } from "@/lib/clamp";
 import { createRequestId } from "@/lib/security/helpers";
 
 /** 嵌在 playerStatus jsonb 内，无需新迁移列 */
@@ -248,7 +249,7 @@ function parseRevealTierSensitiveFacts(raw: unknown): RevealTierSensitiveFactRef
     if (!id) continue;
     const mr = o.minRevealRank;
     const minRevealRank =
-      typeof mr === "number" && Number.isFinite(mr) ? Math.max(0, Math.min(12, Math.floor(mr))) : 0;
+      typeof mr === "number" && Number.isFinite(mr) ? clamp(Math.floor(mr), 0, 12) : 0;
     out.push({ id, minRevealRank });
   }
   return out.slice(0, 48);

@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Game Runner
+ * Evaluation & Regression Campaign — Game Runner
  *
  * Executes game turns against scenarios, either via:
  * - Mock mode: uses the existing mock provider infrastructure

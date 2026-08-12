@@ -7,6 +7,7 @@ import { isNightHour } from "@/features/play/endgame/endgame";
 import { envNumber } from "@/lib/config/envRaw";
 import { getNpcMemoryPrivilege } from "@/lib/registry/npcCanon";
 import { enableNpcResidue } from "./featureFlags";
+import { clamp } from "@/lib/clamp";
 import type { EpistemicResidueRecentEntry, SessionMemoryForDm } from "@/lib/memoryCompress";
 import type { EpistemicAnomalyResult, NpcEpistemicProfile } from "./types";
 
@@ -139,7 +140,7 @@ function pickMode(args: {
   seed: number;
   antiRepeatDepth: number;
 }): Exclude<ResiduePerformanceMode, "none"> | null {
-  const depth = Math.max(1, Math.min(8, args.antiRepeatDepth));
+  const depth = clamp(args.antiRepeatDepth, 1, 8);
   const banned = new Set(
     args.recentForNpc.slice(0, depth).map((e) => normalizeStoredResidueMode(e.mode)).filter((x) => x !== "legacy_unknown")
   );
@@ -220,7 +221,7 @@ export function buildEpistemicResiduePerformancePlan(input: {
   });
 
   const cooldownMs = envNumber("VERSECRAFT_NPC_RESIDUE_COOLDOWN_MS", 90_000);
-  const antiRepeatDepth = Math.max(1, Math.min(8, envNumber("VERSECRAFT_NPC_RESIDUE_ANTI_REPEAT_DEPTH", 3)));
+  const antiRepeatDepth = clamp(envNumber("VERSECRAFT_NPC_RESIDUE_ANTI_REPEAT_DEPTH", 3), 1, 8);
   const recent = recentForNpc(input.mem, npcId);
   if (isWithinResidueCooldown(recent, input.nowIso, cooldownMs)) return empty;
 

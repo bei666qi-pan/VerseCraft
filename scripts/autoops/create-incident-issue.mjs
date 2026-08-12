@@ -82,16 +82,12 @@ ${JSON.stringify(healthcheck, null, 2).slice(0, 12000)}
 
 ## Next Action
 
-${diskRemediation && !diskRemediation.recovered ? "- [ ] Disk still critical — manual intervention needed\n- [ ] Check server: `df -h` on ECS instance\n- [ ] Consider extending disk or adding retention policies\n" : ""}${args.codexNeeded || args.localCodex ? "- [ ] Local Codex repair needed\n- [ ] Run: `pnpm autoops:local-codex -- --issue <issue_number> --push-main`\n" : ""}
+${diskRemediation && !diskRemediation.recovered ? "- [ ] Disk still critical — manual intervention needed\n- [ ] Check server: `df -h` on ECS instance\n- [ ] Consider extending disk or adding retention policies\n" : ""}${args.codexNeeded || args.localCodex ? "- [ ] Open an explicit implementation task using the evidence below\n- [ ] Add a failing regression test before changing production code\n" : ""}
 Runtime artifacts are under \`.ops/autoops/runtime/\` in the workflow workspace.
 
-## Local Codex repair
+## Explicit implementation handoff
 
-This project does not use \`OPENAI_API_KEY\` or cloud Codex execution. If this incident needs code repair, run:
-
-\`\`\`bash
-pnpm autoops:local-codex -- --issue ${incidentKey === "manual" ? "<issue_number>" : "<issue_number>"} --push-main
-\`\`\``;
+Auto-Ops does not modify, commit, or push source code. If this incident requires a code or configuration change, start a reviewed implementation task from this issue and its runtime evidence.`;
 
   const labels = ["auto-ops", "incident", `autoops:${alert.alert_type || "unknown"}`];
 

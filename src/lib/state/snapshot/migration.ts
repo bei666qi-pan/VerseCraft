@@ -23,6 +23,7 @@ import { normalizeJournalState } from "@/lib/domain/clueMerge";
 import { getChapterDefinition, getChapterDisplayName, normalizeChapterState } from "@/lib/chapters";
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import type { ChapterState } from "@/lib/chapters/types";
+import { clamp } from "@/lib/clamp";
 import { normalizeEndingSettlementSnapshot, normalizeEndingState } from "@/lib/endings/storeIntegration";
 
 const DEFAULT_STATS: Record<StatType, number> = {
@@ -64,7 +65,7 @@ function normalizeMainThreatByFloor(v: unknown): Record<string, SnapshotMainThre
       threatId: typeof row.threatId === "string" ? row.threatId : "",
       floorId,
       phase,
-      suppressionProgress: Math.max(0, Math.min(100, Number(row.suppressionProgress ?? 0) || 0)),
+      suppressionProgress: clamp(Number(row.suppressionProgress ?? 0) || 0, 0, 100),
       lastResolvedAtHour:
         typeof row.lastResolvedAtHour === "number" && Number.isFinite(row.lastResolvedAtHour)
           ? Math.trunc(row.lastResolvedAtHour)
@@ -280,7 +281,7 @@ export function normalizeRunSnapshotV2(
       ...fromLegacy.time,
       ...asRecord(s.time),
       day: Math.max(0, Number(s.time?.day ?? fromLegacy.time.day)),
-      hour: Math.max(0, Math.min(23, Number(s.time?.hour ?? fromLegacy.time.hour))),
+      hour: clamp(Number(s.time?.hour ?? fromLegacy.time.hour), 0, 23),
       darkMoonStarted:
         typeof s.time?.darkMoonStarted === "boolean"
           ? s.time.darkMoonStarted

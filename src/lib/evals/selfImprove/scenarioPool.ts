@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Scenario Pool
+ * Evaluation & Regression Campaign — Scenario Pool
  *
  * Manages the collection of test scenarios used for game execution
  * and evaluation. Supports golden cases, regression cases, replay

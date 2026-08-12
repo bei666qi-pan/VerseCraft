@@ -3,6 +3,7 @@ import { WORLD_KNOWLEDGE_MAX_DB_ROUND_TRIPS } from "../constants";
 import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { vectorSearch } from "./vectorSearch";
 import { getBm25Config, buildBm25RankExpr } from "./bm25Config";
+import { clamp } from "@/lib/clamp";
 import { fuseResults } from "./hybridFusion";
 
 type ChunkRow = {
@@ -181,7 +182,7 @@ export async function retrieveWorldKnowledge(args: {
     // Fall back to ftsQuery (keyword-expanded), then raw input.
     const queryText = args.plan.semanticQuery || args.plan.ftsQuery || args.input.latestUserInput || "";
     if (vectorRetrievalEnabled && queryText.trim() && dbRoundTrips < dbRoundTripLimit) {
-      const embedTimeoutMs = Math.max(100, Math.min(2000, envNumber("AI_WORLD_VECTOR_QUERY_EMBED_TIMEOUT_MS", 300)));
+      const embedTimeoutMs = clamp(envNumber("AI_WORLD_VECTOR_QUERY_EMBED_TIMEOUT_MS", 300), 100, 2000);
       try {
         const { embedText } = await import("@/lib/ai/embeddings/embedText");
         const embedded = await embedText(queryText, embedTimeoutMs);

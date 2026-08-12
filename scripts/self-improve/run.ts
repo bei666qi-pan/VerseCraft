@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Self-Improving Agent System — Main Runner
+ * Evaluation & Regression Campaign — Legacy Runner
  *
  * Usage:
  *   pnpm self-improve:dry-run
@@ -66,10 +66,10 @@ async function main(): Promise<void> {
   const options = parseArgs();
 
   console.log("=".repeat(60));
-  console.log("VerseCraft Self-Improving Agent System");
+  console.log("VerseCraft Evaluation & Regression Campaign");
   console.log("=".repeat(60));
   console.log(`Profile:    ${options.profile}`);
-  console.log(`Dry run:    ${options.dryRun}`);
+  console.log("Repository: read-only (reports and runtime evidence only)");
   console.log(`Scenarios:  ${options.scenarioIds?.join(", ") || "all dev set"}`);
   console.log(`Max rounds: ${options.maxRounds || "default"}`);
   console.log("=".repeat(60));
@@ -104,14 +104,14 @@ async function main(): Promise<void> {
   } else if (report.status === "BLOCKED" || report.status === "BUDGET_EXHAUSTED") {
     process.exit(2);
   } else {
-    process.exit(0); // IMPLEMENTED_BUT_LIVE_BLOCKED is not a failure
+    process.exit(0);
   }
 }
 
 function formatReportMarkdown(report: ReturnType<typeof runSelfImprovement> extends Promise<infer T> ? T : never): string {
   const lines: string[] = [];
 
-  lines.push("# VerseCraft Self-Improving Agent — Final Report");
+  lines.push("# VerseCraft Evaluation & Regression — Final Report");
   lines.push("");
   lines.push(`**Status**: \`${report.status}\``);
   lines.push(`**Run ID**: ${report.runId.id}`);
@@ -133,7 +133,8 @@ function formatReportMarkdown(report: ReturnType<typeof runSelfImprovement> exte
   for (const rd of report.roundDetails) {
     lines.push(`### Round ${rd.round}`);
     lines.push(`- Defects found: ${rd.defectsFound}`);
-    lines.push(`- Defects repaired: ${rd.defectsRepaired}`);
+    lines.push(`- Recommendations generated: ${rd.recommendationsGenerated}`);
+    lines.push("- Repairs applied by evaluator: 0");
     if (rd.rootCauses.length > 0) {
       lines.push("- Root causes:");
       for (const rc of rd.rootCauses) {
@@ -146,6 +147,13 @@ function formatReportMarkdown(report: ReturnType<typeof runSelfImprovement> exte
   lines.push("## Resource Usage");
   lines.push(`- Live model calls: ${report.resourceUsage.liveModelCalls}`);
   lines.push(`- Duration: ${report.resourceUsage.totalDurationMinutes} min`);
+  lines.push("");
+
+  lines.push("## Implementation Handoff");
+  lines.push("This evaluation did not modify product code. Open an explicit implementation task for a confirmed defect, add a failing regression test, make the scoped change, and rerun the campaign.");
+  for (const recommendation of report.recommendations) {
+    lines.push(`- ${recommendation.defectSignature.ruleId} (${recommendation.defectSignature.affectedSystem}): ${recommendation.approach}`);
+  }
   lines.push("");
 
   lines.push("## Unresolved Issues");

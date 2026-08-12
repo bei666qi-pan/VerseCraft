@@ -8,6 +8,5 @@ export {
   isMockAiProviderEnv,
   resolveAiEnv,
   resolveGatewayPrimaryBinding,
-  resolveDeepSeekLegacyConfig,
   resolveEmbeddingBinding,
 } from "@/lib/ai/config/envCore";

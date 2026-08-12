@@ -27,6 +27,7 @@ import type { PersonalityValidatorResult } from "./personalityValidator";
 import { validatePersonalityNarrative } from "./personalityValidator";
 import { validateTaskModeNarrative, type TaskModeValidatorResult } from "./taskModeValidator";
 import { validateTimeFeelNarrative, type TimeFeelValidatorResult } from "./timeFeelValidator";
+import { clamp } from "@/lib/clamp";
 import { scrubTaskUiSurfacePhrases } from "./rewrite";
 
 export type NarrativeRhythmTelemetry = {
@@ -55,7 +56,7 @@ function parsePendingHourFraction(pc: string): number {
   const m = pc.match(/【小时余量】([0-9]+(?:\.[0-9]+)?)/);
   if (!m?.[1]) return 0;
   const n = Number(m[1]);
-  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  return Number.isFinite(n) ? clamp(n, 0, 1) : 0;
 }
 
 function hotThreatFromContext(pc: string): boolean {

@@ -16,6 +16,7 @@ import type { NpcAgentState } from "@/lib/socialWorld/types";
 import { insertDirectorAgendaItems } from "./agenda";
 import { resolveWorldDirectorConfig } from "./config";
 import { runWorldDirectorReasonerWithTools } from "./directorTools";
+import { fireAndForget } from "@/lib/fireAndForget";
 import {
   parseWorldEngineDeltaJson,
   type DirectorPlan,
@@ -460,7 +461,7 @@ export async function writeWorldEngineOutputs(args: {
 
     const redis = await getAppRedisClient();
     if (redis) {
-      void redis
+      fireAndForget(() => redis
         .set(
           `vc:we:agenda:${args.payload.sessionId}`,
           JSON.stringify({
@@ -469,8 +470,7 @@ export async function writeWorldEngineOutputs(args: {
             director_state: nextState,
           }),
           { EX: 3600 }
-        )
-        .catch(() => {});
+        ), "redisCacheSet");
     }
     return {
       runId,
@@ -712,7 +712,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
           });
       const socialReasonerLatencyMs = socialTickTriggered ? Math.max(0, Date.now() - reasonerStartedAt) : 0;
       if (!res.ok) {
-        void recordGenericAnalyticsEvent({
+        fireAndForget(() => recordGenericAnalyticsEvent({
           eventId: `${payload.requestId}:reasoner_failed`,
           idempotencyKey: `${payload.requestId}:reasoner_failed`,
           userId: payload.userId,
@@ -732,7 +732,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
             code: res.code,
             triggerSignals: payload.triggerSignals,
           },
-        }).catch(() => {});
+        }), "recordAnalytics");
         tickReason = `reasoner_failed:${res.code}`;
         reasonerSpan.setAttributes({ errorCode: res.code, latencyMs: Date.now() - reasonerStartedAt });
         reasonerSpan.end();
@@ -749,7 +749,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
 
         const parsed = parseWorldEngineDeltaJson(res.content ?? "");
         if (!parsed) {
-          void recordGenericAnalyticsEvent({
+          fireAndForget(() => recordGenericAnalyticsEvent({
             eventId: `${payload.requestId}:parse_failed`,
             idempotencyKey: `${payload.requestId}:parse_failed`,
             userId: payload.userId,
@@ -769,7 +769,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
               contentPreview: (res.content ?? "").slice(0, 200),
               triggerSignals: payload.triggerSignals,
             },
-          }).catch(() => {});
+          }), "recordAnalytics");
           tickReason = "reasoner_invalid_json";
           validateSpan.setAttributes({ errorCode: "parse_failed", latencyMs: Date.now() - validateStartedAt });
           validateSpan.end();
@@ -798,7 +798,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
           }
 
           if (!deterministicValidation.accepted) {
-            void recordGenericAnalyticsEvent({
+            fireAndForget(() => recordGenericAnalyticsEvent({
               eventId: `${payload.requestId}:validation_failed`,
               idempotencyKey: `${payload.requestId}:validation_failed`,
               userId: payload.userId,
@@ -819,7 +819,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
                 rejectedEventCodes: deterministicValidation.rejectedEventCodes,
                 triggerSignals: payload.triggerSignals,
               },
-            }).catch(() => {});
+            }), "recordAnalytics");
           }
           tickValidatorIssueCount = deterministicValidation.issues.length;
 

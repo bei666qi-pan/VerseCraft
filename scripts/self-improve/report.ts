@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
 /**
- * Self-Improving Agent System — Report Generator
+ * Evaluation & Regression Campaign — Report Generator
  *
  * Reads a completed run's artifacts and generates a human-readable
  * summary report.
  *
  * Usage:
- *   pnpm self-improve:report -- --run-id si-20260730-120000
+ *   pnpm eval:report -- --run-id si-20260730-120000
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -23,7 +23,7 @@ function parseArgs(): { runId: string } {
   }
 
   if (!runId) {
-    console.error("Usage: pnpm self-improve:report -- --run-id <runId>");
+    console.error("Usage: pnpm eval:report -- --run-id <runId>");
     process.exit(1);
   }
 
@@ -40,12 +40,11 @@ function main(): void {
   }
 
   const manifestPath = join(dir, "manifest.json");
-  const statePath = join(dir, "state.json");
   const reportPath = join(dir, "final-report.json");
   const mdReportPath = join(dir, "final-report.md");
 
   console.log("=".repeat(50));
-  console.log(`Self-Improvement Run Report: ${runId}`);
+  console.log(`Evaluation Campaign Report: ${runId}`);
   console.log("=".repeat(50));
 
   // Manifest
@@ -84,7 +83,7 @@ function main(): void {
     if (report.roundDetails) {
       console.log(`\nRounds:`);
       for (const rd of report.roundDetails) {
-        console.log(`  Round ${rd.round}: ${rd.defectsFound} defects, ${rd.defectsRepaired} repaired`);
+        console.log(`  Round ${rd.round}: ${rd.defectsFound} defects, ${rd.recommendationsGenerated ?? 0} recommendations, 0 evaluator-applied repairs`);
       }
     }
   }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { clamp } from "@/lib/clamp";
 import { repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 
 export type WorldEngineTrigger =
@@ -232,13 +233,13 @@ const ESCAPE_RELEVANCE = ["none", "route", "condition", "blocker", "false_lead"]
 function clamp01(v: unknown, fallback = 0): number {
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
+  return clamp(n, 0, 1);
 }
 
 function clampInt(v: unknown, min: number, max: number, fallback: number): number {
   const n = typeof v === "number" ? v : Number(v);
   const safe = Number.isFinite(n) ? Math.trunc(n) : fallback;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function clampText(v: unknown, max: number): string {
@@ -460,7 +461,7 @@ function normalizeSocialEvents(raw: unknown, socialWriteAllowed: boolean): Direc
 function clampSignedDelta(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isFinite(n)) return 0;
-  return Math.max(-1, Math.min(1, n));
+  return clamp(n, -1, 1);
 }
 
 function normalizeNpcRelationDeltas(raw: unknown): NpcRelationDelta[] {

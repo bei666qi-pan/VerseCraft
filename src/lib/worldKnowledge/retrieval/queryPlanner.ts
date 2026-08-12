@@ -8,6 +8,7 @@ import { DEFAULT_RETRIEVAL_BUDGET } from "../constants";
 import type { RetrievalIntentType, RetrievalPlan, RuntimeLoreRequest } from "../types";
 import { inferMaxRevealRank } from "../reveal/revealGate";
 import { expandQuery } from "./queryExpander";
+import { clamp } from "@/lib/clamp";
 import { enrichQueryHeuristically, enhancedSegmentCJK, isLlmQueryRewriteEnabled } from "./queryRewriter";
 
 function addIfIncludes(target: Set<string>, text: string, tests: string[]): void {
@@ -178,7 +179,7 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
 
   const retrievalBudget = {
     ...DEFAULT_RETRIEVAL_BUDGET,
-    maxFacts: Math.max(6, Math.min(DEFAULT_RETRIEVAL_BUDGET.maxFacts, Math.floor(input.tokenBudget / 35))),
+    maxFacts: clamp(Math.floor(input.tokenBudget / 35), 6, DEFAULT_RETRIEVAL_BUDGET.maxFacts),
   };
   const fingerprint = buildFingerprint(input, normalizedInput, locationHints, entityHints.exactCodes, maxRevealRank, {
     actorNpcId: input.actorNpcId,

@@ -113,7 +113,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: res.message }, { status: 400 });
   }
   if (res.kind === "rate_limited") {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+    // Presence is best-effort telemetry. A duplicate pulse inside the server's
+    // accounting window is an accepted no-op, not a player-visible request
+    // failure. Returning 429 here makes normal create -> play navigation emit
+    // browser console errors even though no gameplay operation failed.
+    return NextResponse.json({ ok: true, rateLimited: true, deduped: true });
   }
   if (res.kind === "deduped") {
     return NextResponse.json({ ok: true, deduped: true });

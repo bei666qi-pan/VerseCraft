@@ -35,15 +35,13 @@ export function MobileReadingHeader({
         <div className={mobileReadingTheme.headerRow}>
           <div className={brandClassName}>
             <div className={logoGroupClassName}>
-              {isCodex ? (
-                <MobileReadingIcons.BrandMark className={mobileReadingTheme.brandMarkCodex} strokeWidth={1.5} />
-              ) : null}
+              <MobileReadingIcons.BrandMark
+                className={isCodex ? mobileReadingTheme.brandMarkCodex : mobileReadingTheme.brandMark}
+                strokeWidth={1.5}
+              />
               <span className={isCodex ? mobileReadingTheme.brandWordmarkCodex : mobileReadingTheme.brandWordmark}>
                 VerseCraft
               </span>
-              {!isCodex ? (
-                <MobileReadingIcons.BrandMark className={mobileReadingTheme.brandMark} strokeWidth={1.5} />
-              ) : null}
             </div>
             <span className={isCodex ? mobileReadingTheme.brandDividerCodex : mobileReadingTheme.brandDivider} aria-hidden />
             <span

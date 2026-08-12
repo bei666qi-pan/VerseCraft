@@ -2,6 +2,7 @@
 // Web Audio API singleton engine for VerseCraft dynamic horror soundscapes.
 // Runs outside React render cycle to avoid concurrent-mode memory leaks.
 
+import { clamp } from "@/lib/clamp";
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 let droneOsc: OscillatorNode | null = null;
@@ -62,7 +63,7 @@ export function isMuted(): boolean {
 
 /** Set master volume 0–100. Applied when not muted. */
 export function setMasterVolume(percent: number): void {
-  const p = Math.max(0, Math.min(100, percent));
+  const p = clamp(percent, 0, 100);
   const gain = getMaster();
   gain.gain.setTargetAtTime((p / 100) * 0.5, getCtx().currentTime, 0.05);
 }

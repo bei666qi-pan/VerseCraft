@@ -1,5 +1,6 @@
 import { PLAYER_ECHO_MAX_FRAGMENT_CHARS } from "./constants";
 import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
+import { clamp } from "@/lib/clamp";
 import type { TurnCommitSummary } from "@/lib/turnEngine/commitTurn";
 import type { EchoFragment, EchoFragmentType, EchoSafetyLevel, EchoTargetType } from "./types";
 
@@ -87,9 +88,9 @@ function buildFragment(args: {
     targetId,
     summary,
     safetyLevel: args.safetyLevel,
-    emotionalWeight: Math.max(0, Math.min(1, args.emotionalWeight)),
-    salience: Math.max(0, Math.min(1, args.salience)),
-    confidence: Math.max(0, Math.min(1, args.confidence ?? 0.85)),
+    emotionalWeight: clamp(args.emotionalWeight, 0, 1),
+    salience: clamp(args.salience, 0, 1),
+    confidence: clamp(args.confidence ?? 0.85, 0, 1),
     status: "active",
     ...(args.sourceTurnId ? { sourceTurnId: args.sourceTurnId } : {}),
     ...(args.anchors ? { anchors: args.anchors } : {}),

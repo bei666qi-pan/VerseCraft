@@ -11,6 +11,7 @@ import {
   parseRoleChain,
 } from "@/lib/ai/models/logicalRoles";
 import { envBoolean, envEnum, envNumber, envRaw } from "@/lib/config/envRaw";
+import { clamp } from "@/lib/clamp";
 import { VC_WAITING } from "@/lib/perf/waitingConfig";
 
 function resolveExtraBodyJson(envName: string): Record<string, unknown> | undefined {
@@ -421,13 +422,13 @@ export function resolveAiEnv(): ResolvedAiEnv {
     playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", false),
     playerChatFastLaneRelaxResponseFormat: envBoolean("AI_PLAYER_CHAT_FASTLANE_RELAX_RESPONSE_FORMAT", false),
     aiGatewayJsonSchemaEnabled: envBoolean("AI_GATEWAY_JSON_SCHEMA_ENABLED", false),
-    playerChatMaxRoleCandidates: Math.max(0, Math.min(6, envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2))),
+    playerChatMaxRoleCandidates: clamp(envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2), 0, 6),
     playerChatMaxRetries: (() => {
       const override = envNumber("AI_PLAYER_CHAT_MAX_RETRIES", NaN);
       const base = Number.isFinite(override) ? override : envNumber("AI_MAX_RETRIES", NaN);
       const resolved = Number.isFinite(base) ? base : envNumber("AI_RETRY_COUNT", 2);
       // Conservative cap for player-facing TTFT: allow explicit override, but never exceed 4.
-      return Math.max(0, Math.min(4, resolved));
+      return clamp(resolved, 0, 4);
     })(),
     playerChatFastLaneTimeoutMs: Math.max(
       3_000,
@@ -452,7 +453,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
       const override = envNumber("AI_ONLINE_SHORT_JSON_MAX_RETRIES", NaN);
       // Default to 0 (fast fail), but allow explicit override.
       const resolved = Number.isFinite(override) ? override : 0;
-      return Math.max(0, Math.min(3, resolved));
+      return clamp(resolved, 0, 3);
     })(),
     // DeepSeek and the supported one-api gateways accept json_object. Keep a
     // named opt-out for legacy providers, but do not make malformed control
@@ -482,7 +483,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
       0,
       Math.min(2000, envNumber("AI_STREAM_MODERATION_THROTTLE_MS", 0))
     ),
-    loreRetrievalBudgetMs: Math.max(0, Math.min(5000, envNumber("AI_LORE_RETRIEVAL_BUDGET_MS", 600))),
+    loreRetrievalBudgetMs: clamp(envNumber("AI_LORE_RETRIEVAL_BUDGET_MS", 600), 0, 5000),
     offlineFailFast: envBoolean("AI_OFFLINE_FAILFAST", true),
     offlineAllowMainFallback: envBoolean("AI_OFFLINE_ALLOW_MAIN_FALLBACK", false),
     offlineAffectsProviderCircuit: envBoolean("AI_OFFLINE_AFFECTS_PROVIDER_CIRCUIT", false),
@@ -516,13 +517,6 @@ export function resolveGatewayPrimaryBinding(): {
     apiKey: e.gatewayApiKey,
     model: e.modelsByRole.main,
   };
-}
-
-/**
- * @deprecated 使用 `resolveGatewayPrimaryBinding`（名称历史原因，与厂商无关）。
- */
-export function resolveDeepSeekLegacyConfig(): { apiUrl: string; apiKey: string; model: string } {
-  return resolveGatewayPrimaryBinding();
 }
 
 export type EmbeddingProvider = "openai_compatible" | "ark_multimodal";

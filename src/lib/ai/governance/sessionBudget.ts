@@ -1,6 +1,7 @@
 // src/lib/ai/governance/sessionBudget.ts
 import "server-only";
 
+import { clamp } from "@/lib/clamp";
 import { aiGovernanceEnv } from "@/lib/ai/governance/env";
 
 const preflightTs = new Map<string, number[]>();
@@ -19,7 +20,7 @@ function sessionKey(sessionId: string | null | undefined): string {
 /** Sliding window: control-plane calls per session (abuse / cost guard). */
 export function allowControlPreflightForSession(sessionId: string | null | undefined): boolean {
   const sid = sessionKey(sessionId);
-  const max = Math.max(6, Math.min(120, aiGovernanceEnv.preflightMaxPerMinutePerSession));
+  const max = clamp(aiGovernanceEnv.preflightMaxPerMinutePerSession, 6, 120);
   const windowMs = 60_000;
   const now = Date.now();
   const arr = pruneTimestamps(preflightTs.get(sid) ?? [], windowMs);
@@ -39,7 +40,7 @@ export function isNarrativeEnhancementBudgetAvailable(sessionId: string | null |
 
   const hourWindow = 3_600_000;
   const hourly = pruneTimestamps(enhanceHourly.get(sid) ?? [], hourWindow);
-  const cap = Math.max(1, Math.min(30, aiGovernanceEnv.enhanceMaxPerHourPerSession));
+  const cap = clamp(aiGovernanceEnv.enhanceMaxPerHourPerSession, 1, 30);
   return hourly.length < cap;
 }
 

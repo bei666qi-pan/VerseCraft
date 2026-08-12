@@ -1,5 +1,4 @@
-import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
-import { verifyAdminRequest } from "@/lib/admin/authGuard";
+import { createAdminRoute } from "@/lib/admin/adminRouteFactory";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getPlayerJourneyMetrics } from "@/lib/admin/backofficeMetrics";
 import { parseJourneyFunnelMode } from "@/lib/admin/journeyFunnel";
@@ -14,35 +13,33 @@ function parsePlatform(v: string | null): "all" | "pc" | "mobile" {
   return v === "pc" || v === "mobile" ? v : "all";
 }
 
-export async function GET(req: Request) {
-  const guard = await verifyAdminRequest(req);
-  if (!guard.ok) return guard.response;
-
-  const url = new URL(req.url);
+export const GET = createAdminRoute(async (ctx) => {
+  const url = new URL(ctx.req.url);
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
   const mode = parseJourneyFunnelMode(url.searchParams.get("mode"));
-  try {
-    const data = await getPlayerJourneyMetrics(range, {
-      actorType: parseActorType(url.searchParams.get("actorType")),
-      platform: parsePlatform(url.searchParams.get("platform")),
-    }, mode);
-    return adminJson(adminOk(data, { degraded: data.evidenceSufficiency === "insufficient", reason: data.evidenceSufficiency === "insufficient" ? "insufficient_sample" : null }), {
-      headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=120" },
-    });
-  } catch (error) {
-    console.error("[api/admin/player-journey] failed", error);
-    const reason = "player_journey_unavailable";
-    return adminJson(
-      adminFail(reason, {
+  const data = await getPlayerJourneyMetrics(range, {
+    actorType: parseActorType(url.searchParams.get("actorType")),
+    platform: parsePlatform(url.searchParams.get("platform")),
+  }, mode);
+  const degraded = data.evidenceSufficiency === "insufficient";
+  return { data, degraded, reason: degraded ? "insufficient_sample" : null };
+}, {
+  label: "player-journey",
+  cacheSeconds: 60,
+  staleWhileRevalidate: 120,
+  onError: (_, ctx) => {
+    const url = new URL(ctx.req.url);
+    const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
+    return {
+      reason: "player_journey_unavailable",
+      fallback: {
         range,
         filters: { actorType: parseActorType(url.searchParams.get("actorType")), platform: parsePlatform(url.searchParams.get("platform")) },
         mode,
-        sampleSize: 0,
-        evidenceSufficiency: "insufficient",
-        stages: [],
+        sampleSize: 0, evidenceSufficiency: "insufficient", stages: [],
         updatedAt: new Date().toISOString(),
-      }),
-      { status: 200, headers: { "Cache-Control": "private, max-age=10" } }
-    );
-  }
-}
+      },
+      cacheSeconds: 10,
+    };
+  },
+});

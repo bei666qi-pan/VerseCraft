@@ -1,6 +1,7 @@
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 import { getMajorNpcDeepCanon } from "@/lib/registry/majorNpcDeepCanon";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
+import { clamp as clampNumber } from "@/lib/clamp";
 import { NPCS } from "@/lib/registry/npcs";
 import type { SceneNpcMode } from "@/lib/playRealtime/sceneActorGate";
 
@@ -108,7 +109,7 @@ export function buildMultiNpcCompactPersonaPacket(args: {
 }): string {
   const obj = buildMultiNpcCompactPersonaPacketObject(args);
   const text = `## 【multi_npc_persona_compact】\n${JSON.stringify(obj)}`;
-  const maxChars = Math.max(420, Math.min(2200, args.maxChars ?? 1200));
+  const maxChars = clampNumber(args.maxChars ?? 1200, 420, 2200);
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }
 
@@ -120,7 +121,7 @@ export function buildMultiNpcCompactPersonaPacketObject(args: {
   modeByNpcId?: Record<string, SceneNpcMode>;
   maxCards?: number;
 }): { schema: string; instruction: string; cards: PersonaCard[] } {
-  const maxCards = Math.max(2, Math.min(6, args.maxCards ?? 4));
+  const maxCards = clampNumber(args.maxCards ?? 4, 2, 6);
   const ids = uniq(args.npcIds).slice(0, 12);
   const presentSet = new Set(
     args.npcPositions
@@ -231,4 +232,3 @@ export function buildMultiNpcPersonaBoundaryPacketObject(args: {
     cards,
   };
 }
-

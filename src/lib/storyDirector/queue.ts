@@ -1,10 +1,11 @@
 import type { IncidentEnvelope, IncidentQueueState, StoryDirectorState } from "./types";
+import { clamp } from "@/lib/clamp";
 import { createEmptyIncidentQueue } from "./types";
 
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function uniq(xs: string[], cap: number): string[] {
@@ -63,7 +64,7 @@ export function enqueueIncident(
   incident: IncidentEnvelope,
   opts?: { maxItems?: number }
 ): IncidentQueueState {
-  const maxItems = Math.max(4, Math.min(12, opts?.maxItems ?? 10));
+  const maxItems = clamp(opts?.maxItems ?? 10, 4, 12);
   const q = queue ?? createEmptyIncidentQueue();
   const items = [...(q.items ?? [])];
 

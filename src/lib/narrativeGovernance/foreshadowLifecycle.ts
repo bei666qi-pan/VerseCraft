@@ -13,6 +13,7 @@
 // 类型
 // ============================================================
 
+import { clamp } from "@/lib/clamp";
 export type ForeshadowStatus = "planted" | "paid_off" | "expired";
 
 export type ForeshadowEntry = {
@@ -38,7 +39,7 @@ export function computeDeadlineTurn(
   plantedTurn: number,
   importance: number,
 ): number {
-  const imp = Math.max(1, Math.min(3, Math.round(importance || 1)));
+  const imp = clamp(Math.round(importance || 1), 1, 3);
   return plantedTurn + imp * 8;
 }
 

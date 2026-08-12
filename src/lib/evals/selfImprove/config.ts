@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Configuration
+ * Evaluation & Regression Campaign — Configuration
  *
  * Single entry point for all system configuration.
  * Reads from environment variables with sensible defaults.

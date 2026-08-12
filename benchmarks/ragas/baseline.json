@@ -1,0 +1,10 @@
+{
+  "version": "opening-grounding-baseline-v1",
+  "tolerance": 0.05,
+  "averages": {
+    "context_precision": 0.5,
+    "context_recall": 1.0,
+    "faithfulness": null,
+    "answer_relevancy": null
+  }
+}

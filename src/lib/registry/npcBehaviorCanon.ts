@@ -12,9 +12,8 @@
  * 周期相位：平静期/校准期/前兆期/修正窗口（见 cyclePhaseCanon.ts）
  */
 
-// NpcSocialProfile removed (unused)
-// import type { NpcSocialProfile } from "./types";
 import type { CyclePhase } from "./cyclePhaseCanon";
+import { clamp } from "@/lib/clamp";
 import { _NPC_SOCIAL_GRAPH } from "./world";
 
 // ──────────────────────────────────────
@@ -1179,7 +1178,7 @@ export function getNpcBaseAnxiety(npcId: string, phase: CyclePhase = "QUIESCENCE
   const profile = NPC_MOOD_PROFILES[npcId];
   if (!profile) return 5;
   const modifier = profile.phaseModifier?.[phase] ?? 0;
-  return Math.max(0, Math.min(10, profile.baselineAnxiety + modifier));
+  return clamp(profile.baselineAnxiety + modifier, 0, 10);
 }
 
 /**

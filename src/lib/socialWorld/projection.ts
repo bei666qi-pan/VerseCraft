@@ -1,4 +1,5 @@
 import { normalizeSocialWorldBudget } from "@/lib/socialWorld/budget";
+import { clamp } from "@/lib/clamp";
 import { normalizeSocialEvent } from "@/lib/socialWorld/state";
 import type { SocialEvent, SocialVisibility, SocialWorldBudget } from "@/lib/socialWorld/types";
 
@@ -124,7 +125,7 @@ export function projectSocialEventToPlayerProjection(
   if (event.visibility === "private" || event.knowledgeScope === "dmOnly") return null;
 
   const budget = normalizeSocialWorldBudget(opts?.budget);
-  const maxChars = Math.max(30, Math.min(opts?.maxChars ?? budget.maxCharsPerSocialEvent, budget.maxCharsPerSocialEvent));
+  const maxChars = clamp(budget.maxCharsPerSocialEvent, 30, opts?.maxChars ?? budget.maxCharsPerSocialEvent);
   const visibility = event.visibility as SocialPromptVisibility;
   const forbidden = [...GLOBAL_FORBIDDEN_MARKERS, ...event.mustNotReveal, ...(opts?.mustNotReveal ?? [])];
   const visibleTrace = buildSafeTrace(event, visibility, forbidden, maxChars);

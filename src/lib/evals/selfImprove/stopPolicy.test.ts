@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Stop Policy Unit Tests (v2)
+ * Evaluation & Regression Campaign — Stop Policy Unit Tests
  */
 
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import {
   SMOKE_CAMPAIGN_CONFIG,
   type CampaignStopConfig,
 } from "./stopPolicy";
-import { initState, incrementRound, transitionTo } from "./stateMachine";
+import { initState, incrementRound } from "./stateMachine";
 import type { QualityGateResult } from "./types";
 
 const TEST_RUN_ID = "test-stop-policy";
@@ -129,20 +129,8 @@ describe("Stop Policy (Campaign Mode)", () => {
     assert.equal(decision.finalStatus, "MAX_ROUNDS_REACHED");
   });
 
-  it("drains repair queue by default when rounds exhausted with pending critical defects", () => {
+  it("stops at max rounds even when defects require implementation", () => {
     const config: CampaignStopConfig = { ...SMOKE_CAMPAIGN_CONFIG, maxRounds: 1, minRounds: 1, maxLiveModelCalls: 1000 };
-    incrementRound();
-    recordRoundScore({
-      round: 1, expectationMatchRate: 1, positivePassRate: 1,
-      expectedRejectionsObserved: 2, averageJudgeScore: 5,
-      criticalIssues: 1, majorIssues: 0,
-    });
-    const decision = evaluateStopPolicy(makeQualityGate(), null, config);
-    assert.equal(decision.shouldStop, false);
-  });
-
-  it("does NOT drain when drainRepairQueue=false (eval-only loops cannot repair)", () => {
-    const config: CampaignStopConfig = { ...SMOKE_CAMPAIGN_CONFIG, maxRounds: 1, minRounds: 1, maxLiveModelCalls: 1000, drainRepairQueue: false };
     incrementRound();
     recordRoundScore({
       round: 1, expectationMatchRate: 1, positivePassRate: 1,
@@ -209,6 +197,6 @@ describe("Stop Policy (Campaign Mode)", () => {
     for (let i = 0; i < 3; i++) incrementRound();
     const decision = evaluateStopPolicy(makeQualityGate(), null, SMOKE_CAMPAIGN_CONFIG);
     assert.equal(decision.isBlocked, true);
-    assert.ok(decision.finalStatus === "IMPLEMENTED_BUT_LIVE_BLOCKED" || decision.finalStatus === "BLOCKED");
+    assert.equal(decision.finalStatus, "BLOCKED");
   });
 });

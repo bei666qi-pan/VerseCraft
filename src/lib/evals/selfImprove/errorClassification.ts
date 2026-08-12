@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Error Classification
+ * Evaluation & Regression Campaign — Error Classification
  *
  * Classifies trace-level errors so infrastructure / gateway / parse failures
  * are never counted as gameplay Oracle mismatches and never reach the

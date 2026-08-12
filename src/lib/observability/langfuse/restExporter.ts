@@ -4,7 +4,7 @@
 import "server-only";
 
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
-import type { ExportResult } from "@opentelemetry/core";
+type ExportResult = { code: number; error?: Error };
 
 const INGESTION_ENDPOINT = "/api/public/ingestion";
 const FLUSH_INTERVAL_MS = 2000;

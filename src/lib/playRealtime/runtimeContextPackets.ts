@@ -88,6 +88,7 @@ import {
   buildChapterContextPacket,
   buildChapterContextPacketCompact,
 } from "@/lib/playRealtime/chapterContextPacket";
+import { clamp } from "@/lib/clamp";
 import {
   incrMonthStartStudentRecognitionHitCount,
   incrNewPlayerGuideDualCoreHitCount,
@@ -315,7 +316,7 @@ function parseMainThreatMap(playerContext: string): Record<string, {
       phaseRaw === "idle" || phaseRaw === "active" || phaseRaw === "suppressed" || phaseRaw === "breached"
         ? phaseRaw
         : "idle";
-    const suppressionProgress = Math.max(0, Math.min(100, Number(m[4] ?? "0") || 0));
+    const suppressionProgress = clamp(Number(m[4] ?? "0") || 0, 0, 100);
     if (!floorId || !threatId) continue;
     out[floorId] = { threatId, phase, suppressionProgress };
   }
@@ -353,11 +354,11 @@ function parseEquippedWeapon(playerContext: string): {
   const repairable = m[7] === "1" ? true : m[7] === "0" ? false : null;
   return {
     weaponId,
-    stability: Number.isFinite(stability) ? Math.max(0, Math.min(100, stability)) : null,
+    stability: Number.isFinite(stability) ? clamp(stability, 0, 100) : null,
     counterTags: tags,
     mods,
     infusions,
-    contamination: Number.isFinite(contamination) ? Math.max(0, Math.min(100, contamination)) : null,
+    contamination: Number.isFinite(contamination) ? clamp(contamination, 0, 100) : null,
     repairable,
   };
 }
@@ -552,7 +553,7 @@ function parsePendingHourFractionFromContext(playerContext: string): number {
   const m = playerContext.match(/【小时余量】([0-9]+(?:\.[0-9]+)?)/);
   if (!m?.[1]) return 0;
   const n = Number(m[1]);
-  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  return Number.isFinite(n) ? clamp(n, 0, 1) : 0;
 }
 
 function pushUniqueNpcId(out: string[], id: string | null | undefined): void {

@@ -1,4 +1,5 @@
 import { parseRuntimeNpcPrimitives } from "@/lib/playRealtime/runtimeContextPackets";
+import { clamp } from "@/lib/clamp";
 import { NPCS } from "@/lib/registry/npcs";
 
 function clampText(s: string, max: number): string {
@@ -148,6 +149,6 @@ export function buildRealityConstraintPacketBlock(args: {
 
   const packet = args.dedupeStableRules ? compactPacket : fullPacket;
   const text = `## 【reality_constraint_packet】\n${JSON.stringify(packet)}`;
-  const maxChars = Math.max(420, Math.min(2600, args.maxChars ?? 1200));
+  const maxChars = clamp(args.maxChars ?? 1200, 420, 2600);
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }

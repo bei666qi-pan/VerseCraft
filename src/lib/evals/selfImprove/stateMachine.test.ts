@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — State Machine Unit Tests
+ * Evaluation & Regression Campaign — State Machine Unit Tests
  *
  * Tests phase transitions, state persistence, resume capability,
  * and state integrity for the self-improvement state machine.

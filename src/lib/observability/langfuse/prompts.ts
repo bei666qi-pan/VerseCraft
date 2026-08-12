@@ -126,7 +126,7 @@ async function fetchPromptRemote(
       const prompt = await client.prompt.get(name, {
         label,
         type: "text",
-        signal: controller.signal as AbortSignal,
+        fetchTimeoutMs: timeoutMs,
       });
 
       return {

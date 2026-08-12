@@ -1,4 +1,5 @@
 import type { EscapeMainlineState } from "./types";
+import { clamp as clampNumber } from "@/lib/clamp";
 import { getEscapeObjectiveSummary, getUnmetConditions } from "./selectors";
 
 function clamp(s: string, max: number): string {
@@ -8,7 +9,7 @@ function clamp(s: string, max: number): string {
 }
 
 export function buildEscapePromptBlock(args: { state: EscapeMainlineState; maxChars?: number }): string {
-  const maxChars = Math.max(80, Math.min(520, args.maxChars ?? 260));
+  const maxChars = clampNumber(args.maxChars ?? 260, 80, 520);
   const s = args.state;
   if (!s) return "";
   const summary = getEscapeObjectiveSummary(s);
@@ -26,4 +27,3 @@ export function buildEscapePromptBlock(args: { state: EscapeMainlineState; maxCh
   lines.push(`目标：${summary.nextObjective}`);
   return clamp(lines.join("\n"), maxChars);
 }
-

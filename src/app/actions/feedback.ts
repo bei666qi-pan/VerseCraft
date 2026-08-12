@@ -15,6 +15,7 @@ import {
   normalizeHomeSurveyAnswers,
   type HomeSurveyAnswers,
 } from "@/lib/survey/productSurveyHomeV1";
+import { clamp } from "@/lib/clamp";
 import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 import type { AnalyticsPlatform } from "@/lib/analytics/types";
 
@@ -119,7 +120,7 @@ export async function submitProductSurvey(input: {
   if (!Number.isFinite(rawRating)) {
     return { success: false, message: "请选择总体满意度（1–5）。" };
   }
-  const rating = Math.max(1, Math.min(5, Math.round(rawRating)));
+  const rating = clamp(Math.round(rawRating), 1, 5);
 
   let rec: number | null = null;
   if (input.recommendScore !== undefined && input.recommendScore !== null) {

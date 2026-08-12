@@ -9,7 +9,14 @@ import {
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import type { OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 
-export const OPTIONS_REGEN_FAILURE_HINT = "也可以直接写下下一步行动。";
+export const OPTIONS_REGEN_FAILURE_HINT = "选项暂时没有生成。你可以重试，或直接写下下一步行动。";
+
+export function formatOptionsRegenFailureHint(requestId?: string | null): string {
+  const id = String(requestId ?? "").trim();
+  if (!id) return OPTIONS_REGEN_FAILURE_HINT;
+  const shortId = id.length > 12 ? id.slice(-12) : id;
+  return `${OPTIONS_REGEN_FAILURE_HINT}（请求 ${shortId}）`;
+}
 
 const KNOWN_REGEN_REASON_CODES = new Set<OptionsRegenReasonCode>([
   "parse_failed",

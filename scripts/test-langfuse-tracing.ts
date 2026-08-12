@@ -1,10 +1,15 @@
 // scripts/test-langfuse-tracing.ts (v2 — uses REST exporter)
+import { config as loadDotenv } from "dotenv";
+import path from "node:path";
+
+loadDotenv({ path: path.resolve(process.cwd(), ".env.local"), override: false, quiet: true });
+loadDotenv({ path: path.resolve(process.cwd(), ".env"), override: false, quiet: true });
+
 async function main() {
+  const { getLangfuseConfig } = await import("../src/lib/observability/langfuse/config");
   const {
     createTracingAdapter,
     startTurnTrace,
-    startStageSpan,
-    startGeneration,
     endTurnTrace,
     getCurrentAdapter,
   } = await import("../src/lib/observability/langfuse/index");
@@ -95,7 +100,7 @@ async function main() {
   await new Promise((r) => setTimeout(r, 3000));
 
   await shutdownLangfuse();
-  console.log("✅ Test complete — check http://localhost:3100");
+  console.log(`✅ Test complete — check ${getLangfuseConfig().baseUrl}`);
 }
 
 main().catch((e) => {

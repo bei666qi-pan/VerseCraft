@@ -13,6 +13,7 @@
  * 开关处的调用方式）。
  */
 
+import { clamp } from "@/lib/clamp";
 import type { RetrievalCandidate, RetrievalQuery } from "../types";
 
 type VectorChunkRow = {
@@ -75,7 +76,7 @@ export async function vectorSearch(
   if (!vq || !Array.isArray(vq.embedding) || vq.embedding.length === 0) return [];
 
   const minSimilarity = typeof vq.minSimilarity === "number" ? vq.minSimilarity : 0.5;
-  const maxDistance = Math.max(0, Math.min(2, 1 - minSimilarity));
+  const maxDistance = clamp(1 - minSimilarity, 0, 2);
   const topK = 8;
 
   try {

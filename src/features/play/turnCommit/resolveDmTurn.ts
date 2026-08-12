@@ -12,6 +12,7 @@ import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGu
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
 import { normalizeNarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
+import { clamp } from "@/lib/clamp";
 import { likelyCostToInjuryDelta } from "@/lib/combat/combatInjuryIntegration";
 import type { NarrativeDensity, TurnEnvelope, TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 
@@ -299,9 +300,9 @@ export function downgradeAcquireSemanticsInNarrative(narrative: string): { text:
 }
 
 export function resolveTurnConsistency(input: Record<string, unknown>, opts?: ResolveTurnConsistencyOptions): ResolvedDmTurn {
-  const maxNarrativeChars = Math.max(200, Math.min(80_000, opts?.maxNarrativeChars ?? 50_000));
-  const maxOptionChars = Math.max(10, Math.min(120, opts?.maxOptionChars ?? 40));
-  const maxSecurityMetaChars = Math.max(200, Math.min(10_000, opts?.maxSecurityMetaChars ?? 2400));
+  const maxNarrativeChars = clamp(opts?.maxNarrativeChars ?? 50_000, 200, 80_000);
+  const maxOptionChars = clamp(opts?.maxOptionChars ?? 40, 10, 120);
+  const maxSecurityMetaChars = clamp(opts?.maxSecurityMetaChars ?? 2400, 200, 10_000);
 
   const ui_hints: ResolvedTurnUiHints = {};
   const consistency_flags: string[] = [];

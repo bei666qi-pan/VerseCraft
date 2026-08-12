@@ -27,6 +27,7 @@ import type {
   SocialWorldBudget,
   SocialWorldWriteResult,
 } from "@/lib/socialWorld/types";
+import { clamp } from "@/lib/clamp";
 import { validateSocialEventCandidate } from "@/lib/socialWorld/validator";
 import type {
   DirectorRiskAssessment,
@@ -250,7 +251,7 @@ function knownNpcSet(args: {
 
 function clampRelationValue(value: number): number {
   if (!Number.isFinite(value)) return 0;
-  return Math.max(-1, Math.min(1, value));
+  return clamp(value, -1, 1);
 }
 
 function applyRelationDelta(edge: NpcRelationEdge, delta: NpcRelationDelta, nowTurn: number): NpcRelationEdge {
@@ -338,12 +339,12 @@ function buildMemorySpineEntry(args: {
     kind,
     scope: memoryScopeForEvent(args.event),
     summary,
-    salience: Math.max(0.7, Math.min(1, args.directorEvent.salience)),
+    salience: clamp(args.directorEvent.salience, 0.7, 1),
     confidence: args.event.visibility === "rumor" ? 0.55 : 0.78,
     status: "active",
     createdAtHour: args.nowTurn,
     lastTouchedAtHour: args.nowTurn,
-    ttlHours: Math.max(1, Math.min(24 * 14, args.directorEvent.ttl_turns * 2)),
+    ttlHours: clamp(args.directorEvent.ttl_turns * 2, 1, 24 * 14),
     mergeKey,
     anchors: {
       locationIds: args.event.locationId ? [args.event.locationId] : undefined,
@@ -402,7 +403,7 @@ export async function applySocialGmDeltas(args: ApplySocialGmDeltasArgs): Promis
   const pendingCapacity = Number.isFinite(pendingLimit)
     ? Math.max(0, pendingLimit - Math.max(0, Math.trunc(Number(pendingEventCount) || 0)))
     : budget.maxSocialEventsPerTick;
-  const maxAcceptedThisTick = Math.max(0, Math.min(budget.maxSocialEventsPerTick, pendingCapacity));
+  const maxAcceptedThisTick = clamp(pendingCapacity, 0, budget.maxSocialEventsPerTick);
   const knownNpcIds = [...knownNpcSet({ explicit: args.knownNpcIds, states, relations })];
   const acceptedCodeFilter = args.acceptedSocialEventCodes ? new Set(args.acceptedSocialEventCodes) : null;
   const riskRejectReasons = riskBlocksSocial(args.riskAssessment);

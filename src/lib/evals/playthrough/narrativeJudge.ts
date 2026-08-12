@@ -23,16 +23,17 @@ import {
   detectWeaponUpdateConsistency,
   detectProfessionChangeConsistency,
 } from "./invariants";
+import { clamp } from "@/lib/clamp";
 import { callDeepSeekCompletion } from "../liveProvider";
 
 type JudgeIssue = ConsistencyIssue;
 
 function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
+  return clamp(value, 0, 1);
 }
 
 function clampScore(value: number): number {
-  return Math.max(1, Math.min(5, value));
+  return clamp(value, 1, 5);
 }
 
 function normalizeJudgeConfidence(raw: unknown): number | undefined {

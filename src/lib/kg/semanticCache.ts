@@ -1,6 +1,7 @@
 import "server-only";
 
 import { pool } from "@/db/index";
+import { clamp } from "@/lib/clamp";
 import { toPgVectorLiteral } from "./embed";
 
 export type CacheScope = "global" | "user";
@@ -187,7 +188,7 @@ export async function putSemanticCache(args: {
   }
 
   const vecLit = toPgVectorLiteral(args.requestEmbedding);
-  const ttl = Math.max(60, Math.min(86400 * 30, Math.floor(args.ttlSec)));
+  const ttl = clamp(Math.floor(args.ttlSec), 60, 86400 * 30);
   const preview = args.requestText.slice(0, 500);
   const wr = args.worldRevision.toString();
 

@@ -210,6 +210,41 @@ test.describe("/api/chat SSE — 通用形状", () => {
     }
     assertDmContractShape(parsed);
   });
+
+  test("mock success stream reaches EOF shortly after its authoritative final frame", async () => {
+    test.setTimeout(15_000);
+    test.skip(process.env.AI_PROVIDER !== "mock", "Deterministic EOF timing requires AI_PROVIDER=mock.");
+
+    const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://[::1]:666";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch(`${baseURL}/api/chat`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": `127.0.0.${Math.floor(Math.random() * 200) + 20}`,
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "[mock_scenario:normal_stream] 我侧耳听走廊尽头的动静。" }],
+          playerContext: "{}",
+          sessionId: `e2e-sse-eof-${Date.now()}`,
+        }),
+        signal: controller.signal,
+      });
+
+      const body = await response.text();
+      expect(response.status).toBe(200);
+      expect(body).toContain(VERSECRAFT_FINAL_PREFIX);
+      const parsed = JSON.parse(extractDmJsonTextFromSseBody(body)) as Record<string, unknown>;
+      assertDmContractShape(parsed);
+      expect(parsed.security_meta).toMatchObject({
+        turn_commit: expect.objectContaining({ request_id: expect.stringMatching(/^vc_/) }),
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
 });
 
 /**

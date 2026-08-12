@@ -15,6 +15,7 @@
  *   由叙事约束块收口语气（见 drama / npcHeart）。
  */
 
+import { clamp } from "@/lib/clamp";
 export type TaskNarrativeLayerKind = "soft_lead" | "conversation_promise" | "formal_task";
 
 export type IssuerPersonaMode =
@@ -40,7 +41,7 @@ export type IssuerSoftRevealMode =
 /** 归一化 0–1 权重/价值 */
 export function clampUnit(v: unknown): number | undefined {
   if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
-  return Math.max(0, Math.min(1, v));
+  return clamp(v, 0, 1);
 }
 
 export type TaskDriveProbe = {

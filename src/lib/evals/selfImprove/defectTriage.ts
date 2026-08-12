@@ -1,9 +1,9 @@
 /**
- * Self-Improving Agent System — Defect Triage
+ * Evaluation & Regression Campaign — Defect Triage
  *
  * Processes judge verdicts into triaged defects with stable signatures.
  * Handles deduplication, evidence validation, confidence arbitration,
- * and decides which defects are eligible for automatic repair.
+ * and decides which defects have enough evidence for an implementation recommendation.
  */
 
 import type {
@@ -69,9 +69,9 @@ export function deduplicateDefects(defects: TriagedDefect[]): TriagedDefect[] {
       }
       existing.sourceVerdicts.push(...defect.sourceVerdicts);
       existing.oracleReproduced = existing.oracleReproduced || defect.oracleReproduced;
-      // If any instance is auto-repairable, keep it
-      if (defect.autoRepairable && !existing.autoRepairable) {
-        existing.autoRepairable = true;
+      // If any instance has enough evidence for a recommendation, keep it.
+      if (defect.recommendationEligible && !existing.recommendationEligible) {
+        existing.recommendationEligible = true;
       }
     }
   }
@@ -126,18 +126,18 @@ export function arbitrateDefects(
 
   const defects: TriagedDefect[] = [];
 
-  for (const [fingerprint, items] of byFingerprint) {
+  for (const items of byFingerprint.values()) {
     const violation = items[0]!.violation;
     const sig = generateDefectSignature(violation);
     const agreeingJudges = new Set(items.map((i) => i.judgeModel)).size;
     const avgConfidence = items.reduce((sum, i) => sum + i.confidence, 0) / items.length;
 
-    // Determine if auto-repairable
+    // Determine whether evidence supports an explicit implementation handoff.
     const hasEnoughAgreement = agreeingJudges >= requiredAgreement;
     const hasHighConfidence = avgConfidence >= minConfidence;
     const hasEvidence = items.every((i) => validateViolationEvidence(i.violation));
 
-    let autoRepairable = hasEnoughAgreement && hasHighConfidence && hasEvidence;
+    let recommendationEligible = hasEnoughAgreement && hasHighConfidence && hasEvidence;
     let blockReason: string | undefined;
 
     if (!hasEnoughAgreement) {
@@ -150,7 +150,7 @@ export function arbitrateDefects(
 
     // Critical/major need at least 2 judges
     if ((violation.severity === "critical" || violation.severity === "major") && agreeingJudges < 2) {
-      autoRepairable = false;
+      recommendationEligible = false;
       blockReason = `Severity ${violation.severity} requires >=2 judges, got ${agreeingJudges}.`;
     }
 
@@ -159,9 +159,11 @@ export function arbitrateDefects(
       severity: violation.severity,
       sourceVerdicts: [], // populated by caller
       oracleReproduced: false,
-      autoRepairable,
+      recommendationEligible,
       blockReason,
-      disposition: autoRepairable ? "auto_repair" : "human_review_required",
+      disposition: recommendationEligible
+        ? "explicit_implementation_recommended"
+        : "human_review_required",
     });
   }
 

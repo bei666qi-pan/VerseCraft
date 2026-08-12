@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import { buildChapterWriterInstruction } from "./chapterReasoner";
 import type { ChapterDirectorState, DirectorPlan, IncidentEnvelope } from "./types";
 
@@ -23,7 +24,7 @@ export function buildDirectorPromptBlock(args: {
   chapter?: ChapterDirectorState | null;
   maxChars?: number;
 }): string {
-  const maxChars = Math.max(120, Math.min(700, args.maxChars ?? 360));
+  const maxChars = clamp(args.maxChars ?? 360, 120, 700);
   const plan = args.plan;
   const lines: string[] = [];
   lines.push("## 【本回合叙事节拍提示（只供写作，不要像系统提示）】");
@@ -115,8 +116,8 @@ export function buildDirectorDigestForServer(args: {
   };
   digest: string;
 } {
-  const t = Math.max(0, Math.min(100, Math.trunc(args.tension ?? 0)));
-  const stall = Math.max(0, Math.min(9, Math.trunc(args.stallCount ?? 0)));
+  const t = clamp(Math.trunc(args.tension ?? 0), 0, 100);
+  const stall = clamp(Math.trunc(args.stallCount ?? 0), 0, 9);
   const beat = clampText(args.beatModeHint ?? "", 20) || "quiet";
   const flags = (args.pressureFlags ?? []).map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 6);
   const pending = (args.pendingIncidentCodes ?? []).map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 6);

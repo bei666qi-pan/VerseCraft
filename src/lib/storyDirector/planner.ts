@@ -1,10 +1,11 @@
+import { clamp } from "@/lib/clamp";
 import type { DirectorPlan, StoryDirectorState } from "./types";
 import type { DirectorSignals } from "./signals";
 
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function uniq(xs: string[], cap: number): string[] {

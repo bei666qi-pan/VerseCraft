@@ -39,3 +39,12 @@ test("buildOptionsRegenResponse: upstream failure preserves diagnostic reason co
   assert.deepEqual(out.debug_reason_codes, ["empty_content", "parse_failed"]);
 });
 
+test("buildOptionsRegenResponse: correlation identifiers are optional and preserved", () => {
+  const out = buildOptionsRegenResponse({
+    options: ["a", "b", "c", "d"],
+    requestId: "vc_test_options_request",
+    traceId: "trace-test-1",
+  });
+  assert.equal(out.request_id, "vc_test_options_request");
+  assert.equal(out.trace_id, "trace-test-1");
+});

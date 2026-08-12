@@ -1,4 +1,5 @@
 import { envRaw } from "@/lib/config/envRaw";
+import { clamp } from "@/lib/clamp";
 import { DEFAULT_SOCIAL_WORLD_BUDGET, normalizeSocialWorldBudget } from "@/lib/socialWorld/budget";
 import type { SocialWorldBudget } from "@/lib/socialWorld/types";
 
@@ -49,7 +50,7 @@ function modeEnv(source: EnvSource | undefined, fallback: SocialWorldMode): Soci
 
 function clampInt(value: number, min: number, max: number): number {
   const safe = Number.isFinite(value) ? Math.trunc(value) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 export function resolveSocialWorldConfig(source?: EnvSource): SocialWorldConfig {

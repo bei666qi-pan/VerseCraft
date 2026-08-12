@@ -5,6 +5,7 @@ import {
   sanitizeNarrativeLeakageForFinal,
   stripTrailingLeakedObject,
 } from "@/lib/playRealtime/protocolGuard";
+import { clamp } from "@/lib/clamp";
 import { sanitizeDisplayedNarrative } from "@/features/play/render/sanitizeDisplayedNarrative";
 
 const MAX_BRACE_SCAN = 64;
@@ -55,7 +56,7 @@ export function extractBalancedJsonObjectCandidates(s: string, maxCandidates = M
   const src = String(s ?? "");
   const out: string[] = [];
   if (!src) return out;
-  const max = Math.max(1, Math.min(256, Math.trunc(maxCandidates)));
+  const max = clamp(Math.trunc(maxCandidates), 1, 256);
   for (let i = 0; i < src.length && out.length < max; i++) {
     if (src[i] !== "{") continue;
     const slice = extractBalancedJsonObjectFrom(src, i);

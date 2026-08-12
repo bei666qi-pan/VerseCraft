@@ -19,6 +19,7 @@ import {
   compactNpcKnowledgePacket,
   type NpcKnowledgePacket,
 } from "@/lib/npcKnowledge/npcKnowledgeResolver";
+import { clamp } from "@/lib/clamp";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
 const RT_TASK_LAYERS_RE = /【rt_task_layers】([^\s。]+)/;
@@ -67,10 +68,10 @@ function parseFavorabilityForDisplayName(playerContext: string, displayName: str
 }
 
 function inferRelationStubFromFavorability(fav: number): { favorability: number; trust: number; fear: number; debt: number } {
-  const f = Math.max(-30, Math.min(80, fav));
+  const f = clamp(fav, -30, 80);
   return {
     favorability: f,
-    trust: Math.max(0, Math.min(60, 12 + Math.round(f * 0.35))),
+    trust: clamp(12 + Math.round(f * 0.35), 0, 60),
     fear: f < 0 ? 28 : f < 20 ? 18 : 10,
     debt: 0,
   };

@@ -13,6 +13,7 @@ import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selectors";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
+import { fireAndForget } from "@/lib/fireAndForget";
 import {
   computeSettlementGrade,
   formatSettlementFloor,
@@ -488,13 +489,13 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         endingTelemetrySeenRef.current.add(key);
       }
       pushEndingDecisionDebugEvent({ eventName, payload, note: options.note });
-      void trackGameplayEvent({
+      fireAndForget(() => trackGameplayEvent({
         eventName,
         page: "/settlement",
         source: "ending",
         idempotencyKey: key,
         payload,
-      }).catch(() => {});
+      }), "asyncOp");
     },
     [endingState, escapeStateRaw, snapshot, time]
   );
@@ -588,7 +589,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
 
   useEffect(() => {
     if (!mounted) return;
-    void trackGameplayEvent({
+    fireAndForget(() => trackGameplayEvent({
       eventName: "settlement_viewed",
       page: "/settlement",
       source: "settlement",
@@ -600,7 +601,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         survivalHours: snapshot.survivalHours,
         settlementSource: snapshot.source,
       },
-    }).catch(() => {});
+    }), "asyncOp");
     emitSettlementEndingTelemetry("ending_settlement_viewed", {
       source: "settlement_page",
       idempotencySuffix: "viewed",
@@ -644,12 +645,12 @@ export default function SettlementPage(props: AppPageDynamicProps) {
 
   function handleExport() {
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    void trackGameplayEvent({
+    fireAndForget(() => trackGameplayEvent({
       eventName: "settlement_export_clicked",
       page: "/settlement",
       source: "settlement",
       payload: { outcome: snapshot.outcome, grade: snapshot.grade, maxFloorScore: snapshot.maxFloorScore },
-    }).catch(() => {});
+    }), "asyncOp");
     triggerDownload(snapshot.writingMarkdown || buildMarkdown(logs, snapshot.highlights), `versecraft-writing-${ts}.md`);
   }
 

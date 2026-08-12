@@ -9,6 +9,7 @@ import { signIn } from "../../../auth";
 import { recordGenericAnalyticsEvent, recordUserRegisteredAnalytics } from "@/lib/analytics/repository";
 import { eq } from "drizzle-orm";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
+import { fireAndForget } from "@/lib/fireAndForget";
 
 type AuthActionState = {
   success: boolean;
@@ -101,7 +102,7 @@ function resolveCredentialsError(error: AuthError): string | null {
 async function recordLoginSuccess(name: string): Promise<void> {
   const found = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
   const uid = found[0]?.id ?? null;
-  void recordGenericAnalyticsEvent({
+  fireAndForget(() => recordGenericAnalyticsEvent({
     eventId: `${uid ?? name}:user_login_success:${Date.now()}`,
     idempotencyKey: `user_login_success:${uid ?? name}:${Date.now()}`,
     userId: uid,
@@ -114,7 +115,7 @@ async function recordLoginSuccess(name: string): Promise<void> {
     tokenCost: 0,
     playDurationDeltaSec: 0,
     payload: {},
-  }).catch(() => {});
+  }), "recordAnalytics");
 }
 
 function readConsentFromFormData(formData: FormData): { userAgreement: boolean; privacyPolicy: boolean } {
@@ -155,7 +156,7 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
       password: hashed,
     });
 
-    void recordUserRegisteredAnalytics({
+    fireAndForget(() => recordUserRegisteredAnalytics({
       eventId: `${newUserId}:user_registered`,
       idempotencyKey: `${newUserId}:user_registered`,
       userId: newUserId,
@@ -165,7 +166,7 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
       source: "auth",
       platform: "unknown",
       payload: { name },
-    }).catch(() => {});
+    }), "asyncOp");
   } catch (error) {
     safeLogError("Registration Backend Error", error);
     if (isDuplicateUserError(error)) {
@@ -247,7 +248,7 @@ async function performCredentialsLogin(name: string, password: string): Promise<
     if (isNextRedirectError(error)) {
       const found = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1).catch(() => []);
       const uid = found[0]?.id ?? null;
-      void recordGenericAnalyticsEvent({
+      fireAndForget(() => recordGenericAnalyticsEvent({
         eventId: `${uid ?? name}:user_login_success:${Date.now()}`,
         idempotencyKey: `user_login_success:${uid ?? name}:${Date.now()}`,
         userId: uid,
@@ -260,7 +261,7 @@ async function performCredentialsLogin(name: string, password: string): Promise<
         tokenCost: 0,
         playDurationDeltaSec: 0,
         payload: {},
-      }).catch(() => {});
+      }), "recordAnalytics");
       throw error;
     }
     safeLogError("Login Backend Error", error);

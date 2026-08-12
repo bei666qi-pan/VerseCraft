@@ -1,10 +1,7 @@
 import type { Weapon, StatType } from "@/lib/registry/types";
+import { clamp } from "@/lib/clamp";
 import type { ProfessionId } from "@/lib/profession/types";
 import type { MainThreatPhase, CombatActorScore, CombatScoreBreakdown, CombatConflictKind, CombatStyleTag } from "./types";
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
-}
 
 function statVal(stats: Record<StatType, number> | null | undefined, k: StatType): number {
   const v = stats?.[k];
@@ -177,7 +174,7 @@ export function computePlayerCombatScore(args: {
   });
 
   const knowsWeaknessBonus = args.knowsWeakness ? 0.8 : 0;
-  const ally = Math.max(0, Math.min(3, Math.trunc(args.allyCount ?? 0)));
+  const ally = clamp(Math.trunc(args.allyCount ?? 0), 0, 3);
   // 人数优势：递减收益，且不把战斗变成“堆队友就赢”
   const allyBonus = ally === 0 ? 0 : ally === 1 ? 0.7 : ally === 2 ? 1.0 : 1.2;
   const initBonus = args.initiative === "hard" ? 1.0 : args.initiative === "soft" ? 0.45 : 0;

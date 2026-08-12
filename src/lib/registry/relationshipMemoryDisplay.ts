@@ -18,6 +18,7 @@
  */
 
 import type { MemorySpineEntry, MemorySpineState } from "@/lib/memorySpine/types";
+import { clamp } from "@/lib/clamp";
 import { stripDeveloperFacingFragments } from "@/lib/ui/playerFacingText";
 
 /** 只挑与"人物羁绊"直接相关的记忆种类，不含 route_hint/item_provenance/danger_hint 等世界事件类。 */
@@ -58,7 +59,7 @@ export function selectNpcMemoryMoments(
 ): MemorySpineEntry[] {
   const id = String(npcId ?? "").trim();
   if (!id || !memorySpine || !Array.isArray(memorySpine.entries)) return [];
-  const maxItems = Math.max(1, Math.min(6, opts.maxItems ?? 3));
+  const maxItems = clamp(opts.maxItems ?? 3, 1, 6);
   const includeResolved = opts.includeResolved ?? true;
 
   const candidates = memorySpine.entries.filter((e) => {

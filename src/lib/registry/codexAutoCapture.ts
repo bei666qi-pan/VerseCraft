@@ -1,5 +1,6 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { NPCS } from "@/lib/registry/npcs";
+import { clamp } from "@/lib/clamp";
 import { NPC_ALIASES } from "@/lib/registry/npcAliases";
 import type { CodexEntry } from "@/store/useGameStore";
 
@@ -92,7 +93,7 @@ export function extractCodexMentionsFromNarrative(
   const text = normalizeText(narrative);
   if (!text) return [];
 
-  const maxMatches = Math.max(1, Math.min(24, Math.trunc(options?.maxMatches ?? 10)));
+  const maxMatches = clamp(Math.trunc(options?.maxMatches ?? 10), 1, 24);
   const out: CodexMention[] = [];
   const seen = new Set<string>();
 
@@ -167,7 +168,7 @@ export function extractCodexMentionsFromDmRecord(
   options?: { maxMatches?: number }
 ): CodexMention[] {
   if (!dmRecord) return [];
-  const maxMatches = Math.max(1, Math.min(24, Math.trunc(options?.maxMatches ?? 12)));
+  const maxMatches = clamp(Math.trunc(options?.maxMatches ?? 12), 1, 24);
   const out: CodexMention[] = [];
   const seen = new Set<string>();
 

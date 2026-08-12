@@ -3,6 +3,7 @@
  * World Director 工具集的纯函数部分（无 DB / server-only 依赖），供单测直接导入。
  * DB 接线见 ./directorTools.ts。
  */
+import { clamp } from "@/lib/clamp";
 import type { ToolDefinition } from "@/lib/ai/types/core";
 
 /** ILIKE 通配符转义（% _ \），防止关键词被解释成模式。 */
@@ -22,8 +23,8 @@ export function normalizeSearchFactsArgs(args: Record<string, unknown>): Normali
   const offset = Number(args.offset);
   return {
     contains: rawContains.length > 0 ? rawContains : null,
-    limit: Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 10,
-    offset: Number.isFinite(offset) ? Math.max(0, Math.min(200, Math.trunc(offset))) : 0,
+    limit: Number.isFinite(limit) ? clamp(Math.trunc(limit), 1, 20) : 10,
+    offset: Number.isFinite(offset) ? clamp(Math.trunc(offset), 0, 200) : 0,
   };
 }
 
@@ -37,7 +38,7 @@ export function normalizeAgendaArgs(args: Record<string, unknown>): NormalizedAg
   const limit = Number(args.limit);
   return {
     status: rawStatus.length > 0 ? rawStatus : null,
-    limit: Number.isFinite(limit) ? Math.max(1, Math.min(16, Math.trunc(limit))) : 8,
+    limit: Number.isFinite(limit) ? clamp(Math.trunc(limit), 1, 16) : 8,
   };
 }
 

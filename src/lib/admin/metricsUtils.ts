@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 
 export type DailyActivityPoint = { userId: string; dateKey: string };
@@ -136,7 +137,7 @@ export function computeAdjacentFunnelStages(
 export function percentile(values: number[], p: number): number | null {
   const clean = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
   if (clean.length === 0) return null;
-  const clamped = Math.max(0, Math.min(1, p));
+  const clamped = clamp(p, 0, 1);
   const idx = (clean.length - 1) * clamped;
   const lo = Math.floor(idx);
   const hi = Math.ceil(idx);

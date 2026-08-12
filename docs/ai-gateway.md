@@ -72,6 +72,30 @@
 
 ## 3. 本地运行说明
 
+### VerseCraft 维护者 Mac：直连深信服内网 DeepSeek
+
+维护者 Mac 在已连接 aTrust 时，可直接使用企业 OpenAI-compatible 网关，不需要启动
+`127.0.0.1:4319` 上的中转进程。以下值写入被 Git 忽略的 `.env.local`；密钥不得写入文档或提交：
+
+```env
+AI_GATEWAY_PROVIDER="openai_compatible"
+AI_GATEWAY_BASE_URL="https://aigateway.sangfor.com/v1"
+AI_GATEWAY_API_KEY="<本机已有的企业网关凭证>"
+VC_AI_DIRECT_PLAYER_MODEL="deepseek-v4-flash"
+AI_MODEL_MAIN="deepseek-v4-pro-202606"
+AI_MODEL_CONTROL="deepseek-v4-pro-202606"
+AI_MODEL_ENHANCE="deepseek-v4-pro-202606"
+AI_MODEL_REASONER="deepseek-v4-pro-202606"
+AI_PLAYER_CHAT_DISABLE_THINKING="true"
+```
+
+- 普通 `pnpm dev` 与 `SI_LIVE_MODE=1` 的本地评测都会复用这套绑定。
+- `PLAYER_CHAT` 使用 Flash 且关闭思考；离线 Judge/Reasoner 等角色仍使用 Pro。
+- aTrust 未连接时不会静默切换到公网供应商；`/api/chat` 保持现有可观测 SSE 降级行为。
+- `VC_AI_DIRECT_BASE_URL` 若由显式启动会话注入，仍按既有优先级覆盖 `.env.local`。
+
+验证：先运行 `pnpm verify:ai-gateway`，需要真实连通检查时运行 `pnpm probe:ai-gateway`。
+
 **傻瓜路径（本机 one-api）**：见 **[`local-one-api.md`](local-one-api.md)**；可配合根目录 [`.env.local.oneapi.example`](../.env.local.oneapi.example) 或 `pnpm patch:env-local-ai`。
 
 1. `cp .env.example .env.local`

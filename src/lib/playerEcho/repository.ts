@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 
 import { playerEchoCanon, playerEchoEvents } from "@/db/schema";
+import { clamp } from "@/lib/clamp";
 import { normalizePlayerEchoCanon } from "./reducer";
 import type { EchoFragment, NpcEchoBond, PlayerEchoCanon } from "./types";
 
@@ -137,13 +138,13 @@ function cleanList(value: unknown, cap: number, maxChars: number): string[] {
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
+  return clamp(Math.trunc(n), min, max);
 }
 
 function clamp01(value: unknown, fallback: number): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
+  return clamp(n, 0, 1);
 }
 
 function requireUserId(userId: string): string {
@@ -181,7 +182,7 @@ function buildNpcBondMap(bonds: readonly NpcEchoBond[]): Record<string, unknown>
         ? { lastEchoedAtLoop: Math.max(0, Math.trunc(Number(bond.lastEchoedAtLoop))) }
         : {}),
       ...(Number.isFinite(bond.cooldownTurns)
-        ? { cooldownTurns: Math.max(0, Math.min(999, Math.trunc(Number(bond.cooldownTurns)))) }
+        ? { cooldownTurns: clamp(Math.trunc(Number(bond.cooldownTurns)), 0, 999) }
         : {}),
     };
   }
@@ -198,7 +199,7 @@ function computeEchoIntensity(canon: PlayerEchoCanon): number {
   );
   const bondScores = canon.npcBonds.map((bond) => clamp01(bond.bondScore, 0));
   const strongest = Math.max(0, ...fragmentScores, ...bondScores);
-  return Math.max(0, Math.min(100, Math.round(strongest * 100)));
+  return clamp(Math.round(strongest * 100), 0, 100);
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {

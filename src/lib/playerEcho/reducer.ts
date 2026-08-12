@@ -3,6 +3,7 @@ import type {
   EchoFragmentAnchors,
   EchoFragmentStatus,
 } from "./types";
+import { clamp } from "@/lib/clamp";
 import type {
   EchoFragmentType,
   EchoSafetyLevel,
@@ -82,7 +83,7 @@ function clamp01(value: unknown, fallback: number): number | null {
   if (value === undefined || value === null) return fallback;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
-  return Math.max(0, Math.min(1, n));
+  return clamp(n, 0, 1);
 }
 
 function cleanList(value: unknown, cap: number, maxChars: number): string[] {
@@ -183,7 +184,7 @@ function normalizeFragment(input: unknown): EchoFragment | null {
     ...(Number.isFinite(sourceLoop) ? { sourceLoop: Math.max(0, Math.trunc(sourceLoop)) } : {}),
     ...(cleanNullableString(input.sourceTurnId, 100) ? { sourceTurnId: cleanString(input.sourceTurnId, 100) } : {}),
     ...(anchors ? { anchors } : {}),
-    ...(Number.isFinite(revealTierMin) ? { revealTierMin: Math.max(0, Math.min(4, Math.trunc(revealTierMin))) } : {}),
+    ...(Number.isFinite(revealTierMin) ? { revealTierMin: clamp(Math.trunc(revealTierMin), 0, 4) } : {}),
     ...(allowedNpcPrivilege.length > 0 ? { allowedNpcPrivilege } : {}),
     ...(typeof input.tone === "string" && input.tone.trim() ? { tone: input.tone.trim().slice(0, 40) as EchoFragment["tone"] } : {}),
   };
@@ -218,7 +219,7 @@ function normalizeBond(input: unknown): NpcEchoBond | null {
     bondScore,
     fragmentIds: cleanList(input.fragmentIds, 12, 100),
     ...(Number.isFinite(lastEchoedAtLoop) ? { lastEchoedAtLoop: Math.max(0, Math.trunc(lastEchoedAtLoop)) } : {}),
-    ...(Number.isFinite(cooldownTurns) ? { cooldownTurns: Math.max(0, Math.min(999, Math.trunc(cooldownTurns))) } : {}),
+    ...(Number.isFinite(cooldownTurns) ? { cooldownTurns: clamp(Math.trunc(cooldownTurns), 0, 999) } : {}),
   };
 }
 
@@ -292,7 +293,7 @@ function normalizeCanonFields(input: unknown): PlayerEchoCanon {
     version: 1,
     playerKey: cleanNullableString(input.playerKey, 120),
     worldId: cleanNullableString(input.worldId, 120),
-    loopCount: Number.isFinite(loopCount) ? Math.max(0, Math.min(9999, Math.trunc(loopCount))) : 0,
+    loopCount: Number.isFinite(loopCount) ? clamp(Math.trunc(loopCount), 0, 9999) : 0,
     fragments: Array.isArray(input.fragments) ? input.fragments.map(normalizeFragment).filter(Boolean) : [],
     npcBonds: Array.isArray(input.npcBonds) ? input.npcBonds.map(normalizeBond).filter(Boolean) : [],
     strongestChoices: cleanList(input.strongestChoices, 8, 120),

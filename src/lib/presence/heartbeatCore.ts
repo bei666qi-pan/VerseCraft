@@ -1,5 +1,5 @@
 // src/lib/presence/heartbeatCore.ts
-/** 8s minimum between successfully applied heartbeats (HTTP 429 if faster). */
+/** 8s minimum between successfully applied heartbeats (faster pulses are accepted no-ops). */
 export const PRESENCE_HEARTBEAT_MIN_INTERVAL_MS = 8000;
 
 /** Max real-time seconds to credit per single accepted heartbeat. */

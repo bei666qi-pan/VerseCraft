@@ -8,6 +8,7 @@
  */
 import { executeChatCompletion } from "@/lib/ai/router/execute";
 import { assertToolUseAllowedForTask, type TaskBinding } from "@/lib/ai/tasks/taskPolicy";
+import { clamp } from "@/lib/clamp";
 import type { AIErrorResponse, AIResponse } from "@/lib/ai/types";
 import type {
   AIRequestContext,
@@ -164,7 +165,7 @@ export async function runToolLoop(params: {
   assertToolUseAllowedForTask(params.task);
 
   const execute = params.execute ?? executeChatCompletion;
-  const maxRounds = Math.max(1, Math.min(MAX_ROUNDS_HARD_CAP, Math.trunc(params.maxRounds ?? DEFAULT_MAX_ROUNDS)));
+  const maxRounds = clamp(Math.trunc(params.maxRounds ?? DEFAULT_MAX_ROUNDS), 1, MAX_ROUNDS_HARD_CAP);
   const totalBudgetMs = Math.max(MIN_ROUND_BUDGET_MS, Math.trunc(params.totalBudgetMs ?? DEFAULT_TOTAL_BUDGET_MS));
   const perToolTimeoutMs = Math.max(1, Math.trunc(params.perToolTimeoutMs ?? DEFAULT_PER_TOOL_TIMEOUT_MS));
   const maxToolCallsPerRound = Math.max(

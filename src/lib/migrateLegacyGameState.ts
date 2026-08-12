@@ -2,13 +2,14 @@
 // Preserves user volume preference only; legacy gameplay fields were superseded by `versecraft-storage`.
 
 import { del, get } from "idb-keyval";
+import { clamp } from "@/lib/clamp";
 import { useGameStore } from "@/store/useGameStore";
 
 const LEGACY_PERSIST_KEY = "versecraft-game-state";
 
 function clampVolume(n: number): number {
   if (!Number.isFinite(n)) return 50;
-  return Math.max(0, Math.min(100, Math.round(n)));
+  return clamp(Math.round(n), 0, 100);
 }
 
 export async function migrateLegacyVersecraftGameStateVolume(): Promise<void> {

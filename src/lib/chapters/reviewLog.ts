@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { ChapterProgress } from "./types";
 
 export type ChapterReviewLogEntry = {
@@ -13,7 +14,7 @@ type RawLogEntry = {
 
 function clampIndex(value: unknown, fallback: number, maxExclusive: number): number {
   const n = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : fallback;
-  return Math.max(0, Math.min(Math.max(0, maxExclusive - 1), n));
+  return clamp(n, 0, Math.max(0, maxExclusive - 1));
 }
 
 export function selectChapterReviewLogEntries(

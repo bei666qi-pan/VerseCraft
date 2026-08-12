@@ -22,6 +22,7 @@ import { createEmptyJournalState, type JournalState } from "@/lib/domain/narrati
 import { createInitialChapterState, normalizeChapterState, type ChapterState } from "@/lib/chapters";
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import type { EndingSettlementSnapshot, EndingState } from "@/lib/endings/types";
+import { clamp } from "@/lib/clamp";
 import { normalizeEndingSettlementSnapshot, normalizeEndingState } from "@/lib/endings/storeIntegration";
 
 export interface BuildRunSnapshotV2Input {
@@ -137,7 +138,7 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
     },
     time: {
       day: Math.max(0, Number(input.day ?? 0)),
-      hour: Math.max(0, Math.min(23, Number(input.hour ?? 0))),
+      hour: clamp(Number(input.hour ?? 0), 0, 23),
       darkMoonStarted: Number(input.day ?? 0) >= 3,
     },
     world: {

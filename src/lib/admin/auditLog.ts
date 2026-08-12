@@ -2,6 +2,7 @@ import "server-only";
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { clamp } from "@/lib/clamp";
 import { adminAuditLogs } from "@/db/schema";
 import type { AdminActor } from "@/lib/admin/authGuard";
 
@@ -83,7 +84,7 @@ export async function listAdminAuditLogs(opts?: {
   limit?: number;
   cursor?: string | null;
 }): Promise<{ rows: AdminAuditLogRow[]; nextCursor: string | null; hasMore: boolean }> {
-  const limit = Math.max(1, Math.min(100, Math.trunc(opts?.limit ?? 30)));
+  const limit = clamp(Math.trunc(opts?.limit ?? 30), 1, 100);
   const cursorId = opts?.cursor && /^\d+$/.test(opts.cursor) ? Number(opts.cursor) : null;
   const rows = await db
     .select()

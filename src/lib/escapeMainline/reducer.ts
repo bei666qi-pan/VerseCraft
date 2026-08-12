@@ -10,12 +10,13 @@ import { createDefaultEscapeMainline } from "./types";
 import { createDefaultEscapeMainlineTemplate } from "./template";
 import type { EscapeDerivationInput } from "./derive";
 import { deriveEscapeFactors } from "./derive";
+import { clamp } from "@/lib/clamp";
 import { resolveEscapeFinalActionFromState } from "./finalAction";
 
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function uniq<T>(xs: T[], cap: number, keyFn: (x: T) => string): T[] {

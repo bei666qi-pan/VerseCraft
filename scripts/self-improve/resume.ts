@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Self-Improving Agent System — Resume
+ * Evaluation & Regression Campaign — Legacy Resume
  *
  * Resumes an interrupted self-improvement run from its saved state.
  *

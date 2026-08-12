@@ -33,6 +33,7 @@ import {
   type RecentStoryEventRecord,
   type StoryEventReadInput,
 } from "./storyEventRepository";
+import { clamp } from "@/lib/clamp";
 import type { DialogueContext, NarrativeTurnContext, NarrativeTurnInput } from "./types";
 
 export type BuildDialogueContextInput = NarrativeTurnInput & {
@@ -311,7 +312,7 @@ function applyPlayerContext(
   context.player.time =
     snapshotTime ??
     (clientTime
-      ? { day: normalizeInt(clientTime.day, 0), hour: Math.max(0, Math.min(23, normalizeInt(clientTime.hour, 0))) }
+      ? { day: normalizeInt(clientTime.day, 0), hour: clamp(normalizeInt(clientTime.hour, 0), 0, 23) }
       : null);
 
   context.player.stats = normalizeNumberRecord(snapshot?.player?.stats ?? clientState?.stats);
@@ -771,7 +772,7 @@ async function buildPlayerEchoContext(args: {
     return undefined;
   }
 
-  const timeoutMs = Math.max(80, Math.min(120, normalizeInt(args.input.playerEchoReadTimeoutMs, 100)));
+  const timeoutMs = clamp(normalizeInt(args.input.playerEchoReadTimeoutMs, 100), 80, 120);
   const loaded = await loadPlayerEchoCanonWithTimeout(
     args.deps.loadPlayerEchoCanon(args.input.userId),
     timeoutMs
@@ -1185,5 +1186,5 @@ function normalizeInt(value: unknown, fallback: number): number {
 
 function normalizeRevealTier(value: unknown): number {
   const tier = normalizeInt(value, 0);
-  return Math.max(0, Math.min(12, tier));
+  return clamp(tier, 0, 12);
 }

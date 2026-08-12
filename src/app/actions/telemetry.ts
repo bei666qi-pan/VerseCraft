@@ -8,6 +8,7 @@ import { buildActorIdentity } from "@/lib/analytics/actorIdentity";
 import { resolveGameplayEventIdentity } from "@/lib/analytics/gameplayEventIdentity";
 import { recordGenericAnalyticsEvent, touchUserSessionHeartbeat } from "@/lib/analytics/repository";
 import type { AnalyticsEventName, AnalyticsPlatform } from "@/lib/analytics/types";
+import { fireAndForget } from "@/lib/fireAndForget";
 
 export async function pingPresence(sessionId?: string, page?: string, userAgent?: string | null) {
   const session = await auth();
@@ -27,7 +28,7 @@ export async function pingPresence(sessionId?: string, page?: string, userAgent?
   const sid = sessionId && sessionId.trim().length > 0 ? sessionId : `hb_${memberId}`;
   const now = Date.now();
   const minuteBucket = Math.floor(now / 60_000);
-  void recordGenericAnalyticsEvent({
+  fireAndForget(() => recordGenericAnalyticsEvent({
     eventId: `${memberId}:session_heartbeat:${minuteBucket}`,
     idempotencyKey: `${memberId}:session_heartbeat:${minuteBucket}`,
     actorId: actor?.actorId ?? null,
@@ -43,14 +44,14 @@ export async function pingPresence(sessionId?: string, page?: string, userAgent?
     tokenCost: 0,
     playDurationDeltaSec: 0,
     payload: {},
-  }).catch(() => {});
+  }), "recordAnalytics");
 
   if (userId) {
-    void touchUserSessionHeartbeat({
+    fireAndForget(() => touchUserSessionHeartbeat({
       sessionId: sid,
       userId,
       page: page ?? null,
-    }).catch(() => {});
+    }), "touchHeartbeat");
   }
 
   return { ok: true };
@@ -99,7 +100,7 @@ export async function trackGameplayEvent(input: {
           .digest("hex")
           .slice(0, 32);
 
-  void recordGenericAnalyticsEvent({
+  fireAndForget(() => recordGenericAnalyticsEvent({
     eventId: `evt_${eventTime.getTime()}_${idempotencyKey.slice(0, 8)}`,
     idempotencyKey: `${eventName}:${idempotencyKey}`,
     actorId: resolvedIdentity.actorId,
@@ -115,15 +116,15 @@ export async function trackGameplayEvent(input: {
     tokenCost: Math.max(0, Math.trunc(input.tokenCost ?? 0)),
     playDurationDeltaSec: Math.max(0, Math.trunc(input.playDurationDeltaSec ?? 0)),
     payload,
-  }).catch(() => {});
+  }), "recordAnalytics");
 
   if (userId) {
-    void touchUserSessionHeartbeat({
+    fireAndForget(() => touchUserSessionHeartbeat({
       sessionId: sid,
       userId,
       page: input.page ?? null,
       eventTime,
-    }).catch(() => {});
+    }), "touchHeartbeat");
   }
 
   return { ok: true };
