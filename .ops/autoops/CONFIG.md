@@ -7,9 +7,8 @@
 | `AUTOOPS_SITE_URL` | `https://versecraft.cn` | Site smoke check |
 | `AUTOOPS_HEALTH_URL` | `https://versecraft.cn/api/health` | Main healthcheck |
 | `AUTOOPS_REPO` | `bei666qi-pan/VerseCraft` | GitHub repo |
-| `AUTOOPS_BRANCH` | `main` | Repair branch |
+| `AUTOOPS_BRANCH` | `main` | Repository context for evidence links |
 | `AUTOOPS_DEPLOY_MODE` | `observe` | Keep existing CI/Gitee/Coolify chain by default |
-| `AUTOOPS_CODE_FIX_MODE` | `local` | Code repair runs on local Codex, not GitHub Actions |
 
 ## Secrets
 
@@ -27,11 +26,7 @@
 
 Do not set `OPENAI_API_KEY` for auto-ops. Do not sync a repository secret named `GITHUB_TOKEN`; workflows use built-in `github.token`.
 
-## Local Only
-
-| Variable | Purpose |
-| --- | --- |
-| `AUTOOPS_CODEX_COMMAND` | Optional non-interactive local Codex command override |
+AutoOps does not accept a code-writer command or code-fix mode. Code/configuration findings are handed to an explicit implementation task.
 
 ## Auto Discovery
 

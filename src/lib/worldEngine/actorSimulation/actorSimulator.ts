@@ -21,6 +21,7 @@ import {
   resolveActorSimulationFlags,
   isActorSimulationShadow,
 } from "./config";
+import { clamp } from "@/lib/clamp";
 import { validateActorProjection } from "./validateProjection";
 import type {
   ActorSimulationInput,
@@ -258,7 +259,7 @@ function validateAgencyConstraint(raw: string | undefined): ActorProjection["can
 
 function clampConfidence(v: unknown): number {
   if (typeof v === "number" && !Number.isNaN(v)) {
-    return Math.max(0, Math.min(1, v));
+    return clamp(v, 0, 1);
   }
   return 0.5;
 }

@@ -23,6 +23,7 @@
  *  - 扩展时只追加档位判定阈值旁的注释与新规则，不改变已发布档位的语义边界。
  */
 
+import { clamp } from "@/lib/clamp";
 export type SanityBandId = "unknown" | "stable" | "strained" | "fractured" | "critical";
 
 /** 数值越大代表状态越严重；unknown 恒为 -1，不参与"至少达到某档"的判定。 */
@@ -75,7 +76,7 @@ export function computeSanityRatio(current: number | null, historicalMax: number
   if (historicalMax <= 0) return null;
   const ratio = current / historicalMax;
   if (!Number.isFinite(ratio)) return null;
-  return Math.max(0, Math.min(1, ratio));
+  return clamp(ratio, 0, 1);
 }
 
 /** ratio 为 null 时返回 unknown（安全默认，不参与任何门禁联动）。 */

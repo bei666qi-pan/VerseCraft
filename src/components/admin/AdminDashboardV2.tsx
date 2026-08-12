@@ -22,6 +22,7 @@ import {
 import { clearAdminShadowSession } from "@/app/actions/admin";
 import type { AdminApiEnvelope } from "@/lib/admin/apiEnvelope";
 import { readAdminResponseJson } from "@/lib/admin/parseAdminEnvelope";
+import { clamp } from "@/lib/clamp";
 import { formatDurationSeconds } from "@/lib/time/durationUnits";
 
 type ChartPoint = { date: string; tokens: number; activeUsers?: number; dailyTokens?: number };
@@ -515,7 +516,7 @@ function Card({ title, value, meta, degraded }: { title: string; value: string; 
     <div className="rounded-lg border border-[#d8d0c3] bg-[#fffaf0]/88 p-4 shadow-[0_10px_24px_rgba(38,57,49,0.08)]">
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-medium text-[#68746c]">{title}</p>
-        {degraded ? <span className="rounded-full border border-[#c4914a]/35 bg-[#fff2cf] px-2 py-0.5 text-[11px] text-[#7a4e15]">降级</span> : null}
+        {degraded ? <span className={BADGE_DEGRADED}>降级</span> : null}
       </div>
       <p className="mt-2 text-2xl font-semibold text-[#123f39]">{value}</p>
       {meta ? (
@@ -538,7 +539,7 @@ function KpiGrid({ kpis }: { kpis: Kpi[] }) {
         <div key={`${k.metricId}:${k.label}:${k.unit ?? ""}`} className="rounded-lg border border-[#d8d0c3] bg-[#fffaf0]/88 p-4 shadow-[0_10px_24px_rgba(38,57,49,0.08)]">
           <div className="flex items-start justify-between gap-2">
             <p className="text-xs font-medium text-[#68746c]">{k.label}</p>
-            {k.degraded ? <span className="rounded-full border border-[#c4914a]/35 bg-[#fff2cf] px-2 py-0.5 text-[11px] text-[#7a4e15]">降级</span> : null}
+            {k.degraded ? <span className={BADGE_DEGRADED}>降级</span> : null}
           </div>
           <p className="mt-2 text-2xl font-semibold text-[#123f39]">{fmt(k.value, k.unit)}</p>
           <details className="mt-3 text-xs text-[#68746c]">
@@ -746,7 +747,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
   }
 
   async function rebuildDailyMetrics() {
-    const days = Math.max(1, Math.min(30, Math.trunc(rebuildDays || 3)));
+    const days = clamp(Math.trunc(rebuildDays || 3), 1, 30);
     const { env, status } = await fetchEnvelope<{ ok: boolean; days: number; results: Array<{ ok: boolean }> }>(`/api/admin/rebuild-daily?days=${days}`, { method: "POST" });
     if (status === 403) {
       window.location.href = "/saiduhsa";
@@ -772,6 +773,10 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
       return next.length > 0 ? next : [null];
     });
   }
+
+  const ROW_FLEX_BETWEEN = {ROW_FLEX_BETWEEN};
+  const ROW_FLEX_CENTER = {ROW_FLEX_CENTER};
+  const BADGE_DEGRADED = {BADGE_DEGRADED};
 
   return (
     <main className="vc-reading-surface min-h-screen p-3 text-[#173f39] md:p-6" data-testid="admin-paper-shell">
@@ -851,7 +856,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                       {northStar.northStar.evidenceSufficiency === "insufficient" ? "（样本不足，仅供参考）" : ""}
                     </p>
                   </div>
-                  {northStar.northStar.degraded ? <span className="rounded-full border border-[#c4914a]/35 bg-[#fff2cf] px-2 py-0.5 text-[11px] text-[#7a4e15]">降级</span> : null}
+                  {northStar.northStar.degraded ? <span className={BADGE_DEGRADED}>降级</span> : null}
                 </div>
                 <details className="mt-3 text-xs text-[#68746c]">
                   <summary className="cursor-pointer text-[#335c54]">为什么是这个指标</summary>
@@ -928,7 +933,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                     </span>
                   </div>
                   <div className="mt-2 h-2 rounded-full bg-[#e7decf]">
-                    <div className="h-2 rounded-full bg-[#174d46]" style={{ width: `${Math.max(1, Math.min(100, s.totalConversionRate * 100))}%` }} />
+                    <div className="h-2 rounded-full bg-[#174d46]" style={{ width: `${clamp(s.totalConversionRate * 100, 1, 100)}%` }} />
                   </div>
                 </div>
               ))}
@@ -955,7 +960,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               <div className="mt-3 grid gap-2">
                 {(aiExperience?.cost?.highCostActors ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无样本。</p> : null}
                 {(aiExperience?.cost?.highCostActors ?? []).map((x) => (
-                  <div key={x.actorKey} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                  <div key={x.actorKey} className={ROW_FLEX_CENTER}>
                     <span className="truncate">{shortActorCode(x.actorKey)}</span>
                     <span>{x.tokens.toLocaleString("zh-CN")} 点 / {x.actions} 次</span>
                   </div>
@@ -985,7 +990,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 <div className="mt-3 space-y-2">
                   {(aiExperience?.turnLaneDistribution ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无样本。</p> : null}
                   {(aiExperience?.turnLaneDistribution ?? []).map((l) => (
-                    <div key={l.lane} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                    <div key={l.lane} className={ROW_FLEX_CENTER}>
                       <span>{laneLabel(l.lane)}</span>
                       <span>{fmt(l.count)}</span>
                     </div>
@@ -1025,7 +1030,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 <div className="mt-3 space-y-2">
                   {(contentQuality?.worldSelections ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无世界选择样本。</p> : null}
                   {(contentQuality?.worldSelections ?? []).map((w) => (
-                    <div key={w.worldId} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                    <div key={w.worldId} className={ROW_FLEX_CENTER}>
                       <div>
                         <p className="font-medium text-[#173f39]">{w.worldId === "unknown" ? "未记录世界" : w.worldId}</p>
                         <p className="text-xs text-[#68746c]">首行动 {fmt(w.firstActionCount)} / {percent(w.firstActionRate)}</p>
@@ -1075,7 +1080,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 <div className="mt-3 space-y-2">
                   {contentValidatorIssueByCode.length === 0 ? <p className="text-sm text-[#68746c]">暂无规则冲突样本。</p> : null}
                   {contentValidatorIssueByCode.slice(0, 10).map((item) => (
-                    <div key={item.code} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                    <div key={item.code} className={ROW_FLEX_BETWEEN}>
                       <span className="font-mono text-xs text-[#173f39]">{item.code}</span>
                       <span>{fmt(item.count)}</span>
                     </div>
@@ -1088,7 +1093,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               <SectionTitle title="反馈与问卷主题" meta="负反馈率仍来自 feedbacks，问卷样本来自 survey_responses。" />
               <div className="mt-3 space-y-2">
                 {(contentQuality?.feedbackTopics ?? []).slice(0, 6).map((t) => (
-                  <div key={String(t.topic)} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                  <div key={String(t.topic)} className={ROW_FLEX_BETWEEN}>
                     <span>{String(t.topic || "未分类反馈")}</span>
                     <span>{fmt(t.count)}</span>
                   </div>
@@ -1160,7 +1165,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                   <div className="mt-3 space-y-2">
                     {surveyThemes.length === 0 ? <p className="text-sm text-[#68746c]">暂无开放文本主题。</p> : null}
                     {surveyThemes.map((item) => (
-                      <div key={item.theme} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div key={item.theme} className={ROW_FLEX_BETWEEN}>
                         <span>{item.theme}</span>
                         <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
@@ -1173,7 +1178,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                   <div className="mt-3 space-y-2">
                     {surveyRecommendDistribution.length === 0 ? <p className="text-sm text-[#68746c]">暂无推荐意愿样本。</p> : null}
                     {surveyRecommendDistribution.slice(0, 8).map((item) => (
-                      <div key={item.bucket} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div key={item.bucket} className={ROW_FLEX_BETWEEN}>
                         <span>{item.label}</span>
                         <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
@@ -1185,13 +1190,13 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                   <SectionTitle title="分群" meta="注册/游客、平台、体验阶段。" />
                   <div className="mt-3 space-y-2">
                     {(surveyAggregate?.segmentBreakdown?.actorType ?? []).map((item) => (
-                      <div key={`actor:${item.segment}`} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div key={`actor:${item.segment}`} className={ROW_FLEX_BETWEEN}>
                         <span>{item.segment === "registered" ? "注册用户" : item.segment === "guest" ? "游客" : "未知身份"}</span>
                         <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
                     ))}
                     {(surveyAggregate?.segmentBreakdown?.platform ?? []).slice(0, 3).map((item) => (
-                      <div key={`platform:${item.segment}`} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div key={`platform:${item.segment}`} className={ROW_FLEX_BETWEEN}>
                         <span>{item.segment}</span>
                         <span>{fmt(item.count)} · {typeof item.pct === "number" && !Number.isNaN(item.pct) ? item.pct : "—"}%</span>
                       </div>
@@ -1244,7 +1249,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 <div className="mt-3 space-y-2">
                   {(eventHealth?.eventCoverage ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无事件样本。</p> : null}
                   {(eventHealth?.eventCoverage ?? []).map((item) => (
-                    <div key={item.eventName} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                    <div key={item.eventName} className={ROW_FLEX_CENTER}>
                       <div>
                         <p className="font-medium text-[#173f39]">{eventLabel(item.eventName)}</p>
                         <p className="text-xs text-[#68746c]">{item.eventName}</p>
@@ -1263,7 +1268,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 <div className="mt-3 space-y-2">
                   {(eventHealth?.topMissingProperties ?? []).length === 0 ? <p className="text-sm text-[#68746c]">当前区间没有明显字段缺口。</p> : null}
                   {(eventHealth?.topMissingProperties ?? []).map((item) => (
-                    <div key={`${item.property}:${item.eventName ?? "all"}`} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                    <div key={`${item.property}:${item.eventName ?? "all"}`} className={ROW_FLEX_CENTER}>
                       <span className="font-mono text-xs text-[#173f39]">{item.property}</span>
                       <span>{item.count.toLocaleString("zh-CN")} 条</span>
                     </div>
@@ -1296,7 +1301,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 <div className="mt-3 space-y-2">
                   {(eventHealth?.eventsByName ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无事件样本。</p> : null}
                   {(eventHealth?.eventsByName ?? []).slice(0, 12).map((item) => (
-                    <div key={item.eventName} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                    <div key={item.eventName} className={ROW_FLEX_CENTER}>
                       <span>{eventLabel(item.eventName)}</span>
                       <span>{item.count.toLocaleString("zh-CN")} 条</span>
                     </div>

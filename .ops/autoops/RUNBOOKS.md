@@ -1,65 +1,30 @@
 # Auto-Ops Runbooks
 
+所有 runbook 都必须是确定性的、有界的，并把执行结果写入 runtime evidence。任何需要修改仓库代码或配置的情况都必须停止自动化，创建 incident，再进入显式实现任务。
+
 ## disk_high
 
-Fast path: `pnpm autoops:volc:clean-disk`
-
-Action: run Volc ECS Cloud Assistant to prune Docker builder cache, old unused images, stopped containers, and old journal logs. It must not touch database persistence directories or Docker volumes.
-
-Failure: collect `diagnose` and `docker-diagnose` evidence, then dispatch `autoops-codex`. That workflow creates an issue and a local Codex prompt; it does not run cloud Codex.
+运行 `pnpm autoops:volc:clean-disk`。只清理 Docker builder cache、旧 unused image、stopped container 和过期 journal；不得触碰数据库目录或 Docker volume。未恢复时记录诊断并请求人工处理磁盘容量/保留策略。
 
 ## o11y_agent_disconnected
 
-Fast path: `pnpm autoops:volc:restart-o11y`
-
-Action: prefer `o11yagentctl restart`, otherwise try the systemd `o11yagent` service, then query status.
-
-Failure: create/update an incident issue with `codex-needed` and use local Codex if a code or runbook fix is needed.
+优先运行 `o11yagentctl restart`，否则尝试 systemd service，然后查询状态。失败时创建 incident 并附命令输出。
 
 ## app_health_failed
 
-Fast path:
-
 1. `pnpm autoops:coolify:restart`
 2. `pnpm autoops:healthcheck`
-3. If still failing: `pnpm autoops:coolify:deploy -- --force`
-4. If still failing: dispatch `autoops-codex` for local Codex handoff
+3. 仍失败时可执行一次 `pnpm autoops:coolify:deploy -- --force`
+4. 再次失败则停止自动化并创建 incident
 
 ## coolify_deploy_failed
 
-Fast path: collect deployment evidence and redeploy once. If deployment keeps failing, hand off to local Codex.
+收集 deployment evidence，并按 `deploy-selfheal.mjs` 的边界进行有限重试。若诊断为代码/配置问题或重试耗尽，停止并留下 incident。
 
-## sentry_code_error
+## sentry_code_error / apm_slow_endpoint / build_failed
 
-Slow path: direct `autoops-codex` handoff. The local runner command is:
-
-```bash
-pnpm autoops:local-codex -- --issue <issue_number> --push-main
-```
-
-## apm_slow_endpoint
-
-Slow path: collect evidence first, then local Codex. If this touches `/api/chat`, preserve SSE framing and latency budget behavior.
-
-## build_failed
-
-Slow path: local Codex. Validation must include at least:
-
-```bash
-pnpm lint
-pnpm test:unit
-pnpm db:check:optional
-pnpm build
-```
+只收集 evidence 并创建 incident。不得自动调用 Codex/Claude、不得自动改测试或生产代码、不得 commit/push。
 
 ## unknown
 
-Default: collect evidence, create an incident issue, and require local operator review before code repair.
-
-## Local Codex Availability
-
-If the local computer is offline, GitHub Actions can still run server runbooks, but code repair will wait. Start the loop with:
-
-```bash
-pnpm autoops:local-loop -- --interval-ms 300000 --push-main
-```
+只记录和诊断，要求 operator review。

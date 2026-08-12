@@ -7,6 +7,7 @@ import { resolveNpcCombatStyle } from "./combatStyleResolvers";
 import { styleTagsToPlayerHint } from "./combatPresentation";
 import type { MainThreatPhase, SceneCombatContext } from "./types";
 import { NPCS } from "@/lib/registry/npcs";
+import { clamp } from "@/lib/clamp";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 
 function clampText(s: string, max: number): string {
@@ -52,7 +53,7 @@ export function buildCombatNarrativeStyleBlock(args: {
   npcHeartViews?: NpcHeartRuntimeView[];
   maxChars?: number;
 }): string {
-  const maxChars = Math.max(140, Math.min(900, args.maxChars ?? 520));
+  const maxChars = clamp(args.maxChars ?? 520, 140, 900);
   const locationId = String(args.locationId ?? "").trim() || "unknown";
   const floorId = floorIdFromLocation(locationId);
   const threatPhase = threatPhaseForFloor(args.mainThreatByFloor as any, floorId);

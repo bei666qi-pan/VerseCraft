@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Judge Ensemble
+ * Evaluation & Regression Campaign — Judge Ensemble
  *
  * Implements the specialized multi-judge evaluation pipeline:
  *

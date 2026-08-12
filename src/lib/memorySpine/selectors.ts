@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { MemorySpineEntry, MemorySpineState } from "./types";
 
 export type MemoryRecallContext = {
@@ -67,7 +68,7 @@ function recencyScore(e: MemorySpineEntry, nowHour: number): number {
   const age = Math.max(0, nowHour - (e.lastTouchedAtHour ?? e.createdAtHour));
   const ttl = Math.max(1, e.ttlHours ?? 72);
   // 0..1: 越新越高
-  return Math.max(0, Math.min(1, 1 - age / ttl));
+  return clamp(1 - age / ttl, 0, 1);
 }
 
 function normalizeChapterId(value: unknown): string {
@@ -120,7 +121,7 @@ function selectChapterEntries(
   predicate: (entry: MemorySpineEntry) => boolean,
   opts?: { relationshipCap?: number; hookCap?: number }
 ): MemorySpineEntry[] {
-  const maxItems = Math.max(1, Math.min(12, args.maxItems ?? 6));
+  const maxItems = clamp(args.maxItems ?? 6, 1, 12);
   const entries = Array.isArray(state.entries) ? state.entries : [];
   const scored = entries
     .filter((e) => e && matchesChapter(e, args) && predicate(e))
@@ -166,7 +167,7 @@ export function selectChapterMustEchoEntries(
   ]);
   return selectChapterEntries(
     state,
-    { ...args, maxItems: Math.max(1, Math.min(8, args.maxItems ?? 6)) },
+    { ...args, maxItems: clamp(args.maxItems ?? 6, 1, 8) },
     (entry) =>
       entry.status === "active" &&
       mustEchoKinds.has(entry.kind) &&
@@ -192,14 +193,14 @@ export function selectOpenChapterThreads(
   ]);
   return selectChapterEntries(
     state,
-    { ...args, maxItems: Math.max(1, Math.min(16, args.maxItems ?? 12)) },
+    { ...args, maxItems: clamp(args.maxItems ?? 12, 1, 16) },
     (entry) => entry.status === "active" && threadKinds.has(entry.kind),
     { relationshipCap: 4, hookCap: 4 }
   );
 }
 
 export function selectMemoryRecallPacket(state: MemorySpineState, ctx: MemoryRecallContext, opts?: { maxItems?: number }): RecalledMemory[] {
-  const maxItems = Math.max(3, Math.min(12, opts?.maxItems ?? 8));
+  const maxItems = clamp(opts?.maxItems ?? 8, 3, 12);
   const entries = Array.isArray(state.entries) ? state.entries : [];
   const nowHour = ctx.nowHour;
 

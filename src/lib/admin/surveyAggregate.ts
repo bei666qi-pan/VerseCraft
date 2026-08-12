@@ -1,4 +1,5 @@
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
+import { clamp } from "@/lib/clamp";
 import {
   PRODUCT_SURVEY_KEY_HOME,
   DISCOVERY_SOURCE_OPTIONS,
@@ -265,12 +266,12 @@ export function buildSurveyAggregateReport(
       bump(themeCounts, classifyTextTheme(openText));
     }
 
-    const recommendScore = Number.isFinite(n(row.recommendScore)) && row.recommendScore != null ? Math.max(0, Math.min(10, Math.round(n(row.recommendScore)))) : null;
+    const recommendScore = Number.isFinite(n(row.recommendScore)) && row.recommendScore != null ? clamp(Math.round(n(row.recommendScore)), 0, 10) : null;
     const recommendWillingness = text(answers.recommendWillingness);
     if (recommendScore != null) bump(recommendCounts, `score_${recommendScore}`);
     else if (recommendWillingness) bump(recommendCounts, recommendWillingness);
 
-    const overallRating = row.overallRating == null ? null : Math.max(1, Math.min(5, Math.round(n(row.overallRating))));
+    const overallRating = row.overallRating == null ? null : clamp(Math.round(n(row.overallRating)), 1, 5);
     const isLow = (overallRating != null && overallRating <= 2) || (recommendScore != null && recommendScore <= 4);
     if (isLow && lowRatingSamples.length < 12) {
       const summary = openTextsFor(row)[0] ?? "";

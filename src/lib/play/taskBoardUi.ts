@@ -9,6 +9,7 @@ import type { GameTaskV2, TaskSurfaceClass, TaskSurfaceSlot } from "@/lib/tasks/
 import type { CodexEntry, GameTask } from "@/store/useGameStore";
 import { resolveTaskIssuerDisplay } from "@/lib/ui/displayNameResolvers";
 import { sanitizePlayerFacingInline } from "@/lib/ui/taskPlayerFacingText";
+import { clamp } from "@/lib/clamp";
 import { localizedCodexName } from "@/lib/i18n/gameDisplay";
 import type { GameLanguage } from "@/lib/i18n/language";
 
@@ -284,7 +285,7 @@ export function partitionTasksForBoard(tasks: GameTask[], maxPaths = 4): TaskBoa
   const commissionPool = restBoard.filter((t) => inferSurfaceSlot(t) === "commission");
   const accepted = [...commissionPool]
     .sort((a, b) => slotPriority(b) - slotPriority(a) || a.title.localeCompare(b.title, "zh-Hans"))
-    .slice(0, Math.max(0, Math.min(2, maxPaths)));
+    .slice(0, clamp(maxPaths, 0, 2));
 
   const acceptedIds = new Set(accepted.map((p) => p.id));
   const opportunityPool = restBoard.filter((t) => !acceptedIds.has(t.id) && inferSurfaceSlot(t) === "opportunity");

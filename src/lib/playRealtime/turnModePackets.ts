@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 
 function clampText(s: string, max: number): string {
@@ -43,7 +44,7 @@ export function buildTurnModePolicyPacketBlock(args: {
     },
   };
   const text = `## 【turn_mode_policy_packet】\n${JSON.stringify(packet)}`;
-  const maxChars = Math.max(260, Math.min(1400, args.maxChars ?? 780));
+  const maxChars = clamp(args.maxChars ?? 780, 260, 1400);
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }
 

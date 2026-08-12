@@ -1,4 +1,5 @@
 import { sanitizeInputText } from "@/lib/security/helpers";
+import { clamp } from "@/lib/clamp";
 import { normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
 
 export type IncomingMessage = {
@@ -112,7 +113,7 @@ export function isActionlessPlayerInput(value: unknown): boolean {
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(String(n ?? ""));
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function asStringArray(v: unknown, maxLen: number): string[] {
@@ -244,6 +245,7 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
   const rawClientTurnModeHint = bodyObj.clientTurnModeHint;
   const rawOptionsRegenContext = bodyObj.optionsRegenContext;
   const rawLanguage = bodyObj.language;
+  const clientPurpose = rawClientPurpose === "options_regen_only" ? "options_regen_only" : "normal";
 
   if (!Array.isArray(rawMessages)) {
     return { ok: false, status: 400, error: "messages must be an array" };
@@ -272,7 +274,13 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
       .reverse()
       .find((m) => m.role === "user")?.content ?? "";
 
-  if (isActionlessPlayerInput(latestUserInput)) {
+  const optionsCtxObj = asPlainObject(rawOptionsRegenContext);
+  const hasOptionsOnlyContext = Boolean(
+    sanitizeInputText(String(rawClientReason ?? ""), 240) ||
+    sanitizeInputText(String(optionsCtxObj?.latestNarrativeExcerpt ?? ""), 1200) ||
+    playerContext
+  );
+  if (isActionlessPlayerInput(latestUserInput) && !(clientPurpose === "options_regen_only" && hasOptionsOnlyContext)) {
     return { ok: false, status: 400, error: "player action is empty" };
   }
 
@@ -282,7 +290,6 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
   const clientState = validateClientState(rawClientState);
   const language = normalizeGameLanguage(rawLanguage);
   const openingOptionsOnlyRound = rawOpeningOptionsOnlyRound === true;
-  const clientPurpose = rawClientPurpose === "options_regen_only" ? "options_regen_only" : "normal";
   const clientReason =
     typeof rawClientReason === "string" && rawClientReason.trim()
       ? sanitizeInputText(rawClientReason.trim(), 240)
@@ -293,7 +300,6 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
     rawClientTurnModeHint === "system_transition"
       ? rawClientTurnModeHint
       : null;
-  const optionsCtxObj = asPlainObject(rawOptionsRegenContext);
   const optionsRegenContext: OptionsRegenContextPayload | null = optionsCtxObj
     ? {
         latestPlayerAction: sanitizeInputText(String(optionsCtxObj.latestPlayerAction ?? ""), 280),

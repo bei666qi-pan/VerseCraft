@@ -1,4 +1,5 @@
 import { envRaw } from "@/lib/config/envRaw";
+import { clamp } from "@/lib/clamp";
 import type { PacingValidationReport } from "@/lib/turnEngine/pacing";
 import type {
   NarrativeSafetyIssue,
@@ -95,7 +96,7 @@ function readSampleRate(
   if (!raw) return fallback;
   const value = Number(raw);
   if (!Number.isFinite(value)) return fallback;
-  return Math.max(0, Math.min(1, value));
+  return clamp(value, 0, 1);
 }
 
 export function resolveNarrativeSafetyRuntimeConfig(

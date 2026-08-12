@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { adminJson, adminOk } from "@/lib/admin/apiEnvelope";
 import { verifyAdminCronRequest } from "@/lib/admin/authGuard";
 import { recordAdminAuditLog } from "@/lib/admin/auditLog";
+import { clampDays } from "@/lib/admin/cronSupport";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +22,6 @@ export const dynamic = "force-dynamic";
  * 现有 reasoner-health / health 检查的读取窗口最长 24 小时，所以默认保留天数留了远大于此的
  * 安全余量。
  */
-
-function clampDays(raw: unknown, fallback: number, min: number, max: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
 
 export async function POST(req: Request) {
   const guard = await verifyAdminCronRequest(req);

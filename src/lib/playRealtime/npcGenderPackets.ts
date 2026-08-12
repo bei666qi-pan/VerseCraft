@@ -1,4 +1,5 @@
 import type { CanonicalGender } from "@/lib/registry/types";
+import { clamp as clampNumber } from "@/lib/clamp";
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 
 function clamp(s: string, max: number): string {
@@ -57,7 +58,6 @@ export function buildNpcGenderPronounPacketBlock(args: {
   };
 
   const text = `## 【npc_gender_pronoun_packet】\\n${JSON.stringify(packet)}`;
-  const max = Math.max(220, Math.min(1400, args.maxChars ?? 760));
+  const max = clampNumber(args.maxChars ?? 760, 220, 1400);
   return text.length <= max ? text : `${clamp(text, max - 1)}…`;
 }
-

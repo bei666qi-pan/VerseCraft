@@ -1,6 +1,4 @@
-// src/app/api/admin/ai-routing/route.ts
-import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
-import { verifyAdminRequest } from "@/lib/admin/authGuard";
+import { createAdminRoute } from "@/lib/admin/adminRouteFactory";
 import { listRecentAiObservability } from "@/lib/ai/debug/observabilityRing";
 import { listRecentAiRoutingReports } from "@/lib/ai/debug/routingRing";
 import { snapshotModelCircuits } from "@/lib/ai/fallback/modelCircuit";
@@ -11,26 +9,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const guard = await verifyAdminRequest();
-  if (!guard.ok) return guard.response;
-
-  try {
-    const [recent, observability] = await Promise.all([
-      listRecentAiRoutingReports(),
-      listRecentAiObservability(),
-    ]);
-    return adminJson(
-      adminOk({
-        recent,
-        observability,
-        modelCircuits: snapshotModelCircuits(),
-        narrativeSafety: getNarrativeSafetyTelemetrySummary(getNarrativeSafetyRuntimeConfig()),
-      }),
-      { headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" } }
-    );
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : "ai_routing_unavailable";
-    return adminJson(adminFail<null>(reason, null), { status: 200 });
-  }
-}
+export const GET = createAdminRoute(async () => {
+  const [recent, observability] = await Promise.all([
+    listRecentAiRoutingReports(),
+    listRecentAiObservability(),
+  ]);
+  return {
+    recent,
+    observability,
+    modelCircuits: snapshotModelCircuits(),
+    narrativeSafety: getNarrativeSafetyTelemetrySummary(getNarrativeSafetyRuntimeConfig()),
+  };
+}, { label: "ai-routing", cacheSeconds: 5, staleWhileRevalidate: 10, errorReason: "ai_routing_unavailable" });

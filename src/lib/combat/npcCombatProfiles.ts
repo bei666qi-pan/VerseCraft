@@ -2,6 +2,7 @@ import type { CodexEntry } from "@/store/useGameStore";
 import type { NpcProfileV2 } from "@/lib/registry/types";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
+import { clamp } from "@/lib/clamp";
 import { getRegisteredStyleKeyForMajorNpc, resolveNpcStyleTemplateKey } from "./npcCombatStyles";
 import type {
   CombatStyleTag,
@@ -46,14 +47,14 @@ function styleKeyOf(npcId: string, styleTags: CombatStyleTag[], storyClass: NpcC
 }
 
 function clamp01(n: number): number {
-  return Math.max(0, Math.min(1, n));
+  return clamp(n, 0, 1);
 }
 
 function defaultAxes(args: { npcId: string; basePower: number; styleTags: CombatStyleTag[]; storyClass: NpcCombatStoryClass }): Pick<
   HiddenNpcCombatProfileV1,
   "volatility" | "aggression" | "discipline" | "resilience" | "fearThreshold"
 > {
-  const p = Math.max(0, Math.min(60, Math.trunc(args.basePower)));
+  const p = clamp(Math.trunc(args.basePower), 0, 60);
   // “稳定优先”策略：高魅力更讲究风格与克制，波动性反而更低（避免纯随机）
   const majorBias = args.storyClass === "major_charm" ? 0.08 : 0;
   const hasAmbush = args.styleTags.includes("ambush");
@@ -210,7 +211,7 @@ export function getHiddenNpcCombatProfile(args: {
   return {
     npcId,
     displayName,
-    basePower: Math.max(0, Math.min(60, Math.trunc(basePower))),
+    basePower: clamp(Math.trunc(basePower), 0, 60),
     volatility: axes.volatility,
     aggression: axes.aggression,
     discipline: axes.discipline,

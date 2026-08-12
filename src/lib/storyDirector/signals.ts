@@ -1,4 +1,5 @@
 import type { MemorySpineEntry } from "@/lib/memorySpine/types";
+import { clamp } from "@/lib/clamp";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { StoryDirectorState } from "./types";
 
@@ -32,7 +33,7 @@ export type DirectorSignals = {
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function uniq(xs: string[], cap: number): string[] {

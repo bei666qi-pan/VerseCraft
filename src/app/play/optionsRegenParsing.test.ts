@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   OPTIONS_REGEN_FAILURE_HINT,
+  formatOptionsRegenFailureHint,
   parseOptionsFromSsePayload,
   type OptionsRegenParseConfig,
 } from "./optionsRegenParsing";
@@ -56,9 +57,13 @@ test("parseOptionsFromSsePayload: ok=false options regen response does not call 
   assert.deepEqual(result.failure?.debugReasonCodes, ["parse_failed"]);
 });
 
-test("parseOptionsFromSsePayload: options fallback hint has no failure wording", () => {
-  assert.equal(OPTIONS_REGEN_FAILURE_HINT, "也可以直接写下下一步行动。");
-  assert.doesNotMatch(OPTIONS_REGEN_FAILURE_HINT, /失败|错误|未生成|未提交|稍后|重试|网络|网站|繁忙|系统/);
+test("parseOptionsFromSsePayload: options failure is honest and correlatable", () => {
+  assert.match(OPTIONS_REGEN_FAILURE_HINT, /没有生成/);
+  assert.match(OPTIONS_REGEN_FAILURE_HINT, /重试/);
+  assert.equal(
+    formatOptionsRegenFailureHint("vc_chat_1234567890abcdef"),
+    `${OPTIONS_REGEN_FAILURE_HINT}（请求 567890abcdef）`
+  );
 });
 
 test("parseOptionsFromSsePayload: ok=false does not emit tryParseDM console error", () => {

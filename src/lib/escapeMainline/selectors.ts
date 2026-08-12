@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { EscapeMainlineState, EscapeCondition, EscapeConditionCode, EscapeStage } from "./types";
 
 function uniq(xs: string[], cap: number): string[] {
@@ -17,7 +18,7 @@ function uniq(xs: string[], cap: number): string[] {
 export function getUnmetConditions(state: EscapeMainlineState, maxItems = 2): EscapeCondition[] {
   const met = new Set((state.metConditions ?? []).map((x) => String(x)));
   const all = state.knownConditions ?? [];
-  return all.filter((c) => c.required && !met.has(c.code)).slice(0, Math.max(0, Math.min(4, maxItems)));
+  return all.filter((c) => c.required && !met.has(c.code)).slice(0, clamp(maxItems, 0, 4));
 }
 
 export function getEscapeObjectiveSummary(state: EscapeMainlineState): {

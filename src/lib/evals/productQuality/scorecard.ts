@@ -1,7 +1,8 @@
+import { clamp } from "@/lib/clamp";
 import type { ProductQualityScorecard, ProductQualitySignals, QualityDimension } from "./types";
 
-const clamp = (value: number) => Math.max(0, Math.min(100, value));
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const clamp = (value: number) => clamp(value, 0, 100);
+const clamp01 = (value: number) => clamp(value, 0, 1);
 const zFromConfidenceLevel = (confidenceLevel: number): number => confidenceLevel === 0.99 ? 2.576 : 1.96;
 
 function wilsonInterval(successes: number, trials: number, confidenceLevel = 0.95): { lower: number; upper: number } | null {
@@ -27,8 +28,8 @@ export function percentile(values: number[], fraction: number): number | null {
 
 function confidenceFromPassRate(rate: number, runs: number, confidenceLevel: number = 0.95): number {
   if (!Number.isFinite(rate) || runs <= 0) return 0;
-  const p = clamp01(Math.max(0, Math.min(1, rate)));
-  const successes = Math.max(0, Math.min(runs, Math.round(p * runs)));
+  const p = clamp01(clamp(rate, 0, 1));
+  const successes = clamp(Math.round(p * runs), 0, runs);
   const interval = wilsonInterval(successes, runs, confidenceLevel);
   if (!interval) return 0;
   return clamp01(interval.lower);

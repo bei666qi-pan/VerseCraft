@@ -8,6 +8,7 @@
  */
 
 import { narrativeForeshadowLedger } from "@/db/schema";
+import { clamp } from "@/lib/clamp";
 import { computeDeadlineTurn, type ForeshadowEntry } from "./foreshadowLifecycle";
 
 // ============================================================
@@ -59,7 +60,7 @@ export function insertForeshadowLedgerRows(params: ForeshadowLedgerInsertParams)
         if (!seedText) continue;
 
         const importance = typeof op.importance === "number"
-          ? Math.max(1, Math.min(3, Math.round(op.importance)))
+          ? clamp(Math.round(op.importance), 1, 3)
           : 1;
 
         if (opType === "plant") {

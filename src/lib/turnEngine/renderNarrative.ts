@@ -22,7 +22,7 @@
  *     downstream validators can decide whether to trust existing narrative or
  *     tighten rewrites.
  *
- * TODO (phase-4):
+ * Design notes:
  *   - Let `delta.mustDegrade === true` short-circuit to a pure structural
  *     narrative (no model call), producing a safe envelope in a single path.
  *   - Gate option-regen / decision-quality-gate fallback calls on the same

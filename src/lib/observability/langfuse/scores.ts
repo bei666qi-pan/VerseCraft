@@ -17,9 +17,8 @@ import { isLangfuseReady, getLangfuseConfig } from "./config";
 export async function uploadScores(
   traceId: string,
   scores: LangfuseScore[]
-): Promise<void> {
-  if (!isLangfuseReady()) return;
-  if (!scores.length) return;
+): Promise<{ uploaded: number; failed: number; skipped: boolean }> {
+  if (!isLangfuseReady() || !scores.length) return { uploaded: 0, failed: 0, skipped: true };
 
   try {
     const { LangfuseClient } = await import("@langfuse/client");
@@ -31,25 +30,32 @@ export async function uploadScores(
       baseUrl: cfg.baseUrl,
     });
 
+    let uploaded = 0;
+    let failed = 0;
     for (const score of scores) {
       try {
-        await client.score.create({
+        client.score.create({
           traceId,
           name: score.name,
           value: score.value,
           dataType: score.dataType,
-          source: score.source,
-          comment: score.comment,
+          comment: [score.source, score.evaluator, score.evaluatorVersion, score.comment].filter(Boolean).join(" | ") || undefined,
           ...(score.evaluator ? { observationId: undefined } : {}),
         });
+        uploaded += 1;
       } catch (err) {
+        failed += 1;
         console.warn("[langfuse] score upload failed for", score.name,
           err instanceof Error ? err.message : String(err));
       }
     }
+    await client.flush();
+    await client.shutdown();
+    return { uploaded, failed, skipped: false };
   } catch (err) {
     console.error("[langfuse] score batch upload failed",
       err instanceof Error ? err.message : String(err));
+    return { uploaded: 0, failed: scores.length, skipped: false };
   }
 }
 

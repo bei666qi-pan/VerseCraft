@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { createDefaultEscapeMainline } from "./types";
 import { createDefaultEscapeMainlineTemplate } from "./template";
+import { clamp } from "@/lib/clamp";
 import { deriveEscapeFactors, type EscapeDerivationInput } from "./derive";
 
 export type ResolveEscapeFinalActionInput = {
@@ -37,7 +38,7 @@ export type ResolveEscapeFinalActionFromStateInput = {
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function asStringArray(value: unknown, cap: number): string[] {

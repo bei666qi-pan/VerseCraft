@@ -5,8 +5,6 @@ import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 import { parsePageViewRequest, shouldCollectPageView } from "@/lib/analytics/pageViewRequest";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
-export const dynamic = "force-dynamic";
-
 type PageViewBody = { pathname?: unknown; visitorId?: unknown; eventId?: unknown; trafficSource?: unknown };
 
 export async function POST(req: Request) {

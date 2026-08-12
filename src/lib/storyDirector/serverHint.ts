@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { DirectorBranchSeed, DirectorConsistencyWarning, DirectorPrivateHook } from "@/lib/worldEngine/contracts";
 
 export type ServerDirectorDigest = {
@@ -34,7 +35,7 @@ export type ServerNpcActionHint = {
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function clampText(s: unknown, max: number): string {
@@ -79,7 +80,7 @@ function agendaArr(v: unknown, cap: number): ServerDirectorAgendaHint[] {
       forbiddenOutcomes: asStrArr(o.forbiddenOutcomes ?? o.forbidden_outcomes, 3),
       salience:
         typeof o.salience === "number" && Number.isFinite(o.salience)
-          ? Math.max(0, Math.min(1, o.salience))
+          ? clamp(o.salience, 0, 1)
           : undefined,
       revealPolicy: clampText(o.revealPolicy ?? o.reveal_policy, 24) || null,
     });
@@ -173,8 +174,8 @@ export function buildDirectorAgendaHintBlock(
     maxChars?: number;
   }
 ): string {
-  const maxItems = Math.max(1, Math.min(3, opts?.maxItems ?? 2));
-  const maxChars = Math.max(240, Math.min(1200, opts?.maxChars ?? 760));
+  const maxItems = clamp(opts?.maxItems ?? 2, 1, 3);
+  const maxChars = clamp(opts?.maxChars ?? 760, 240, 1200);
   const items = agendaArr(agenda, maxItems);
   if (items.length === 0) return "";
 

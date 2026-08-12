@@ -177,6 +177,31 @@ test("resolveAiEnv normalizes AI_GATEWAY_BASE_URL to /v1/chat/completions", () =
   );
 });
 
+test("resolveAiEnv normalizes the direct Sangfor intranet gateway without a loopback hop", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_GATEWAY_PROVIDER: "openai_compatible",
+      AI_GATEWAY_BASE_URL: "https://aigateway.sangfor.com/v1",
+      VC_AI_DIRECT_PLAYER_MODEL: "deepseek-v4-flash",
+      AI_MODEL_MAIN: "deepseek-v4-pro-202606",
+      AI_MODEL_CONTROL: "deepseek-v4-pro-202606",
+      AI_MODEL_ENHANCE: "deepseek-v4-pro-202606",
+      AI_MODEL_REASONER: "deepseek-v4-pro-202606",
+    },
+    () => {
+      const env = resolveAiEnv();
+      assert.equal(
+        env.gatewayBaseUrl,
+        "https://aigateway.sangfor.com/v1/chat/completions"
+      );
+      assert.equal(env.gatewayBaseUrl.includes("127.0.0.1:4319"), false);
+      assert.equal(env.playerGameplayModel, "deepseek-v4-flash");
+      assert.equal(env.modelsByRole.reasoner, "deepseek-v4-pro-202606");
+    }
+  );
+});
+
 test("resolveAiEnv keeps full chat completions URL when already suffixed", () => {
   withEnv(
     {

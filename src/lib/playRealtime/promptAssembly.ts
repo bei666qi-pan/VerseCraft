@@ -25,6 +25,7 @@ import { loadDueSocialEventsForPrompt } from "@/lib/socialWorld/persistence";
 import { loadSocialWorldHintForPrompt } from "@/lib/socialWorld/prompt";
 import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
 import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
+import { fireAndForget } from "@/lib/fireAndForget";
 import { epistemicDebugLog, getEpistemicRolloutFlags } from "@/lib/epistemic/featureFlags";
 import { loreFactsToKnowledgeFacts, mergeLorePacketSlices } from "@/lib/epistemic/loreFactBridge";
 import { sessionMemoryRowToKnowledgeFacts } from "@/lib/epistemic/sessionFactBridge";
@@ -1045,7 +1046,7 @@ export async function buildPlayerChatMessages(
   // analytics events. Non-blocking.
   if (sessionId) {
     const capturedSessionIdLane = sessionId;
-    void recordGenericAnalyticsEvent({
+    fireAndForget(() => recordGenericAnalyticsEvent({
       eventId: `${requestId}:turn_lane_decided`,
       idempotencyKey: `${requestId}:turn_lane_decided`,
       userId,
@@ -1070,8 +1071,8 @@ export async function buildPlayerChatMessages(
         sideEffectPlan: laneSideEffectPlan,
         epistemicPromptContext: epistemicPromptContext.telemetry,
       },
-    }).catch(() => {});
-    void recordGenericAnalyticsEvent({
+    }), "recordAnalytics");
+    fireAndForget(() => recordGenericAnalyticsEvent({
       eventId: `${requestId}:lane_side_effect_applied`,
       idempotencyKey: `${requestId}:lane_side_effect_applied`,
       userId,
@@ -1095,7 +1096,7 @@ export async function buildPlayerChatMessages(
         compactPrompt: laneSideEffectPlan.compactPrompt,
         requireNarrativeSafetyHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
       },
-    }).catch(() => {});
+    }), "recordAnalytics");
   }
 
   // turnModePolicyBlock removed: code controls maxTokens; narrative length is governed by narrativeBudgetBlock.
@@ -1201,7 +1202,7 @@ export async function buildPlayerChatMessages(
 
   // Telemetry: fire-and-forget prompt assembly metrics
   if (sessionId) {
-    void recordGenericAnalyticsEvent({
+    fireAndForget(() => recordGenericAnalyticsEvent({
       eventId: `${requestId}:prompt_assembly_completed`,
       idempotencyKey: `${requestId}:prompt_assembly_completed`,
       userId,
@@ -1223,7 +1224,7 @@ export async function buildPlayerChatMessages(
         promptVersion,
         promptStablePrefixHash,
       },
-    }).catch(() => {});
+    }), "recordAnalytics");
   }
 
   // per-component character counts (analytics telemetry)

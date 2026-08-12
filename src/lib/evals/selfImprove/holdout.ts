@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Holdout Corpus & Hash Binding
+ * Evaluation & Regression Campaign — Holdout Corpus & Hash Binding
  *
  * The holdout corpus lives in `benchmarks/self-improve/holdout-cases.json`
  * as the single source of truth (separate from the development pool).

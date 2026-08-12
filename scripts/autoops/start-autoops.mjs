@@ -9,7 +9,6 @@ import {
 } from "./lib/logger.mjs";
 import { pollHealth, attemptRemediation } from "./lib/health-poller.mjs";
 
-const POLL_INTERVAL_MS = 300000; // 5 min
 const HEALTH_INTERVAL_MS = 300000; // 5 min
 const CONSECUTIVE_FAIL_LIMIT = 3;
 const LOOP_TICK_MS = 30000; // 30s between cycle iterations
@@ -105,20 +104,6 @@ async function conditionalSetup(args) {
   }
 }
 
-// ── Incident processing ───────────────────────────────────────
-
-async function pollIncident(args) {
-  try {
-    const { once } = await import("./local-codex-runner.mjs");
-    return once(args);
-  } catch (error) {
-    warnJson("autoops.incident.poll_error", {
-      error: error.message?.slice(0, 300),
-    });
-    return null;
-  }
-}
-
 // ── Main ─────────────────────────────────────────────────────
 
 async function main() {
@@ -126,15 +111,12 @@ async function main() {
   const args = parseArgs();
   await ensureRuntimeDir();
 
-  const agentType = args.agent || "claude";
-  const pollIntervalMs = Number(args.intervalMs || POLL_INTERVAL_MS);
   const healthIntervalMs = Number(args.healthIntervalMs || HEALTH_INTERVAL_MS);
 
   logJson("autoops.start.begin", {
-    agent: agentType,
-    poll_interval_ms: pollIntervalMs,
     health_interval_ms: healthIntervalMs,
     dry_run: Boolean(args.dryRun),
+    mode: "deterministic_operations_only",
   });
 
   // Phase 1: Bootstrap
@@ -146,7 +128,6 @@ async function main() {
 
   // Phase 3: Main polling loop
   let lastHealthPoll = 0;
-  let lastIncidentPoll = 0;
   let consecutiveHealthFailures = 0;
 
   logJson("autoops.start.started", {
@@ -211,28 +192,6 @@ async function main() {
           error: error.message?.slice(0, 300),
         });
       }
-    }
-
-    // ── Incident polling ──
-    if (now - lastIncidentPoll >= pollIntervalMs) {
-      try {
-        const result = await pollIncident(args);
-        if (result?.noIssue) {
-          logJson("autoops.agent.waiting_for_incident", {
-            message: "No matching incident issue found; waiting for next poll cycle.",
-          });
-        }
-        if (result?.manual) {
-          logJson("autoops.incident.manual_intervention_needed", {
-            issue: result.issue || "unknown",
-          });
-        }
-      } catch (error) {
-        warnJson("autoops.incident.poll_cycle_error", {
-          error: error.message?.slice(0, 300),
-        });
-      }
-      lastIncidentPoll = now;
     }
 
     await new Promise((resolve) => setTimeout(resolve, LOOP_TICK_MS));

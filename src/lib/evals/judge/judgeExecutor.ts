@@ -9,6 +9,7 @@
  */
 
 import { buildJudgePrompt } from "./judgePrompt";
+import { clamp } from "@/lib/clamp";
 import {
   type JudgeDimension,
   type JudgeIssue,
@@ -61,7 +62,7 @@ function parseJudgeJsonOutput(rawText: string, rubric: JudgeRubric): ParsedJudge
         dimensionScores[dim.id] = 2; // 缺失维度默认为未验证
       }
       // 截断到 1-5
-      dimensionScores[dim.id] = Math.max(1, Math.min(5, Math.round(dimensionScores[dim.id]!)));
+      dimensionScores[dim.id] = clamp(Math.round(dimensionScores[dim.id]!), 1, 5);
     }
 
     const issues: JudgeIssue[] = Array.isArray(parsed.issues)
@@ -81,11 +82,9 @@ function parseJudgeJsonOutput(rawText: string, rubric: JudgeRubric): ParsedJudge
       : [];
 
     // 计算加权总分
-    const overallScore = Math.max(1, Math.min(5,
-      typeof parsed.overallScore === "number"
+    const overallScore = clamp(typeof parsed.overallScore === "number"
         ? Math.round(parsed.overallScore * 10) / 10
-        : computeWeightedAverage(dimensionScores, rubric.dimensions)
-    ));
+        : computeWeightedAverage(dimensionScores, rubric.dimensions), 1, 5);
 
     const passed = checkPassed(dimensionScores, overallScore, rubric);
 

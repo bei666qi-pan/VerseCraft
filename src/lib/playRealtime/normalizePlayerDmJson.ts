@@ -5,6 +5,7 @@
 import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
 import { extractBalancedJsonObjectCandidates } from "@/features/play/stream/dmParse";
 import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
+import { clamp } from "@/lib/clamp";
 import { normalizeNarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
 
 function coerceOptionToString(x: unknown): string | null {
@@ -30,7 +31,7 @@ function asUnknownArray(v: unknown): unknown[] {
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(String(n ?? ""));
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function safeJsonByteLength(v: unknown): number {
@@ -216,7 +217,7 @@ function normalizeForeshadowOps(v: unknown): Array<Record<string, unknown>> {
     };
     if (typeof o.id === "string" && o.id.trim()) entry.id = o.id.trim();
     const imp = typeof o.importance === "number" && Number.isFinite(o.importance)
-      ? Math.max(1, Math.min(3, Math.round(o.importance)))
+      ? clamp(Math.round(o.importance), 1, 3)
       : 1;
     entry.importance = imp;
     out.push(entry);

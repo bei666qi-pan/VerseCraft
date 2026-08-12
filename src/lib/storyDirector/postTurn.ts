@@ -14,6 +14,7 @@ import {
   normalizeIncidentQueue,
   selectIncidentForTurn,
 } from "./queue";
+import { clamp } from "@/lib/clamp";
 import {
   createEmptyDirectorState,
   createInitialChapterDirectorState,
@@ -30,7 +31,7 @@ import {
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function uniq(xs: string[], cap: number): string[] {
@@ -77,7 +78,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function clamp01(n: unknown): number {
   const v = typeof n === "number" && Number.isFinite(n) ? n : Number(n);
   if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
+  return clamp(v, 0, 1);
 }
 
 function clampText(value: unknown, max: number, fallback = ""): string {

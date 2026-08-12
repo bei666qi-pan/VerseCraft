@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 export function safeNumber(n: unknown, fallback: number): number {
   const v = typeof n === "number" ? n : Number(n);
   return Number.isFinite(v) ? v : fallback;
@@ -5,7 +6,7 @@ export function safeNumber(n: unknown, fallback: number): number {
 
 export function clampInt(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
+  return clamp(Math.trunc(n), min, max);
 }
 
 export function localInputSafetyCheck(input: string): { ok: boolean; reason?: string } {

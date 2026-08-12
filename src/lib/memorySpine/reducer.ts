@@ -1,4 +1,5 @@
 import type { MemorySpineChapterRole, MemorySpineEntry, MemorySpineState } from "./types";
+import { clamp } from "@/lib/clamp";
 import { pruneMemorySpine } from "./prune";
 
 export type MemoryCandidateDraft = Omit<MemorySpineEntry, "id" | "createdAtHour" | "lastTouchedAtHour"> & {
@@ -9,7 +10,7 @@ export type MemoryCandidateDraft = Omit<MemorySpineEntry, "id" | "createdAtHour"
 
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
+  return clamp(n, 0, 1);
 }
 
 function newId(nowHour: number): string {
@@ -68,7 +69,7 @@ export function reduceMemoryCandidates(input: {
 }): MemorySpineState {
   const prev = input.prev ?? { v: 1, entries: [] };
   const nowHour = input.nowHour;
-  const perTurnInsertCap = Math.max(4, Math.min(20, input.perTurnInsertCap ?? 10));
+  const perTurnInsertCap = clamp(input.perTurnInsertCap ?? 10, 4, 20);
 
   // 低价值限流：同一回合只允许少量新条目进入（其余会被 merge 或丢弃）。
   const drafts = (input.candidates ?? [])
@@ -98,7 +99,7 @@ export function reduceMemoryCandidates(input: {
       status: d.status ?? "active",
       createdAtHour: typeof d.createdAtHour === "number" && Number.isFinite(d.createdAtHour) ? Math.trunc(d.createdAtHour) : nowHour,
       lastTouchedAtHour: typeof d.lastTouchedAtHour === "number" && Number.isFinite(d.lastTouchedAtHour) ? Math.trunc(d.lastTouchedAtHour) : nowHour,
-      ttlHours: Math.max(0, Math.min(24 * 30, Math.trunc(Number(d.ttlHours ?? 72) || 0))),
+      ttlHours: clamp(Math.trunc(Number(d.ttlHours ?? 72) || 0), 0, 24 * 30),
       mergeKey,
       anchors: d.anchors ?? {},
       recallTags: Array.isArray(d.recallTags) ? d.recallTags.slice(0, 12) : [],

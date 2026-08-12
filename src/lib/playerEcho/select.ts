@@ -3,6 +3,7 @@ import {
   PLAYER_ECHO_MAX_FRAGMENT_CHARS,
   PLAYER_ECHO_MAX_FRAGMENTS,
 } from "./constants";
+import { clamp } from "@/lib/clamp";
 import type {
   EchoFragment,
   PlayerEchoCanon,
@@ -97,8 +98,8 @@ export function selectPlayerEchoFragments(
   context: PlayerEchoSelectionContext,
   opts?: { maxFragments?: number; maxFragmentChars?: number }
 ): SelectedEchoFragment[] {
-  const maxFragments = Math.max(0, Math.min(PLAYER_ECHO_MAX_FRAGMENTS, opts?.maxFragments ?? PLAYER_ECHO_MAX_FRAGMENTS));
-  const maxFragmentChars = Math.max(16, Math.min(PLAYER_ECHO_MAX_FRAGMENT_CHARS, opts?.maxFragmentChars ?? PLAYER_ECHO_MAX_FRAGMENT_CHARS));
+  const maxFragments = clamp(opts?.maxFragments ?? PLAYER_ECHO_MAX_FRAGMENTS, 0, PLAYER_ECHO_MAX_FRAGMENTS);
+  const maxFragmentChars = clamp(opts?.maxFragmentChars ?? PLAYER_ECHO_MAX_FRAGMENT_CHARS, 16, PLAYER_ECHO_MAX_FRAGMENT_CHARS);
   if (!canon || maxFragments <= 0 || !Array.isArray(canon.fragments)) return [];
 
   const rows = canon.fragments

@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { PlaythroughTranscript } from "@/lib/evals/playthrough/types";
 
 export type SubjectivePlayabilityDimension = "actionPayoff" | "tensionArc" | "novelty" | "choiceMeaning" | "clarity" | "continueDesire";
@@ -12,7 +13,7 @@ export interface SubjectivePlayabilityAssessment {
   limitations: string[];
 }
 
-const clamp5 = (value: number) => Math.max(1, Math.min(5, value));
+const clamp5 = (value: number) => clamp(value, 1, 5);
 
 function hasDelta(dm: Record<string, unknown>): boolean {
   const keys = ["new_tasks", "task_updates", "awarded_items", "consumed_items", "clue_updates", "main_threat_updates", "weapon_updates", "weapon_bag_updates"];

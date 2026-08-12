@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Trace Store
+ * Evaluation & Regression Campaign — Trace Store
  *
  * Persists execution traces to JSONL files for later analysis,
  * replay, and judge evaluation. Each trace is a complete record

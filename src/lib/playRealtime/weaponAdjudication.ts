@@ -1,4 +1,5 @@
 import { getWeaponById } from "@/lib/registry/weapons";
+import { clamp } from "@/lib/clamp";
 import { guessPlayerLocationFromContext } from "@/lib/playRealtime/b1Safety";
 import type { ClientStructuredContextV1 } from "@/lib/security/chatValidation";
 
@@ -18,7 +19,7 @@ type EquippedWeaponSnapshot = {
 type ThreatPhase = "idle" | "active" | "suppressed" | "breached";
 
 function clampInt(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, Math.trunc(n)));
+  return clamp(Math.trunc(n), min, max);
 }
 
 function inferFloorIdFromLocation(location: string | null): string | null {
@@ -276,7 +277,7 @@ export function applyWeaponTacticalAdjudication(args: {
     0.25 +
     clampInt(stability, 0, 100) * 0.0065 -
     clampInt(contamination, 0, 100) * 0.004;
-  const reliability = Math.max(0.1, Math.min(0.92, reliabilityBase));
+  const reliability = clamp(reliabilityBase, 0.1, 0.92);
   const roll = stableRand01(`${args.requestId}:${w.weaponId}:${threatId ?? "none"}:${args.latestUserInput}`);
   const reliable = roll < reliability;
 

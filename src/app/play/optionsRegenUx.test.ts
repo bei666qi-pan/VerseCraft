@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   backfillAcceptedOptionsFromModel,
+  buildOptionsOnlyContextMessages,
   getOptionsOnlyDeadlineMs,
 } from "@/app/play/optionsRegenUx";
 import { OPTIONS_REGEN_LATENCY_BUDGET } from "@/lib/perf/waitingConfig";
@@ -17,6 +18,12 @@ test("options regen UX: short-link client deadlines stay within P99 targets", ()
   assert.equal(getOptionsOnlyDeadlineMs("auto_missing_main") <= 9_000, true);
   assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") <= 11_000, true);
   assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") >= getOptionsOnlyDeadlineMs("manual_button"), true);
+});
+
+test("options regen UX: opening request always carries an explicit user meta request", () => {
+  const messages = buildOptionsOnlyContextMessages({ latestNarrative: "走廊里传来脚步声。", latestPlayerAction: "" });
+  assert.deepEqual(messages.map((message) => message.role), ["assistant", "user"]);
+  assert.match(messages.at(-1)?.content ?? "", /生成四个可执行行动选项/);
 });
 
 test("options regen UX: NEXT_PUBLIC_VC_TIGHT_TIMEOUTS=0 cannot widen options-only deadlines", async () => {

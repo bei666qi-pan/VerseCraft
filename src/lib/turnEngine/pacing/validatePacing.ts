@@ -3,6 +3,7 @@ import {
   normalizeNarrativeAuditPayload,
   type NarrativeAuditCandidateNewFact,
 } from "@/lib/worldFacts/narrativeAudit";
+import { clamp } from "@/lib/clamp";
 import type { WorldFactCategory } from "@/lib/worldFacts/worldFactRegistry";
 import type {
   BeatState,
@@ -69,7 +70,7 @@ function asBoolean(value: unknown): boolean {
 function clampInt(value: unknown, min: number, max: number, fallback = 0): number {
   const n = asNumber(value);
   const safe = n === null ? fallback : Math.trunc(n);
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 export function normalizeBeatState(value: unknown): BeatState | null {

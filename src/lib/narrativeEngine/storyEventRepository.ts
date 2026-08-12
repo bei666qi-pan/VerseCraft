@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import { storyEvents } from "@/db/schema";
 
 export type StoryEventInsertRow = typeof storyEvents.$inferInsert;
@@ -159,7 +160,7 @@ function normalizeReadInput(input: StoryEventReadInput): Required<StoryEventRead
   return {
     sessionId: input.sessionId ?? null,
     userId: input.userId ?? null,
-    limit: Math.max(0, Math.min(24, Math.trunc(input.limit ?? 12))),
+    limit: clamp(Math.trunc(input.limit ?? 12), 0, 24),
   };
 }
 

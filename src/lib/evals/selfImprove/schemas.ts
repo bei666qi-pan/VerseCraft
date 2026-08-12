@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — JSON Schemas
+ * Evaluation & Regression Campaign — JSON Schemas
  *
  * Zod-inspired runtime validation schemas for all artifacts.
  * These validate the shapes of JSON/JSONL outputs at runtime.
@@ -16,7 +16,6 @@ import type {
   DefectSignature,
   TriagedDefect,
   IterationLogEntry,
-  FinalReport,
 } from "./types";
 
 // ── Validation helpers ────────────────────────────────

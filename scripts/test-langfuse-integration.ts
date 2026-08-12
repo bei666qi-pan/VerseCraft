@@ -1,6 +1,6 @@
 // scripts/test-langfuse-integration.ts
 // End-to-end test: verifies Langfuse tracing is working with VerseCraft.
-// Requires: Langfuse running on localhost:3100, VerseCraft dev server on localhost:666.
+// Requires: Langfuse running at LANGFUSE_BASE_URL, VerseCraft dev server on localhost:666.
 //
 // Usage: VERSECRAFT_ENABLE_LANGFUSE=1 npx tsx scripts/test-langfuse-integration.ts
 
@@ -9,6 +9,11 @@ import { hashIdentity } from "@/lib/observability/langfuse/privacy";
 import { shouldSample } from "@/lib/observability/langfuse/sampling";
 import { buildEvalScores, uploadScores } from "@/lib/observability/langfuse/scores";
 import { validatePromptShadow } from "@/lib/observability/langfuse/prompts";
+import { config as loadDotenv } from "dotenv";
+import path from "node:path";
+
+loadDotenv({ path: path.resolve(process.cwd(), ".env.local"), override: false, quiet: true });
+loadDotenv({ path: path.resolve(process.cwd(), ".env"), override: false, quiet: true });
 
 async function main() {
   console.log("=== VerseCraft × Langfuse Integration Test ===\n");
@@ -75,8 +80,9 @@ async function main() {
   console.log(`   built ${scores.length} scores`);
 
   try {
-    await uploadScores("test-trace-001", scores);
-    console.log("   upload attempted ✅ (check Langfuse UI)");
+    const uploadResult = await uploadScores("test-trace-001", scores);
+    console.log(`   upload result: ${JSON.stringify(uploadResult)}`);
+    if (uploadResult.failed > 0 || uploadResult.skipped) throw new Error("score upload was not accepted");
   } catch (e) {
     console.log(`   upload failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -84,16 +90,20 @@ async function main() {
 
   // 6. Prompt validation
   console.log("6. Prompt shadow validation");
-  const result = await validatePromptShadow(
-    "versecraft-dm-stable",
-    "你是一个中文互动叙事游戏的 DM。请严格以 JSON 格式输出。",
-    "development"
-  );
-  console.log(`   match: ${result.match ? "✅" : "⚠️"} (localHash=${result.localHash.slice(0, 8)}...)`);
+  if (cfg.promptSource === "local") {
+    console.log("   skipped: promptSource=local (no remote prompt is required)");
+  } else {
+    const result = await validatePromptShadow(
+      "versecraft-dm-stable",
+      "你是一个中文互动叙事游戏的 DM。请严格以 JSON 格式输出。",
+      "development"
+    );
+    console.log(`   match: ${result.match ? "✅" : "⚠️"} (localHash=${result.localHash.slice(0, 8)}...)`);
+  }
   console.log();
 
   console.log("=== Integration test complete ===");
-  console.log("Next: start VerseCraft (pnpm dev) and play a turn → traces appear in http://localhost:3100");
+  console.log(`Next: start VerseCraft (pnpm dev) and play a turn → traces appear in ${cfg.baseUrl}`);
 }
 
 main().catch((e) => {

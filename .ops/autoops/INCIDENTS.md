@@ -12,7 +12,7 @@
 
 - `simulate-alert.json`
 - `runtime-evidence.json`
-- `codex-prompt.md`
+- `implementation-handoff.md`
 - `healthcheck.json`
 - `coolify-deployment.json`
 - `coolify-restart.json`

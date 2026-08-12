@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import { encodeSseEventPayload } from "@/lib/turnEngine/sse";
 import type { MockAiDelayConfig, MockStreamScenario } from "@/lib/ai/mock/types";
 
@@ -9,7 +10,7 @@ function delay(ms: number): Promise<void> {
 function readEnvDelay(name: string, fallback: number): number {
   const raw = Number(process.env[name] ?? NaN);
   if (!Number.isFinite(raw)) return fallback;
-  return Math.max(0, Math.min(30_000, Math.trunc(raw)));
+  return clamp(Math.trunc(raw), 0, 30_000);
 }
 
 export function resolveMockDelayConfig(scenario: string): MockAiDelayConfig {

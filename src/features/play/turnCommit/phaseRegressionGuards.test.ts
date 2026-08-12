@@ -10,6 +10,8 @@ import {
 test("phase4: narrative acquire semantics should be detectable", () => {
   assert.equal(hasStrongAcquireSemantics("你在暗格中获得了旧钥匙。"), true);
   assert.equal(hasStrongAcquireSemantics("你环顾四周，没有发现异常。"), false);
+  assert.equal(hasStrongAcquireSemantics("如果以后还能得到相同反应，才值得继续追查。"), false);
+  assert.equal(hasStrongAcquireSemantics("我从抽屉里拿到一把钥匙。"), true);
 });
 
 test("phase4: acquire mismatch warning should trigger instead of silent pass", () => {

@@ -1,4 +1,4 @@
-name: Auto-Ops Local Codex Handoff
+name: Auto-Ops Evidence Handoff
 
 on:
   repository_dispatch:
@@ -42,7 +42,6 @@ jobs:
       AUTOOPS_REPO: ${{ github.repository }}
       AUTOOPS_BRANCH: main
       AUTOOPS_DEPLOY_MODE: ${{ vars.AUTOOPS_DEPLOY_MODE || 'observe' }}
-      AUTOOPS_CODE_FIX_MODE: local
       GITHUB_TOKEN: ${{ github.token }}
       COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
       COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
@@ -88,7 +87,7 @@ jobs:
           }, null, 2));
           NODE
 
-      - name: Collect runtime evidence and generate local Codex prompt
+      - name: Collect runtime evidence
         run: node scripts/autoops/collect-runtime-evidence.mjs --payload-file .ops/autoops/runtime/incident-payload.json --health-attempts 1
         continue-on-error: true
 
@@ -96,7 +95,7 @@ jobs:
         run: pnpm autoops:self-test
         continue-on-error: true
 
-      - name: Create or update local Codex issue
+      - name: Create or update incident issue
         id: issue
         run: |
           node scripts/autoops/create-incident-issue.mjs --payload-file .ops/autoops/runtime/incident-payload.json --codex-needed
@@ -106,7 +105,7 @@ jobs:
             exit 1
           fi
           echo "number=${issue_number}" >> "$GITHUB_OUTPUT"
-          echo "::notice::Local Codex repair command: pnpm autoops:local-codex -- --issue ${issue_number} --push-main"
+          echo "::notice::Incident evidence is ready for an explicit implementation task: issue ${issue_number}"
 
       - name: Add handoff comment
         run: |
@@ -115,15 +114,10 @@ jobs:
           const client = new GitHubClient();
           const issue = process.env.ISSUE_NUMBER;
           const body = [
-            "Auto-Ops collected runtime evidence and generated a local Codex repair prompt.",
+            "Auto-Ops collected runtime evidence for an explicit implementation handoff.",
             "",
-            "This project does not use `OPENAI_API_KEY`; GitHub Actions will not run cloud Codex.",
-            "",
-            "Run locally:",
-            "",
-            "```bash",
-            `pnpm autoops:local-codex -- --issue ${issue} --push-main`,
-            "```",
+            "Auto-Ops will not invoke a code writer or commit/push generated changes.",
+            "Open a reviewed implementation task from this issue when a code change is required.",
             "",
             `Workflow run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
             "Artifact: `autoops-runtime-evidence`"
@@ -147,7 +141,7 @@ jobs:
             !.ops/autoops/runtime/*.env
             !.ops/autoops/runtime/*.zip
 
-      - name: Local repair instructions
+      - name: Implementation handoff instructions
         run: |
-          echo "Cloud Codex is disabled. Run this on the local Codex machine:"
-          echo "pnpm autoops:local-codex -- --issue ${{ steps.issue.outputs.number }} --push-main"
+          echo "Automatic code repair is disabled."
+          echo "Open an explicit implementation task from issue ${{ steps.issue.outputs.number }} and its uploaded evidence."

@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import { envBoolean, envEnum, envNumber } from "@/lib/config/envRaw";
 
 export type WorldDirectorMode = "off" | "shadow" | "soft";
@@ -31,8 +32,8 @@ export function resolveWorldDirectorConfig(): WorldDirectorConfig {
     criticEnabled: enabled && envBoolean("AI_ENABLE_DIRECTOR_CRITIC", false),
     toolLoopEnabled: enabled && envBoolean("AI_DIRECTOR_TOOL_LOOP_ENABLED", false),
     enableLangGraph: enabled && envBoolean("VERSECRAFT_ENABLE_LANGGRAPH", false),
-    maxDueHints: Math.max(1, Math.min(3, envNumber("AI_DIRECTOR_MAX_DUE_HINTS", 2))),
-    minTriggerGapTurns: Math.max(0, Math.min(48, envNumber("AI_DIRECTOR_MIN_TRIGGER_GAP_TURNS", 4))),
+    maxDueHints: clamp(envNumber("AI_DIRECTOR_MAX_DUE_HINTS", 2), 1, 3),
+    minTriggerGapTurns: clamp(envNumber("AI_DIRECTOR_MIN_TRIGGER_GAP_TURNS", 4), 0, 48),
     maxPendingAgendaPerSession: Math.max(
       1,
       Math.min(50, envNumber("AI_DIRECTOR_MAX_PENDING_AGENDA_PER_SESSION", 12))

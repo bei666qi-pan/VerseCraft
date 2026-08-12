@@ -6,6 +6,7 @@
  *   1. orchestrator.ts — 编排器主循环第④步
  *   2. sutAdapter.ts — MockSutAdapter 内部状态同步
  */
+import { clamp } from "@/lib/clamp";
 import type { GameStateSnapshot } from "./types";
 
 export function floorFromLocation(location: string, fallback = "3F"): string {
@@ -33,7 +34,7 @@ export function applyDmJsonToState(
 
   // HP（直接覆盖——战斗/治疗事件用）
   if (typeof dmJson["hp"] === "number") {
-    delta.hp = Math.max(0, Math.min(state.maxHp, dmJson["hp"] as number));
+    delta.hp = clamp(dmJson["hp"] as number, 0, state.maxHp);
   }
 
   // sanity_damage
@@ -176,23 +177,23 @@ export function applyDmJsonToState(
         const weapon = wu["weapon"] as Record<string, unknown>;
         if (typeof weapon.id === "string" && weapon.id) {
           delta.equippedWeapon = weapon.id;
-          if (typeof weapon.stability === "number") delta.weaponStability = Math.max(0, Math.min(100, Math.trunc(weapon.stability)));
-          if (typeof weapon.contamination === "number") delta.weaponContamination = Math.max(0, Math.min(100, Math.trunc(weapon.contamination)));
+          if (typeof weapon.stability === "number") delta.weaponStability = clamp(Math.trunc(weapon.stability), 0, 100);
+          if (typeof weapon.contamination === "number") delta.weaponContamination = clamp(Math.trunc(weapon.contamination), 0, 100);
         }
       }
       const equipped = delta.equippedWeapon === undefined ? state.equippedWeapon : delta.equippedWeapon;
       if (!equipped) continue;
       if (typeof wu["stability"] === "number" && Number.isFinite(wu["stability"])) {
-        delta.weaponStability = Math.max(0, Math.min(100, Math.trunc(wu["stability"])));
+        delta.weaponStability = clamp(Math.trunc(wu["stability"]), 0, 100);
       }
       if (typeof wu["contamination"] === "number" && Number.isFinite(wu["contamination"])) {
-        delta.weaponContamination = Math.max(0, Math.min(100, Math.trunc(wu["contamination"])));
+        delta.weaponContamination = clamp(Math.trunc(wu["contamination"]), 0, 100);
       }
       const targetId = typeof wu.weaponId === "string" ? wu.weaponId : equipped;
       const bagWeapon = nextBag.find((weapon) => weapon.id === targetId);
       if (bagWeapon) {
-        if (typeof wu.stability === "number" && Number.isFinite(wu.stability)) bagWeapon.stability = Math.max(0, Math.min(100, Math.trunc(wu.stability)));
-        if (typeof wu.contamination === "number" && Number.isFinite(wu.contamination)) bagWeapon.contamination = Math.max(0, Math.min(100, Math.trunc(wu.contamination)));
+        if (typeof wu.stability === "number" && Number.isFinite(wu.stability)) bagWeapon.stability = clamp(Math.trunc(wu.stability), 0, 100);
+        if (typeof wu.contamination === "number" && Number.isFinite(wu.contamination)) bagWeapon.contamination = clamp(Math.trunc(wu.contamination), 0, 100);
         if (typeof wu.repairable === "boolean") bagWeapon.repairable = wu.repairable;
       }
     }

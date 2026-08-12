@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Quality Gate
+ * Evaluation & Regression Campaign — Quality Gate
  *
  * Runs the full quality gate after each repair round:
  * 1. New defect regression tests

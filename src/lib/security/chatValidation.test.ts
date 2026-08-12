@@ -67,6 +67,28 @@ test("validateChatRequest: clientPurpose accepts options_regen_only", () => {
   assert.equal(v.clientPurpose, "options_regen_only");
 });
 
+test("validateChatRequest: opening options-only accepts assistant context without historical user action", () => {
+  const v = validateChatRequest({
+    messages: [{ role: "assistant", content: "走廊尽头传来拖行的脚步声。" }],
+    playerContext: "玩家位于一层走廊。",
+    clientPurpose: "options_regen_only",
+    clientReason: "开场缺少可选行动",
+    optionsRegenContext: { latestNarrativeExcerpt: "走廊尽头传来拖行的脚步声。" },
+  });
+  assert.ok(v.ok);
+  assert.equal(v.clientPurpose, "options_regen_only");
+  assert.equal(v.latestUserInput, "");
+});
+
+test("validateChatRequest: normal chat still rejects assistant-only context", () => {
+  const v = validateChatRequest({
+    messages: [{ role: "assistant", content: "走廊尽头传来拖行的脚步声。" }],
+    playerContext: "玩家位于一层走廊。",
+  });
+  assert.equal(v.ok, false);
+  if (!v.ok) assert.equal(v.error, "player action is empty");
+});
+
 test("validateChatRequest: options regen metadata is sanitized and preserved", () => {
   const v = validateChatRequest({
     messages: [{ role: "user", content: "hi" }],

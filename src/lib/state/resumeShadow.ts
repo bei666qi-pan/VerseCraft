@@ -4,6 +4,7 @@ import { pruneMemorySpine } from "@/lib/memorySpine/prune";
 import { normalizeDirectorState } from "@/lib/storyDirector/postTurn";
 import { normalizeIncidentQueue } from "@/lib/storyDirector/queue";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
+import { clamp } from "@/lib/clamp";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 
 export const RESUME_SHADOW_KEY = "versecraft-resume-shadow";
@@ -62,7 +63,7 @@ function toPlainObject(v: unknown): Record<string, unknown> | null {
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(String(n ?? ""));
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function truncateText(v: unknown, maxLen: number): string {

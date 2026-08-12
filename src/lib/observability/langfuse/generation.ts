@@ -33,7 +33,6 @@ export function recordAiGenerationMetric(rec: AiCostRecord): void {
     if (rec.phase === "start" || rec.phase === "circuit_skip" || rec.phase === "fallback") {
       const meta: GenerationMetadata = {
         name,
-        name,
         requestId: rec.requestId,
         input: rec.inputSnapshot,
         output: rec.outputSnapshot,

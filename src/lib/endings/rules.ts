@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type {
   BuildEndingIdempotencyKeyInput,
   EndingEligibility,
@@ -21,7 +22,7 @@ function toInt(value: unknown, fallback = 0): number {
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
+  return clamp(value, 0, 1);
 }
 
 function normalizeTurn(value: unknown): number {

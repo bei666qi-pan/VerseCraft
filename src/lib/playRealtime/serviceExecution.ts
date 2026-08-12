@@ -1,6 +1,7 @@
 import { FORGE_CATALOG_MINIMAL, SHOP_CATALOG_MINIMAL, getServicesForLocation } from "@/lib/registry/serviceNodes";
 import { getWeaponById } from "@/lib/registry/weapons";
 import { buildLightForgePreview, executeLightForge } from "./forgeService";
+import { clamp } from "@/lib/clamp";
 import { guessPlayerLocationFromContext } from "./b1Safety";
 import type { ClientStructuredContextV1 } from "@/lib/security/chatValidation";
 
@@ -56,7 +57,7 @@ function computeWeaponizeFinalCost(args: {
 
   // 上限：最多打 5 折，且至少支付 1（避免“0 元武器化”）
   const maxDiscount = Math.floor(base * 0.5);
-  const safeDiscount = Math.max(0, Math.min(maxDiscount, discount));
+  const safeDiscount = clamp(discount, 0, maxDiscount);
   const final = Math.max(1, base - safeDiscount);
   return { finalCost: final, applied: safeDiscount > 0, reasonCodes: codes };
 }
@@ -354,7 +355,7 @@ export function applyB1ServiceExecutionGuard(args: {
     const s = (args.clientState as any)?.stats;
     const obj = s && typeof s === "object" && !Array.isArray(s) ? s : null;
     const clamp = (n: unknown) =>
-      typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(99, Math.trunc(n))) : 0;
+      typeof n === "number" && Number.isFinite(n) ? clamp(Math.trunc(n), 0, 99) : 0;
     return {
       sanity: clamp(obj?.sanity),
       agility: clamp(obj?.agility),
@@ -370,8 +371,8 @@ export function applyB1ServiceExecutionGuard(args: {
       return { weaponId: null, stability: null, mods: [], infusions: [], contamination: 0, repairable: true, raw: null };
     }
     const id = typeof (eq as any).id === "string" ? String((eq as any).id) : null;
-    const stability = typeof (eq as any).stability === "number" ? Math.max(0, Math.min(100, Math.trunc((eq as any).stability))) : null;
-    const contamination = typeof (eq as any).contamination === "number" ? Math.max(0, Math.min(100, Math.trunc((eq as any).contamination))) : 0;
+    const stability = typeof (eq as any).stability === "number" ? clamp(Math.trunc((eq as any).stability), 0, 100) : null;
+    const contamination = typeof (eq as any).contamination === "number" ? clamp(Math.trunc((eq as any).contamination), 0, 100) : 0;
     const repairable = typeof (eq as any).repairable === "boolean" ? Boolean((eq as any).repairable) : true;
     const mods = Array.isArray((eq as any).currentMods) ? (eq as any).currentMods.filter((x: any) => typeof x === "string") : [];
     const infusions = Array.isArray((eq as any).currentInfusions) ? (eq as any).currentInfusions : [];

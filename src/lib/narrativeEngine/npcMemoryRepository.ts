@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import { npcMemoryEntries } from "@/db/schema";
 
 export type NpcMemoryInsertRow = typeof npcMemoryEntries.$inferInsert;
@@ -172,7 +173,7 @@ function normalizeReadInput(input: NpcMemoryReadInput): Required<NpcMemoryReadIn
     npcId: input.npcId ?? null,
     sessionId: input.sessionId ?? null,
     userId: input.userId ?? null,
-    limit: Math.max(0, Math.min(24, Math.trunc(input.limit ?? 8))),
+    limit: clamp(Math.trunc(input.limit ?? 8), 0, 24),
   };
 }
 

@@ -7,14 +7,50 @@
  * - One-api warmup ✅
  * - 步数 200（触发武器/职业/战斗核心机制，总时长 ~5h）
  * - 紧凑步延迟 2s（DM 实际是瓶颈，2s 足够）
+ *
+ * v2 改进（已合并）：
+ * - 全局 uncaughtException / unhandledRejection 处理
+ * - 日志写入物理文件（同时 stdout）
+ * - 每步心跳日志 + 强制 flush
+ * - warmup 超时缩短到 60s
  */
 
 import { config } from "dotenv";
+import { writeFileSync } from "fs";
+
 config({ path: ".env.local" });
+
+// 全局错误处理 - 写入日志文件
+process.on("uncaughtException", (err) => {
+  const msg = `\n[FATAL] uncaughtException: ${err.message}\n${err.stack}\n`;
+  try { writeFileSync("/tmp/stageA-fatal.log", msg, { flag: "a" }); } catch {}
+  console.error(msg);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  const msg = `\n[FATAL] unhandledRejection: ${reason instanceof Error ? reason.message : String(reason)}\n${reason instanceof Error ? reason.stack : ""}\n`;
+  try { writeFileSync("/tmp/stageA-fatal.log", msg, { flag: "a" }); } catch {}
+  console.error(msg);
+  process.exit(1);
+});
+
+// 心跳日志
+const LOG_HEARTBEAT = "/tmp/stageA-heartbeat.log";
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+function startHeartbeat(label: string) {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  const start = Date.now();
+  heartbeatInterval = setInterval(() => {
+    const elapsed = ((Date.now() - start) / 1000).toFixed(0);
+    writeFileSync(LOG_HEARTBEAT, `${new Date().toISOString()} [${label}] alive ${elapsed}s\n`, { flag: "a" });
+  }, 30000);
+}
+function stopHeartbeat() {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+}
 
 import {
   runPlaythroughBatchV3,
-  findScenario,
 } from "../src/lib/evals/playthrough";
 import type { PlaythroughV3Config, PersonaType } from "../src/lib/evals/playthrough";
 import { callDeepSeekCompletion } from "../src/lib/evals/liveProvider";
@@ -53,19 +89,26 @@ const SYSTEMS: SystemGroup[] = [
   },
 ];
 
+function log(msg: string) {
+  console.log(msg);
+  try {
+    writeFileSync("/tmp/stageA-trace.log", `${new Date().toISOString()} ${msg}\n`, { flag: "a" });
+  } catch {}
+}
+
 async function warmupDeepSeek(): Promise<void> {
-  console.log("🔥 Warmup DeepSeek API...");
+  log("🔥 Warmup DeepSeek API...");
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const resp = await callDeepSeekCompletion({
         messages: [{ role: "user", content: "ping" }],
-        maxTokens: 5, timeoutMs: 180000,
+        maxTokens: 5, timeoutMs: 60000,
       });
-      console.log(`   ✅ warmup 成功 (${resp.latencyMs}ms, ${resp.model})`);
+      log(`   ✅ warmup 成功 (${resp.latencyMs}ms, ${resp.model})`);
       return;
     } catch (err) {
-      console.warn(`   ⚠️ warmup 第${attempt + 1}次失败: ${err instanceof Error ? err.message : String(err)}`);
-      if (attempt < 2) { await new Promise((r) => setTimeout(r, 30000)); }
+      log(`   ⚠️ warmup 第${attempt + 1}次失败: ${err instanceof Error ? err.message : String(err)}`);
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 30000));
     }
   }
 }
@@ -78,14 +121,14 @@ async function runOneSystem(system: SystemGroup): Promise<void> {
   const totalRuns = personas.length * system.scenarioIds.length * RUNS;
   const totalApiCalls = totalRuns * MAX_STEPS * 2;
 
-  console.log(`\n${"─".repeat(60)}`);
-  console.log(`${system.emoji} ${system.name}`);
-  console.log(`${"─".repeat(60)}`);
-  console.log(`  场景: ${system.scenarioIds.join(", ")}`);
-  console.log(`  Persona: ${personas.join(", ")}`);
-  console.log(`  每局: ${MAX_STEPS} 步 × ${RUNS} 局`);
-  console.log(`  预计 LLM 调用: ${totalApiCalls} 次`);
-  console.log(`  softlock 阈值: 40`);
+  log(`\n${"─".repeat(60)}`);
+  log(`${system.emoji} ${system.name}`);
+  log(`${"─".repeat(60)}`);
+  log(`  场景: ${system.scenarioIds.join(", ")}`);
+  log(`  Persona: ${personas.join(", ")}`);
+  log(`  每局: ${MAX_STEPS} 步 × ${RUNS} 局`);
+  log(`  预计 LLM 调用: ${totalApiCalls} 次`);
+  log(`  softlock 阈值: 60`);
 
   const config: PlaythroughV3Config = {
     scenarioIds: system.scenarioIds,
@@ -109,40 +152,44 @@ async function runOneSystem(system: SystemGroup): Promise<void> {
     const result = await runPlaythroughBatchV3(config);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    console.log(`\n  📊 ${system.name} 完成`);
-    console.log(`  耗时: ${elapsed}s`);
-    console.log(`  通过: ${result.passedRuns}/${result.totalRuns} (${(result.passedRuns / result.totalRuns * 100).toFixed(0)}%)`);
+    log(`\n  📊 ${system.name} 完成`);
+    log(`  耗时: ${elapsed}s`);
+    log(`  通过: ${result.passedRuns}/${result.totalRuns} (${(result.passedRuns / result.totalRuns * 100).toFixed(0)}%)`);
 
     for (const [sid, sc] of Object.entries(result.scenarioMap)) {
-      console.log(`    📊 ${sid}: ${sc.passed}/${sc.total} | avgSteps=${sc.avgSteps.toFixed(0)}`);
+      log(`    📊 ${sid}: ${sc.passed}/${sc.total} | avgSteps=${sc.avgSteps.toFixed(0)}`);
     }
     for (const [name, p] of Object.entries(result.byPersona)) {
-      console.log(`    ${name}: avg ${p.avgSteps.toFixed(1)}步 | softlock=${p.softlockCount}`);
+      log(`    ${name}: avg ${p.avgSteps.toFixed(1)}步 | softlock=${p.softlockCount}`);
     }
-    console.log(`  终止原因: ${Object.entries(result.byTermination).map(([r, c]) => `${r}=${c}`).join(" | ")}`);
+    log(`  终止原因: ${Object.entries(result.byTermination).map(([r, c]) => `${r}=${c}`).join(" | ")}`);
     if (result.topViolations.length > 0) {
-      console.log(`  违规: ${result.topViolations.map((v) => `${v.rule}(${v.count})`).join(", ")}`);
+      log(`  违规: ${result.topViolations.map((v) => `${v.rule}(${v.count})`).join(", ")}`);
     }
     if (result.failureClusters.length > 0) {
-      console.log(`  失败聚类: ${result.failureClusters.map((c) => `${c.label}(${c.count})`).join(", ")}`);
+      log(`  失败聚类: ${result.failureClusters.map((c) => `${c.label}(${c.count})`).join(", ")}`);
     }
   } catch (err) {
-    console.error(`  ❌ 运行失败: ${err instanceof Error ? err.message : String(err)}`);
+    log(`  ❌ 运行失败: ${err instanceof Error ? err.message : String(err)}`);
+    if (err instanceof Error && err.stack) {
+      log(`  Stack: ${err.stack.slice(0, 500)}`);
+    }
   }
-  console.log("");
+  log("");
 }
 
 async function main() {
-  console.log("🎮 VerseCraft Stage A 最终版");
-  console.log(`   服务端: ${VERSE_CRAFT_URL}`);
-  console.log(`   模型: ac-deepseek-v4-flash (via one-api)`);
-  console.log(`   每局上限: ${parseInt(process.env.LIVE_MAX_STEPS ?? "200", 10)} 步`);
-  console.log(`   时间: ${new Date().toLocaleString()}`);
-  console.log("");
+  log("🎮 VerseCraft Stage A 最终版");
+  log(`   服务端: ${VERSE_CRAFT_URL}`);
+  log(`   模型: ac-deepseek-v4-flash (via one-api)`);
+  log(`   每局上限: ${parseInt(process.env.LIVE_MAX_STEPS ?? "200", 10)} 步`);
+  log(`   时间: ${new Date().toLocaleString()}`);
+  log("");
 
   // 验证 SUT
+  log("检查 SUT...");
   const res = await fetch(`${VERSE_CRAFT_URL}/`, { signal: AbortSignal.timeout(5000) });
-  console.log(`   ✅ SUT 可达: HTTP ${res.status}`);
+  log(`   ✅ SUT 可达: HTTP ${res.status}`);
 
   // Warmup
   await warmupDeepSeek();
@@ -153,18 +200,21 @@ async function main() {
   for (const sys of SYSTEMS) {
     for (let attempt = 0; attempt <= 1; attempt++) {
       if (attempt > 0) {
-        console.log(`\n🔄 重试 ${sys.name}（第 2 次）...\n`);
+        log(`\n🔄 重试 ${sys.name}（第 2 次）...\n`);
         await new Promise((r) => setTimeout(r, 15000));
       }
       try {
+        startHeartbeat(sys.name);
         await runOneSystem(sys);
+        stopHeartbeat();
         okCount++;
         break;
       } catch (err) {
+        stopHeartbeat();
         if (attempt < 1) {
-          console.error(`  ⚠️ 重试中: ${err instanceof Error ? err.message : String(err)}`);
+          log(`  ⚠️ 重试中: ${err instanceof Error ? err.message : String(err)}`);
         } else {
-          console.error(`  ❌ 放弃: ${err instanceof Error ? err.message : String(err)}`);
+          log(`  ❌ 放弃: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     }
@@ -172,15 +222,15 @@ async function main() {
   }
 
   const totalHours = ((Date.now() - overallStart) / 3600000).toFixed(1);
-  console.log(`\n${"═".repeat(60)}`);
-  console.log(`✅ Stage A 完成 (${okCount}/${SYSTEMS.length})`);
-  console.log(`   ${totalHours}h`);
-  console.log(`   Trace: .runtime-data/playthrough/live-*`);
-  console.log(`   时间: ${new Date().toLocaleString()}`);
-  console.log(`${"═".repeat(60)}`);
+  log(`\n${"═".repeat(60)}`);
+  log(`✅ Stage A 完成 (${okCount}/${SYSTEMS.length})`);
+  log(`   ${totalHours}h`);
+  log(`   时间: ${new Date().toLocaleString()}`);
+  log(`${"═".repeat(60)}`);
 }
 
 main().catch((err) => {
-  console.error("Fatal:", err);
+  log(`Fatal: ${err instanceof Error ? err.message : String(err)}`);
+  if (err instanceof Error && err.stack) log(`Stack: ${err.stack}`);
   process.exit(1);
 });

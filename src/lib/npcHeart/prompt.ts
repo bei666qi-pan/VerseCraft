@@ -1,5 +1,6 @@
 import type { NpcHeartRuntimeView } from "./types";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { clamp as clampNumber } from "@/lib/clamp";
 import { buildNpcRuntimeStateV1, renderNpcRuntimeStatePromptBlock } from "./runtimeState";
 
 function clamp(s: string, maxChars: number): string {
@@ -12,7 +13,7 @@ export function buildNpcHeartPromptBlock(input: {
   views: NpcHeartRuntimeView[];
   maxChars?: number;
 }): string {
-  const maxChars = Math.max(120, Math.min(900, input.maxChars ?? 520));
+  const maxChars = clampNumber(input.maxChars ?? 520, 120, 900);
   const views = (input.views ?? []).slice(0, 5);
   if (views.length === 0) return "";
   if (getVerseCraftRolloutFlags().enableNpcRuntimeStateV1) {

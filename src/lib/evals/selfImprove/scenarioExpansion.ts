@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Scenario Expansion
+ * Evaluation & Regression Campaign — Scenario Expansion
  *
  * When a round produces no defects, instead of repeating the same
  * 14 scenarios, this module generates variations:

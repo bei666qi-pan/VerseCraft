@@ -10,6 +10,7 @@ import {
 import type { MobileSettingsPanelProps } from "../types";
 import { ChapterSwitchModal } from "./ChapterSwitchModal";
 import { GameGuideModal } from "./GameGuideModal";
+import { clamp } from "@/lib/clamp";
 import { normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
 
 function SettingsDivider({ className = "" }: { className?: string }) {
@@ -90,7 +91,7 @@ export function MobileSettingsPanel({
   const [guideOpen, setGuideOpen] = useState(false);
   const [chapterOpen, setChapterOpen] = useState(false);
   const AudioIcon = audioMuted ? MobileReadingIcons.AudioOff : MobileReadingIcons.AudioOn;
-  const safeVolume = Math.max(0, Math.min(100, Math.round(volume)));
+  const safeVolume = clamp(Math.round(volume), 0, 100);
   const isEnglish = normalizeGameLanguage(language) === "en-US";
   const sliderBackground = useMemo(
     () =>

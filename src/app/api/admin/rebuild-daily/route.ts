@@ -1,7 +1,7 @@
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { rebuildAdminMetricsDailyForDateKey } from "@/lib/analytics/aggregation";
-import { adminJson, adminOk } from "@/lib/admin/apiEnvelope";
-import { verifyAdminRequest } from "@/lib/admin/authGuard";
+import { createAdminRoute } from "@/lib/admin/adminRouteFactory";
+import { clamp } from "@/lib/clamp";
 import { recordAdminAuditLog } from "@/lib/admin/auditLog";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +12,9 @@ function addDaysUtc(date: Date, deltaDays: number): Date {
   return next;
 }
 
-export async function POST(req: Request) {
-  const guard = await verifyAdminRequest(req);
-  if (!guard.ok) return guard.response;
-
-  const url = new URL(req.url);
-  const days = Math.max(1, Math.min(30, Number(url.searchParams.get("days") ?? 3) || 3));
+export const POST = createAdminRoute(async (ctx) => {
+  const sp = new URL(ctx.req.url).searchParams;
+  const days = clamp(Number(sp.get("days") ?? 3) || 3, 1, 30);
   const end = new Date();
   const results: Array<{ dateKey: string; ok: boolean; error?: string }> = [];
 
@@ -35,20 +32,11 @@ export async function POST(req: Request) {
   const success = results.every((r) => r.ok);
   await recordAdminAuditLog({
     action: "admin_manual_rebuild_daily",
-    actor: guard.actor,
+    actor: ctx.guard,
     success,
     reason: success ? null : "partial_rebuild_failed",
     metadata: { days, failed: results.filter((r) => !r.ok).length },
   });
 
-  return adminJson(
-    adminOk(
-      {
-        ok: success,
-        days,
-        results,
-      },
-      { degraded: !success, reason: success ? null : "partial_rebuild_failed" }
-    )
-  );
-}
+  return { data: { ok: success, days, results }, degraded: !success, reason: success ? null : "partial_rebuild_failed" };
+}, { label: "rebuild-daily" });

@@ -1,27 +1,20 @@
 #!/usr/bin/env tsx
 /**
- * Self-Improving Agent System — Campaign Mode
+ * VerseCraft Evaluation & Regression Campaign
  *
  * Full campaign runner with:
  * - minRounds enforcement
  * - Scenario expansion on clean rounds
- * - Calibration / mutation support
- * - Resume capability
  * - Proper stop policy with CLEAN_BUT_INSUFFICIENT_EVIDENCE
  *
  * Usage:
- *   pnpm self-improve:campaign -- --profile smoke
- *   pnpm self-improve:campaign -- --live --min-rounds 3 --max-rounds 8
- *   pnpm self-improve:campaign -- --resume --run-id si-20260730-xxx
- *   pnpm self-improve:campaign -- --calibration
+ *   pnpm eval:campaign -- --profile smoke
+ *   pnpm eval:campaign -- --live --max-rounds 3
  */
 
 import { runSelfImprovement } from "../../src/lib/evals/selfImprove/orchestrator";
 import type { SelfImproveProfile } from "../../src/lib/evals/selfImprove/types";
-import {
-  SMOKE_CAMPAIGN_CONFIG,
-  type CampaignStopConfig,
-} from "../../src/lib/evals/selfImprove/stopPolicy";
+import { SMOKE_CAMPAIGN_CONFIG } from "../../src/lib/evals/selfImprove/stopPolicy";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 
@@ -30,20 +23,13 @@ import { resolve, join } from "node:path";
 interface CampaignOptions {
   profile: SelfImproveProfile;
   live: boolean;
-  minRounds: number;
   maxRounds: number;
-  repeat: number;
   maxDurationMinutes: number;
   maxLiveCalls: number;
   gameConcurrency: number;
   judgeConcurrency: number;
-  resume: boolean;
-  runId?: string;
   caseId?: string;
   seed?: number;
-  calibration: boolean;
-  noRepair: boolean;
-  repairBackend: string;
 }
 
 function parseArgs(): CampaignOptions {
@@ -51,42 +37,35 @@ function parseArgs(): CampaignOptions {
   const opts: CampaignOptions = {
     profile: "smoke",
     live: false,
-    minRounds: SMOKE_CAMPAIGN_CONFIG.minRounds,
     maxRounds: SMOKE_CAMPAIGN_CONFIG.maxRounds,
-    repeat: SMOKE_CAMPAIGN_CONFIG.repeatedLiveRuns,
     maxDurationMinutes: SMOKE_CAMPAIGN_CONFIG.maxDurationMinutes,
     maxLiveCalls: SMOKE_CAMPAIGN_CONFIG.maxLiveModelCalls,
     gameConcurrency: 4,
     judgeConcurrency: 3,
-    resume: false,
-    calibration: false,
-    noRepair: false,
-    repairBackend: "codex",
   };
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case "--profile": opts.profile = (args[++i] as SelfImproveProfile) || "smoke"; break;
       case "--live": opts.live = true; break;
-      case "--min-rounds": opts.minRounds = parseInt(args[++i] || "3", 10); break;
       case "--max-rounds": opts.maxRounds = parseInt(args[++i] || "8", 10); break;
-      case "--repeat": opts.repeat = parseInt(args[++i] || "3", 10); break;
       case "--max-duration-minutes": opts.maxDurationMinutes = parseInt(args[++i] || "240", 10); break;
       case "--max-live-calls": opts.maxLiveCalls = parseInt(args[++i] || "200", 10); break;
       case "--game-concurrency": opts.gameConcurrency = parseInt(args[++i] || "4", 10); break;
       case "--judge-concurrency": opts.judgeConcurrency = parseInt(args[++i] || "3", 10); break;
-      case "--resume": opts.resume = true; break;
-      case "--run-id": opts.runId = args[++i]; break;
       case "--case": opts.caseId = args[++i]; break;
       case "--seed": opts.seed = parseInt(args[++i] || "0", 10); break;
-      case "--calibration": opts.calibration = true; break;
-      case "--no-repair": opts.noRepair = true; break;
-      case "--repair-backend": opts.repairBackend = args[++i] || "codex"; break;
+      case "--dry-run": break; // Legacy no-op: evaluation is always non-mutating.
     }
   }
 
   if (opts.live) process.env.SI_LIVE_MODE = "1";
   if (opts.seed) process.env.SI_SEED = String(opts.seed);
+  process.env.SI_MAX_ROUNDS = String(opts.maxRounds);
+  process.env.SI_MAX_LIVE_CALLS = String(opts.maxLiveCalls);
+  process.env.SI_MAX_DURATION_MIN = String(opts.maxDurationMinutes);
+  process.env.SI_GAME_CONCURRENCY = String(opts.gameConcurrency);
+  process.env.SI_JUDGE_CONCURRENCY = String(opts.judgeConcurrency);
 
   return opts;
 }
@@ -97,28 +76,23 @@ async function main(): Promise<void> {
   const opts = parseArgs();
 
   console.log("=".repeat(60));
-  console.log("VerseCraft Self-Improving Agent — CAMPAIGN MODE");
+  console.log("VerseCraft Evaluation & Regression Campaign");
   console.log("=".repeat(60));
   console.log(`Profile:      ${opts.profile}`);
   console.log(`Live mode:    ${opts.live}`);
-  console.log(`Min rounds:   ${opts.minRounds}`);
   console.log(`Max rounds:   ${opts.maxRounds}`);
-  console.log(`Repeat:       ${opts.repeat}`);
-  console.log(`Calibration:  ${opts.calibration}`);
-  console.log(`No repair:    ${opts.noRepair}`);
+  console.log("Repository:   read-only (reports and runtime evidence only)");
   console.log("=".repeat(60));
-
-  if (opts.calibration) {
-    console.log("\n[Campaign] Calibration mode — injecting controlled defects...");
-    await runCalibration(opts);
-    return;
-  }
 
   const report = await runSelfImprovement({
     profile: opts.profile,
     scenarioIds: opts.caseId ? [opts.caseId] : undefined,
     maxRounds: opts.maxRounds,
-    dryRun: opts.noRepair,
+    dryRun: true,
+    campaignConfig: {
+      maxDurationMinutes: opts.maxDurationMinutes,
+      maxLiveModelCalls: opts.maxLiveCalls,
+    },
   });
 
   // Write final report
@@ -136,19 +110,11 @@ async function main(): Promise<void> {
   console.log(`[Campaign] Status: ${report.status}`);
   console.log(`[Campaign] Stop reason: ${report.stopReason}`);
 
-  process.exit(report.status === "PASS" || report.status === "LIVE_CAMPAIGN_PASS" ? 0 : 1);
-}
-
-async function runCalibration(opts: CampaignOptions): Promise<void> {
-  // Placeholder for calibration mode (Section 七)
-  // Injects controlled defects, verifies full repair loop
-  console.log("[Calibration] NOT YET IMPLEMENTED — requires isolated git worktree.");
-  console.log("[Calibration] See docs/self-improving-agent-system-v2.md Section 七.");
-  process.exit(0);
+  process.exit(report.status === "PASS" ? 0 : 1);
 }
 
 function formatCampaignReport(report: any, opts: CampaignOptions): string {
-  return `# VerseCraft Self-Improving Agent — Campaign Report
+  return `# VerseCraft Evaluation & Regression Campaign Report
 
 **Status**: \`${report.status}\`
 **Run ID**: ${report.runId.id}
@@ -156,11 +122,9 @@ function formatCampaignReport(report: any, opts: CampaignOptions): string {
 **Stop Reason**: ${report.stopReason}
 
 ## Campaign Configuration
-- Min rounds: ${opts.minRounds}
 - Max rounds: ${opts.maxRounds}
 - Live: ${opts.live}
-- Calibration: ${opts.calibration}
-- No repair: ${opts.noRepair}
+- Repository mutation: disabled
 
 ## Architecture
 ${report.architecture}
@@ -169,9 +133,14 @@ ${report.architecture}
 ${(report.roundDetails || []).map((rd: any) =>
   `### Round ${rd.round}
 - Defects found: ${rd.defectsFound}
-- Defects repaired: ${rd.defectsRepaired}
+- Recommendations generated: ${rd.recommendationsGenerated ?? 0}
+- Repairs applied by evaluator: 0
 - Root causes: ${(rd.rootCauses || []).join(", ") || "none"}`
 ).join("\n\n")}
+
+## Implementation Handoff
+This report is evidence, not an applied repair. Open an explicit implementation task for a confirmed defect, add a failing regression test, make the scoped production change, and rerun this campaign.
+${(report.recommendations || []).length === 0 ? "No implementation recommendations were generated." : (report.recommendations || []).map((item: any) => `- ${item.defectSignature.ruleId} (${item.defectSignature.affectedSystem}): ${item.approach}\n  Candidate files: ${(item.candidateFiles || []).join(", ") || "investigate from evidence"}\n  Required tests: ${(item.requiredTests || []).join("; ")}`).join("\n")}
 
 ## Resource Usage
 - Live model calls: ${report.resourceUsage?.liveModelCalls || "N/A"}

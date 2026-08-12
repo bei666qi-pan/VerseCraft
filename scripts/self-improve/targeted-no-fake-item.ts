@@ -74,7 +74,7 @@ async function main(): Promise<void> {
   writeFileSync(join(outDir, "replay-report.json"), JSON.stringify(report, null, 2), "utf-8");
   console.log(`[targeted] status=${report.status} stop=${report.stopReason}`);
   for (const rd of report.roundDetails) {
-    console.log(`[targeted] round ${rd.round}: defects=${rd.defectsFound} repaired=${rd.defectsRepaired}`);
+    console.log(`[targeted] round ${rd.round}: defects=${rd.defectsFound} recommendations=${rd.recommendationsGenerated} evaluatorRepairs=0`);
     for (const rc of rd.rootCauses) console.log(`  - ${rc}`);
   }
   process.exit(report.status === "PASS" ? 0 : 1);

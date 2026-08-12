@@ -1,5 +1,6 @@
 // src/lib/ai/governance/governanceEnvCore.ts
 /** Governance knobs without `server-only` (shared with response cache + unit tests). */
+import { clamp } from "@/lib/clamp";
 import { envBoolean, envNumber, envRaw } from "@/lib/config/envRaw";
 
 export const aiGovernanceEnv = {
@@ -11,5 +12,5 @@ export const aiGovernanceEnv = {
   enhanceCooldownSec: envNumber("AI_ENHANCE_COOLDOWN_SEC", 90),
   enhanceMaxPerHourPerSession: envNumber("AI_ENHANCE_MAX_PER_HOUR", 10),
   /** Min score (inclusive) to allow narrative enhancement gate; default matches historical 32. */
-  enhanceGateMinScore: Math.max(20, Math.min(80, envNumber("AI_ENHANCE_GATE_MIN_SCORE", 32))),
+  enhanceGateMinScore: clamp(envNumber("AI_ENHANCE_GATE_MIN_SCORE", 32), 20, 80),
 };

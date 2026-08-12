@@ -25,6 +25,7 @@ import { anyAiProviderConfigured } from "@/lib/ai/config/env";
 import { envRaw } from "@/lib/config/envRaw";
 import { getChatQueueConfig } from "@/lib/chatQueue/config";
 import { shouldQueueChatRequest } from "@/lib/chatQueue/service";
+import { clamp } from "@/lib/clamp";
 import { ONLINE_WINDOW_SECONDS } from "@/lib/presence/onlineWindow";
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
@@ -918,7 +919,7 @@ export async function listAdminUsers(opts: {
   actorType?: "all" | "registered" | "guest";
   sort?: "tokens" | "lastActive" | "playTime";
 }) {
-  const limit = Math.max(1, Math.min(100, Math.trunc(opts.limit ?? 20)));
+  const limit = clamp(Math.trunc(opts.limit ?? 20), 1, 100);
   const offset = parseOffsetCursor(opts.cursor);
   const search = `%${(opts.search ?? "").trim().replace(/[%_]/g, "")}%`;
   const actorType = opts.actorType ?? "all";

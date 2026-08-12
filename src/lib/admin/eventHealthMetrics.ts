@@ -7,6 +7,7 @@ import {
   validateAnalyticsEventContract,
   type AnalyticsEventContract,
 } from "@/lib/analytics/eventTaxonomy";
+import { clamp } from "@/lib/clamp";
 import type { AnalyticsEventName } from "@/lib/analytics/types";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 
@@ -189,7 +190,7 @@ export function computeEventHealthMetricsFromRows(
   rows: EventHealthRawRow[],
   opts?: { limit?: number; sampleCapped?: boolean }
 ): EventHealthMetrics {
-  const limit = Math.max(1, Math.min(100, Math.trunc(opts?.limit ?? 20)));
+  const limit = clamp(Math.trunc(opts?.limit ?? 20), 1, 100);
   const eventsByName = new Map<string, number>();
   const invalidByEvent = new Map<string, CountMap>();
   const missingProperties = new Map<string, number>();

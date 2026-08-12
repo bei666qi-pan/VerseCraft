@@ -8,6 +8,7 @@ import { adminMetricsDaily, adminStatsSnapshots, users } from "@/db/schema";
 import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 export { getUtcDateKey };
+import { clamp } from "@/lib/clamp";
 
 export type AdminChartPoint = {
   date: string;
@@ -128,7 +129,7 @@ async function getDailyTokensAndActiveUsersFromRedis(dateKeys: string[]): Promis
 }
 
 export async function getAdminChartData(daysBack: number = DAILY_METRICS_LOOKBACK_DEFAULT, endDate: Date = new Date()): Promise<AdminChartPoint[]> {
-  const safeDaysBack = Math.max(1, Math.min(60, Math.trunc(daysBack)));
+  const safeDaysBack = clamp(Math.trunc(daysBack), 1, 60);
 
   const endKey = getUtcDateKey(endDate);
   const startDate = addDaysUtc(endDate, -(safeDaysBack - 1));

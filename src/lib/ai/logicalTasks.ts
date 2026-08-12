@@ -289,7 +289,7 @@ export async function expandNarrativeOnly(args: {
   const startedAt = Date.now();
   const originalNarrative = String(args.originalNarrative ?? "");
   const beforeChars = Array.from(originalNarrative.replace(/\s+/g, "")).length;
-  const budgetMs = Math.max(1, Math.min(10_000, args.budgetMs ?? 6_000));
+  const budgetMs = clamp(args.budgetMs ?? 6_000, 1, 10_000);
   const timeout = createTimeoutSignal(args.signal, budgetMs);
 
   const system: ChatMessage = {
@@ -415,8 +415,8 @@ export async function repairNarrativeOnly(args: {
   const startedAt = Date.now();
   const originalNarrative = String(args.originalNarrative ?? "");
   const beforeChars = Array.from(originalNarrative.replace(/\s+/g, "")).length;
-  const maxChars = Math.max(80, Math.min(2800, Math.trunc(args.maxChars ?? Math.max(900, originalNarrative.length + 240))));
-  const budgetMs = Math.max(500, Math.min(6_000, args.budgetMs ?? 2_500));
+  const maxChars = clamp(Math.trunc(args.maxChars ?? Math.max(900, originalNarrative.length + 240)), 80, 2800);
+  const budgetMs = clamp(args.budgetMs ?? 2_500, 500, 6_000);
   const timeout = createTimeoutSignal(args.signal, budgetMs);
 
   const system: ChatMessage = {
@@ -610,6 +610,7 @@ export function parseOptionsArrayFromAiJson(v: unknown): string[] {
 }
 
 export { isNonNarrativeOptionLike } from "@/lib/play/optionQuality";
+import { clamp } from "@/lib/clamp";
 
 function guardModelGeneratedOptions(options: string[], maxCount = 4): string[] {
   const out: string[] = [];
@@ -794,7 +795,7 @@ export async function generateOptionsOnlyFallback(args: {
    */
   budgetMs?: number;
 }): Promise<OptionsOnlyFallbackResult> {
-  const budgetMs = Math.max(0, Math.min(VC_WAITING.optionsOnlyServerBudgetMs, args.budgetMs ?? VC_WAITING.optionsOnlyServerBudgetMs));
+  const budgetMs = clamp(args.budgetMs ?? VC_WAITING.optionsOnlyServerBudgetMs, 0, VC_WAITING.optionsOnlyServerBudgetMs);
   const t0 = Date.now();
   const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
 
@@ -894,7 +895,7 @@ export async function generateOptionsOnlyFallback(args: {
     const base = args.signal;
     if (budgetMs <= 0) return base;
     const rem = remainingMs();
-    const t = Math.max(1, Math.min(timeoutMs, rem));
+    const t = clamp(rem, 1, timeoutMs);
     if (!Number.isFinite(t) || t <= 0) return base;
     const ac = new AbortController();
     const tid = setTimeout(() => ac.abort(), t);
@@ -947,7 +948,7 @@ export async function generateOptionsOnlyFallback(args: {
     const done = tryParse(first.content);
     if (done.ok) return { ...done, latencyMs: Date.now() - t0 };
     if (done.acceptedOptions.length === 0 && (budgetMs <= 0 || remainingMs() >= 1_200)) {
-      const retryTimeoutMs = Math.max(1, Math.min(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, remainingMs()));
+      const retryTimeoutMs = clamp(remainingMs(), 1, VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs);
       const retry = await runOptionsOnlyAiOnce({
         ...args,
         temperature: 0.35,
@@ -983,7 +984,7 @@ export async function generateOptionsOnlyFallback(args: {
     if (!canRetry) {
       return { ok: false, reason: first.reason, debugReasonCodes: [first.reason], latencyMs: Date.now() - t0 };
     }
-    const retryTimeoutMs = Math.max(1, Math.min(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, remainingMs()));
+    const retryTimeoutMs = clamp(remainingMs(), 1, VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs);
     const retry = await runOptionsOnlyAiOnce({
       ...args,
       temperature: 0.35,
@@ -1171,7 +1172,7 @@ export async function generateDecisionOptionsOnlyFallback(args: {
   /** See `generateOptionsOnlyFallback.budgetMs`. */
   budgetMs?: number;
 }): Promise<{ ok: true; decision_options: string[] } | { ok: false; reason: string }> {
-  const budgetMs = Math.max(0, Math.min(VC_WAITING.optionsOnlyServerBudgetMs, args.budgetMs ?? VC_WAITING.optionsOnlyServerBudgetMs));
+  const budgetMs = clamp(args.budgetMs ?? VC_WAITING.optionsOnlyServerBudgetMs, 0, VC_WAITING.optionsOnlyServerBudgetMs);
   const t0 = Date.now();
   const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
 
@@ -1195,7 +1196,7 @@ export async function generateDecisionOptionsOnlyFallback(args: {
     const base = args.signal;
     if (budgetMs <= 0) return base;
     const rem = remainingMs();
-    const t = Math.max(1, Math.min(timeoutMs, rem));
+    const t = clamp(rem, 1, timeoutMs);
     if (!Number.isFinite(t) || t <= 0) return base;
     const ac = new AbortController();
     const tid = setTimeout(() => ac.abort(), t);

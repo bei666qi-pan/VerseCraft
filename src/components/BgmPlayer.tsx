@@ -9,13 +9,23 @@ import {
   resolveBgmTrackKey,
   type BgmTrackKey,
 } from "@/config/audio";
+import { clamp } from "@/lib/clamp";
 import { isMuted } from "@/lib/audioEngine";
 
 const CROSSFADE_DURATION_MS = 2000;
 const BASE_VOLUME = 0.4;
 
+function playAudio(element: HTMLAudioElement, label: string): void {
+  void element.play().catch((error: unknown) => {
+    const name = error && typeof error === "object" && "name" in error ? String(error.name) : "";
+    const message = error instanceof Error ? error.message : String(error);
+    if (name === "AbortError" || /play\(\) request was interrupted/i.test(message)) return;
+    console.error("[bgm]", label, message);
+  });
+}
+
 export function getBgmElementVolume(percent: number): number {
-  const safePercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 50;
+  const safePercent = Number.isFinite(percent) ? clamp(percent, 0, 100) : 50;
   return (safePercent / 100) * BASE_VOLUME;
 }
 
@@ -118,7 +128,7 @@ export function BgmPlayer() {
       active.currentTime = 0;
       active.volume = mutedRef.current ? 0 : targetVolumeRef.current;
       if (!mutedRef.current) {
-        void active.play().catch(() => {});
+        playAudio(active, "audioPlay");
       }
       return;
     }
@@ -137,7 +147,7 @@ export function BgmPlayer() {
     incoming.currentTime = 0;
 
     if (!mutedRef.current) {
-      void incoming.play().catch(() => {});
+      playAudio(incoming, "audioPlayIncoming");
     }
 
     const tick = (now: number) => {
@@ -193,7 +203,7 @@ export function BgmPlayer() {
       inactive.volume = 0;
     }
     if (active.paused) {
-      void active.play().catch(() => {});
+      playAudio(active, "audioPlay");
     }
   }, [muted, targetVolume]);
 

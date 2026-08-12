@@ -5,7 +5,7 @@ import {
   sanitizeDenialAwareFinalJson,
   sanitizeSafeDenialOccurrences,
   visibleTextFromFinalJson,
-} from "./eval-live-hallucination-canary";
+} from "../src/lib/evals/denialDetection";
 import {
   evaluateNarrativeSafetyCase,
   type NarrativeSafetyEvalCase,

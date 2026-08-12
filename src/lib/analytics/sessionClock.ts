@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 export type HeartbeatKind = "active" | "passive";
 export type VisibilityStateHint = "visible" | "hidden";
 
@@ -22,7 +23,7 @@ export function computeHeartbeatDelta(args: {
   const maxGapMs = typeof args.maxGapMs === "number" && Number.isFinite(args.maxGapMs) ? args.maxGapMs : 120_000;
   const last = typeof args.lastSeenAtMs === "number" && Number.isFinite(args.lastSeenAtMs) ? args.lastSeenAtMs : null;
   const rawGap = last ? args.nowMs - last : 0;
-  const gapMs = Math.max(0, Math.min(maxGapMs, rawGap));
+  const gapMs = clamp(rawGap, 0, maxGapMs);
   const onlineSec = Math.max(0, Math.trunc(gapMs / 1000));
   if (onlineSec <= 0) return { onlineSec: 0, activePlaySec: 0, readSec: 0, idleSec: 0 };
 

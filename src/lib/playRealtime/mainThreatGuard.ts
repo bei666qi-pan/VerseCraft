@@ -1,4 +1,5 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
+import { clamp } from "@/lib/clamp";
 import { guessPlayerLocationFromContext } from "./b1Safety";
 
 type DmRecord = Record<string, unknown>;
@@ -46,7 +47,7 @@ function sanitizeMainThreatUpdate(raw: unknown, fallbackFloorId: string | null, 
   const phase = normalizePhase(row.phase, defaultPhase);
   const suppressionProgress =
     typeof row.suppressionProgress === "number" && Number.isFinite(row.suppressionProgress)
-      ? Math.max(0, Math.min(100, Math.trunc(row.suppressionProgress)))
+      ? clamp(Math.trunc(row.suppressionProgress), 0, 100)
       : phase === "suppressed"
         ? 100
         : phase === "breached"

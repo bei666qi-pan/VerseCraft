@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 export type NarrativeBudgetTier =
   | "micro"
   | "short"
@@ -335,9 +336,9 @@ function applyChapterCaps(
   if (chapter.remainingHardChars <= 0) {
     return { minChars: 40, targetChars: 80, maxChars: 120 };
   }
-  const maxChars = Math.max(40, Math.min(numbers.maxChars, chapter.remainingHardChars));
-  const targetChars = Math.max(40, Math.min(numbers.targetChars, maxChars));
-  const minChars = Math.max(20, Math.min(numbers.minChars, targetChars));
+  const maxChars = clamp(chapter.remainingHardChars, 40, numbers.maxChars);
+  const targetChars = clamp(maxChars, 40, numbers.targetChars);
+  const minChars = clamp(targetChars, 20, numbers.minChars);
   return { minChars, targetChars, maxChars };
 }
 

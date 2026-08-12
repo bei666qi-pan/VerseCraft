@@ -4,6 +4,7 @@ import type { CodexEntry } from "@/store/useGameStore";
 import { computePlayerCombatScore } from "./playerCombatScore";
 import { getHiddenNpcCombatProfile, type HiddenNpcCombatProfile } from "./npcCombatProfiles";
 import { getCombatStyleFromRegistry } from "./npcCombatStyles";
+import { clamp } from "@/lib/clamp";
 import { resolveCombat } from "./resolveCombat";
 import type {
   CombatActorScore,
@@ -26,10 +27,6 @@ function vulnerableTagsForOpponent(
   const styleKey = opponent.npc.styleKey;
   if (!styleKey) return undefined;
   return getCombatStyleFromRegistry(styleKey)?.vulnerableToTags;
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
 }
 
 function clamp01(n: number): number {
@@ -235,4 +232,3 @@ export function adjudicateCombat(args: {
     kind: args.kind,
   });
 }
-

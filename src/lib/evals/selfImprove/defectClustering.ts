@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Defect Clustering
+ * Evaluation & Regression Campaign — Defect Clustering
  *
  * Clusters Oracle expectation mismatches and Judge violations
  * into root-cause groups with stable defect signatures.
@@ -12,7 +12,7 @@
  */
 
 import type { DeterministicCaseResult } from "./traceStore";
-import type { TriagedDefect, DefectSignature } from "./types";
+import type { TriagedDefect } from "./types";
 
 // ── Cluster definition ───────────────────────────────
 
@@ -181,7 +181,7 @@ export function clustersToTriagedDefects(clusters: DefectCluster[]): TriagedDefe
     severity: c.severity,
     sourceVerdicts: [],
     oracleReproduced: true,
-    autoRepairable: true,
-    disposition: "auto_repair",
+    recommendationEligible: true,
+    disposition: "explicit_implementation_recommended",
   }));
 }

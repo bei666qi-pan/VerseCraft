@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — State Machine
+ * Evaluation & Regression Campaign — State Machine
  *
  * Manages the lifecycle of a self-improvement run:
  * phase transitions, state persistence, resume capability,

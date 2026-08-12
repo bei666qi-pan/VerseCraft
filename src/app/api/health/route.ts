@@ -6,7 +6,7 @@ import { loadVerseCraftEnvFilesOnce, reloadVerseCraftProcessEnv } from "@/lib/co
 import { readAnyWorkerHeartbeat } from "@/lib/kg/workerHeartbeat";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const revalidate = 10;
 
 const WORKER_DEAD_JOB_WARN_THRESHOLD = 20;
 const WORKER_LAST_TICK_STALE_MIN = 30;

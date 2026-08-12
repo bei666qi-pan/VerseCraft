@@ -1,11 +1,12 @@
 import type { NpcProfileV2, NpcRelationStateV2, NpcSocialProfile } from "@/lib/registry/types";
 import type { NpcHeartProfile, NpcTaskStyle, TruthfulnessBand, ManipulationMode } from "./types";
+import { clamp } from "@/lib/clamp";
 import { resolvePersonalityBundle } from "./personalityCore";
 
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(String(n ?? ""));
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
-  return Math.max(min, Math.min(max, safe));
+  return clamp(safe, min, max);
 }
 
 function asText(v: unknown, fallback = ""): string {

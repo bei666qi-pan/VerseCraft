@@ -1,5 +1,6 @@
 import { evaluateEndingEligibility } from "./rules";
 import { createInitialEndingState, transitionEndingState } from "./stateMachine";
+import { clamp } from "@/lib/clamp";
 import { buildSettlementSnapshot } from "./summary";
 import type {
   BuildSettlementSnapshotInput,
@@ -84,7 +85,7 @@ function normalizeEligibility(raw: unknown): EndingEligibility | null {
       : "manual";
   return {
     outcome,
-    confidence: Math.max(0, Math.min(1, asFiniteNumber(record.confidence, 1))),
+    confidence: clamp(asFiniteNumber(record.confidence, 1), 0, 1),
     reasons: asStringArray(record.reasons, 24),
     blockers: asStringArray(record.blockers, 24),
     detectedAtTurn: Math.max(0, Math.trunc(asFiniteNumber(record.detectedAtTurn, 0))),

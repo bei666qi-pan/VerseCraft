@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 type Digest = {
   worldFlags: string[];
   professionCertified: boolean;
@@ -49,9 +50,9 @@ export function buildPlayerContextDigest(playerContext: string): Digest {
   const weaponId = (wm?.[1] ?? "").trim() || null;
   const stability = wm?.[2] ? Number(wm[2]) : NaN;
   const contamination = wm?.[6] ? Number(wm[6]) : NaN;
-  const weaponContamination = Number.isFinite(contamination) ? Math.max(0, Math.min(100, Math.trunc(contamination))) : null;
+  const weaponContamination = Number.isFinite(contamination) ? clamp(Math.trunc(contamination), 0, 100) : null;
   const weaponRepairable = wm?.[7] === "1" ? true : wm?.[7] === "0" ? false : null;
-  const st = Number.isFinite(stability) ? Math.max(0, Math.min(100, Math.trunc(stability))) : 0;
+  const st = Number.isFinite(stability) ? clamp(Math.trunc(stability), 0, 100) : 0;
   const c = typeof weaponContamination === "number" ? weaponContamination : 0;
   const weaponNeedsMaintenance = weaponRepairable === true && (st < 65 || c >= 40);
   const weaponPollutionHigh = c >= 70;

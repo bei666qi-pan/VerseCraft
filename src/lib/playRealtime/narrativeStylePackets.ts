@@ -2,6 +2,7 @@ import {
   DEFAULT_VERSECRAFT_STYLE_PROFILE_ID,
   getVerseCraftStyleProfile,
 } from "@/lib/narrativeStyle/styleBible";
+import { clamp as clampNumber } from "@/lib/clamp";
 import { getNarrativeStyleExamplesCompact } from "@/lib/narrativeStyle/styleExamples";
 
 type ContinuityFocus = "continuity" | "dialogue" | "investigate" | "combat" | "explore" | "meta" | "unknown";
@@ -30,7 +31,7 @@ function inferContinuityFocus(rawAction: string): ContinuityFocus {
 
 function diceBand(dice: number | null): "great" | "good" | "mixed" | "bad" | "awful" | "unknown" {
   if (!dice || !Number.isFinite(dice)) return "unknown";
-  const d = Math.max(1, Math.min(100, Math.trunc(dice)));
+  const d = clampNumber(Math.trunc(dice), 1, 100);
   if (d <= 10) return "great";
   if (d <= 35) return "good";
   if (d <= 70) return "mixed";
@@ -56,7 +57,7 @@ export function buildNarrativeContinuityPacketBlock(args: {
   };
   const text = `## 【narrative_continuity_packet】
 ${JSON.stringify(packet)}`;
-  const maxChars = Math.max(140, Math.min(600, args.maxChars ?? 300));
+  const maxChars = clampNumber(args.maxChars ?? 300, 140, 600);
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }
 
@@ -94,6 +95,6 @@ export function buildNarrativeStyleBiblePacketBlock(args: {
         : getNarrativeStyleExamplesCompact(styleProfile.style_profile_id),
   };
   const text = `## 【narrative_style_bible_packet】\n${JSON.stringify(packet)}`;
-  const maxChars = Math.max(360, Math.min(1600, args.maxChars ?? 1100));
+  const maxChars = clampNumber(args.maxChars ?? 1100, 360, 1600);
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }

@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { SnapshotNpcState } from "./types";
 import type { NpcRelationStateV2 } from "@/lib/registry/types";
 
@@ -18,7 +19,7 @@ export function buildNpcSnapshotMap(args: {
 
   const toRelationState = (favorability: number): NpcRelationStateV2 => ({
     favorability,
-    trust: Math.max(-100, Math.min(100, Math.trunc(favorability / 2))),
+    trust: clamp(Math.trunc(favorability / 2), -100, 100),
     fear: 0,
     debt: 0,
     betrayalFlags: [],

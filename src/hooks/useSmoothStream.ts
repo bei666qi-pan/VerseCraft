@@ -1,5 +1,6 @@
 "use client";
 
+import { clamp } from "@/lib/clamp";
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 
 export type SmoothStreamOptions = {
@@ -123,7 +124,7 @@ export function computePauseMs(args: {
   if (stage === "backlog") {
     if (backlog > 420) pause = 18;
     else if (backlog > 300) pause = 22;
-    else pause = Math.max(options.minTickMs, Math.min(pause, 34));
+    else pause = clamp(34, options.minTickMs, pause);
   }
 
   // initial burst keeps the first tokens snappy
@@ -131,7 +132,7 @@ export function computePauseMs(args: {
     pause = Math.min(pause, 22);
   }
 
-  return Math.max(options.minTickMs, Math.min(options.maxTickMs, pause));
+  return clamp(pause, options.minTickMs, options.maxTickMs);
 }
 
 function adjustChunkBoundaryForMarkers(chunk: string): string {
@@ -355,7 +356,7 @@ export function useSmoothStreamFromRef(
                 : stage === "backlog"
                   ? (() => {
                       const over = Math.max(0, q.length - mergedOptions.backlogThreshold);
-                      const t = Math.max(0, Math.min(1, over / 240));
+                      const t = clamp(over / 240, 0, 1);
                       const target =
                         mergedOptions.steadyMaxLen +
                         Math.round(t * (mergedOptions.backlogMaxLen - mergedOptions.steadyMaxLen));

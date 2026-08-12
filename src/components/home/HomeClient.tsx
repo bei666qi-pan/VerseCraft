@@ -1,5 +1,6 @@
 "use client";
 
+import { fireAndForget } from "@/lib/fireAndForget";
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -547,7 +548,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   useEffect(() => {
     if (homeViewTrackedRef.current) return;
     homeViewTrackedRef.current = true;
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "home_viewed",
       page: "/",
       source: "home",
@@ -557,13 +558,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         hasLocalProgress: localProgressInfo.hasAny || hasLocalAnySave || hasPlayableResumeShadow,
         hasCloud: hasCloudAnySave,
       },
-    }).catch(() => {});
+    }), "asyncOp");
   }, [entryState, user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave, hasPlayableResumeShadow, trackHomeGameplayEvent]);
 
   useEffect(() => {
     if (user) return;
     // 未登录时预取登录弹窗 chunk，避免首次点击“执笔 登录”出现可感知延迟。
-    void import("@/components/home/HomeAuthModal").catch(() => {});
+    fireAndForget(() => import("@/components/home/HomeAuthModal"), "dynamicImport");
   }, [user]);
 
   useEffect(() => {
@@ -773,12 +774,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   useEffect(() => {
     if (surveyEntryExposedTrackedRef.current) return;
     surveyEntryExposedTrackedRef.current = true;
-    void trackSurveyEvent("survey_entry_exposed", { placement: "home_fab", stepIndex: -1, questionId: "entry" }, "survey").catch(() => {});
+    fireAndForget(() => trackSurveyEvent("survey_entry_exposed", { placement: "home_fab", stepIndex: -1, questionId: "entry" }, "survey"), "trackSurvey");
   }, [trackSurveyEvent]);
 
   useEffect(() => {
     if (!surveyOpen) return;
-    void trackSurveyEvent(
+    fireAndForget(() => trackSurveyEvent(
       "survey_modal_opened",
       {
         mode: showBugFeedback ? "open_feedback" : "product_survey_embedded",
@@ -787,7 +788,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         questionId: "modal",
       },
       "survey"
-    ).catch(() => {});
+    ), "trackSurvey");
   }, [surveyOpen, showBugFeedback, surveyCompletion, trackSurveyEvent]);
 
   useEffect(() => {
@@ -796,7 +797,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     if (surveyCompletion !== "open") return;
     if (surveyStartedTrackedRef.current) return;
     surveyStartedTrackedRef.current = true;
-    void trackSurveyEvent("survey_started", { stepIndex: 0, questionId: HOME_SURVEY_FLOW[0]?.id ?? "unknown" }).catch(() => {});
+    fireAndForget(() => trackSurveyEvent("survey_started", { stepIndex: 0, questionId: HOME_SURVEY_FLOW[0]?.id ?? "unknown" }), "trackSurvey");
   }, [surveyOpen, showBugFeedback, surveyCompletion, trackSurveyEvent]);
 
   useEffect(() => {
@@ -807,18 +808,18 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const stepIndex = Math.max(0, Math.min(stepTotal - 1, surveyStep));
     const questionId = HOME_SURVEY_FLOW[stepIndex]?.id ?? "unknown";
     const pct = Math.round(((stepIndex + 1) / Math.max(1, stepTotal)) * 100);
-    void trackSurveyEvent("survey_step_viewed", {
+    fireAndForget(() => trackSurveyEvent("survey_step_viewed", {
         stepIndex,
         questionId,
         progressPct: pct,
-    }).catch(() => {});
+    }), "trackSurvey");
   }, [surveyOpen, showBugFeedback, surveyCompletion, surveyStep, trackSurveyEvent]);
 
   function openAuthModal() {
     // Avoid side effects inside state updaters (prevents Router/render warnings in React).
     setAuthOpen(true);
     setIsConnecting(true);
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "home_auth_clicked",
       page: "/",
       source: "home_header",
@@ -828,13 +829,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         hasCloud: hasCloudAnySave,
         reason: localProgressInfo.hasAny || hasLocalAnySave ? "sync_local_progress" : "account_value",
       },
-    }).catch(() => {});
-    void trackHomeGameplayEvent({
+    }), "asyncOp");
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "auth_modal_opened",
       page: "/",
       source: "auth_modal",
       payload: { entryState },
-    }).catch(() => {});
+    }), "asyncOp");
   }
 
   useEffect(() => {
@@ -857,12 +858,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   function switchAuthMode(mode: AuthMode) {
     setAuthMode(mode);
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "auth_mode_switched",
       page: "/",
       source: "auth_modal",
       payload: { mode },
-    }).catch(() => {});
+    }), "asyncOp");
   }
 
   async function handleLogout() {
@@ -921,7 +922,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       hasPlayableResumeShadow,
     });
 
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "home_continue_clicked",
       page: "/",
       source: "home_continue",
@@ -931,7 +932,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         tag: useShadowFallback ? "resume_shadow" : (row?.tag ?? null),
         resumeShadowUpdatedAt: useShadowFallback ? (resumeShadowSummary?.updatedAtIso ?? null) : null,
       },
-    }).catch(() => {});
+    }), "asyncOp");
 
     if (useShadowFallback) {
       const ok = hydrateFromResumeShadow();
@@ -972,12 +973,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       return;
     }
 
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "home_continue_resolved",
       page: "/",
       source: "home_continue",
       payload: { slotId, tag: row.tag },
-    }).catch(() => {});
+    }), "asyncOp");
 
     if (user) {
       const cr = cloudRows.find((c) => c.slotId === slotId);
@@ -1008,17 +1009,17 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   async function handleSurveySubmit() {
     const submitStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
-    void trackSurveyEvent("survey_submit_attempted", {
+    fireAndForget(() => trackSurveyEvent("survey_submit_attempted", {
       stepIndex: submitStepIndex,
       questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
-    }).catch(() => {});
+    }), "trackSurvey");
 
     if (!surveyConsentUserAgreement || !surveyConsentPrivacyPolicy) {
-      void trackSurveyEvent("survey_submit_failed", {
+      fireAndForget(() => trackSurveyEvent("survey_submit_failed", {
         stepIndex: submitStepIndex,
         questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
         reason: "missing_consent",
-      }).catch(() => {});
+      }), "trackSurvey");
       setToast("请先勾选用户协议与隐私政策。");
       return;
     }
@@ -1033,11 +1034,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       !svSaveLossConcern ||
       !svRecommendWillingness
     ) {
-      void trackSurveyEvent("survey_submit_failed", {
+      fireAndForget(() => trackSurveyEvent("survey_submit_failed", {
         stepIndex: submitStepIndex,
         questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
         reason: "required_answer_missing",
-      }).catch(() => {});
+      }), "trackSurvey");
       setToast("请把本问卷必答题补全后再提交。");
       return;
     }
@@ -1080,20 +1081,20 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     });
     setSurveySubmitPending(false);
     if (!result.success) {
-      void trackSurveyEvent("survey_submit_failed", {
+      fireAndForget(() => trackSurveyEvent("survey_submit_failed", {
         stepIndex: submitStepIndex,
         questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
         reason: "server_rejected",
         message: result.message,
-      }).catch(() => {});
+      }), "trackSurvey");
       setToast(result.message);
       return;
     }
-    void trackSurveyEvent("survey_submitted", {
+    fireAndForget(() => trackSurveyEvent("survey_submitted", {
       stepIndex: HOME_SURVEY_FLOW.length - 1,
       questionId: "submit",
       completedStepCount: HOME_SURVEY_FLOW.length,
-    }).catch(() => {});
+    }), "trackSurvey");
     setSurveyCompletion("done");
     try {
       localStorage.setItem(SURVEY_LOCAL_CACHE_KEY, "1");
@@ -1104,12 +1105,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   async function handleFeedbackSubmit() {
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "feedback_submit_attempted",
       page: "/",
       source: "open_feedback",
       payload: { entryState, userLoggedIn: !!user },
-    }).catch(() => {});
+    }), "asyncOp");
     if (!feedbackContent.trim()) {
       setToast("请先输入你的意见。");
       return;
@@ -1134,12 +1135,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     );
     setFeedbackPending(false);
     if (!result.success) {
-      void trackHomeGameplayEvent({
+      fireAndForget(() => trackHomeGameplayEvent({
         eventName: "feedback_submit_failed",
         page: "/",
         source: "open_feedback",
         payload: { message: result.message },
-      }).catch(() => {});
+      }), "asyncOp");
       setToast(result.message);
       return;
     }
@@ -1156,7 +1157,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     setSurveyConsentUserAgreement(false);
     setSurveyConsentPrivacyPolicy(false);
     setSurveyStep(0);
-    void trackSurveyEvent("survey_entry_clicked", { placement: "home_fab", stepIndex: -1, questionId: "entry" }, "survey").catch(() => {});
+    fireAndForget(() => trackSurveyEvent("survey_entry_clicked", { placement: "home_fab", stepIndex: -1, questionId: "entry" }, "survey"), "trackSurvey");
   }
 
   function openFooterFeedback() {
@@ -1177,7 +1178,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       const stepTotal = HOME_SURVEY_FLOW.length;
       const stepIndex = Math.max(0, Math.min(stepTotal - 1, surveyStep));
       const questionId = HOME_SURVEY_FLOW[stepIndex]?.id ?? "unknown";
-      void trackSurveyEvent("survey_exit", { stepIndex, questionId, reason: "modal_close" }).catch(() => {});
+      fireAndForget(() => trackSurveyEvent("survey_exit", { stepIndex, questionId, reason: "modal_close" }), "trackSurvey");
     }
     setSurveyOpen(false);
     setShowBugFeedback(false);
@@ -1194,7 +1195,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       return;
     }
     window.open(surveyUrl, "_blank", "noopener,noreferrer");
-    void trackSurveyEvent("survey_external_link_opened", { mode: "external_backup", hasUrl: true, stepIndex: -1, questionId: "external_link" }, "survey").catch(() => {});
+    fireAndForget(() => trackSurveyEvent("survey_external_link_opened", { mode: "external_backup", hasUrl: true, stepIndex: -1, questionId: "external_link" }, "survey"), "trackSurvey");
   }
 
   const authPending = loginPending || registerPending;
@@ -1217,21 +1218,21 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     if (error) {
       event.preventDefault();
       setAuthClientError(error);
-      void trackHomeGameplayEvent({
+      fireAndForget(() => trackHomeGameplayEvent({
         eventName: "auth_submit_failed",
         page: "/",
         source: "auth_modal",
         payload: { mode: authMode, error, clientSide: true },
-      }).catch(() => {});
+      }), "asyncOp");
       return;
     }
     setAuthClientError("");
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "auth_submit_attempted",
       page: "/",
       source: "auth_modal",
       payload: { mode: authMode },
-    }).catch(() => {});
+    }), "asyncOp");
   }
 
   useEffect(() => {
@@ -1240,12 +1241,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const last = authErrorTrackedRef.current;
     if (last && last.mode === authMode && last.msg === msg) return;
     authErrorTrackedRef.current = { mode: authMode, msg };
-    void trackHomeGameplayEvent({
+    fireAndForget(() => trackHomeGameplayEvent({
       eventName: "auth_submit_failed",
       page: "/",
       source: "auth_modal",
       payload: { mode: authMode, error: msg },
-    }).catch(() => {});
+    }), "asyncOp");
   }, [activeAuthState?.error, authMode, trackHomeGameplayEvent]);
 
   useEffect(() => {
@@ -1328,12 +1329,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   function handleSurveyStepPrev() {
     const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
-    void trackSurveyEvent("survey_step_prev", {
+    fireAndForget(() => trackSurveyEvent("survey_step_prev", {
       stepIndex: fromStepIndex,
       fromStepIndex,
       toStepIndex: Math.max(0, fromStepIndex - 1),
       questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
-    }).catch(() => {});
+    }), "trackSurvey");
     setSurveyStep((s) => Math.max(0, s - 1));
   }
 
@@ -1345,12 +1346,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     }
     setSurveyNextHint(false);
     const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
-    void trackSurveyEvent("survey_step_next", {
+    fireAndForget(() => trackSurveyEvent("survey_step_next", {
       stepIndex: fromStepIndex,
       fromStepIndex,
       toStepIndex: Math.min(totalSteps - 1, fromStepIndex + 1),
       questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
-    }).catch(() => {});
+    }), "trackSurvey");
     setSurveyStep((s) => Math.min(totalSteps - 1, s + 1));
   }
 
@@ -1521,12 +1522,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 onClick={() => {
                   if (isStartNewPending) return;
                   unlockBgmOnUserGesture();
-                  void trackHomeGameplayEvent({
+                  fireAndForget(() => trackHomeGameplayEvent({
                     eventName: "home_start_new_clicked",
                     page: "/",
                     source: "home_start_new",
                     payload: { entryState, loggedIn: !!user },
-                  }).catch(() => {});
+                  }), "asyncOp");
                   resetForNewGame();
                   // useTransition 跟踪导航挂起态：点击立刻有反馈，且防止重复触发 reset
                   startNewGameTransition(() => {

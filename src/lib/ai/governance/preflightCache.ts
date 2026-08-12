@@ -5,6 +5,7 @@ import { aiGovernanceEnv } from "@/lib/ai/governance/env";
 import type { ControlDigestLike, ControlRuleFlagsCompact } from "@/lib/ai/governance/preflightCacheKey";
 import { buildPreflightFingerprintLegacy, buildPreflightFingerprintV2 } from "@/lib/ai/governance/preflightCacheKey";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
+import { clamp } from "@/lib/clamp";
 import { getAppRedisClient } from "@/lib/ratelimit";
 
 const mem = new Map<string, { exp: number; val: string }>();
@@ -94,7 +95,7 @@ export async function writePreflightPlane(args: {
         })
       : fpLegacy(args.latestUserInput, args.playerContext, args.ruleJson);
   const k = key(args.userId, args.sessionId, fingerprint);
-  const ttl = Math.max(15, Math.min(180, aiGovernanceEnv.controlPreflightCacheTtlSec));
+  const ttl = clamp(aiGovernanceEnv.controlPreflightCacheTtlSec, 15, 180);
   const val = JSON.stringify(args.control);
 
   const redis = await getAppRedisClient();

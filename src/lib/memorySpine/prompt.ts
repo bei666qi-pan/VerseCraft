@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { MemorySpineEntry, _MemorySpineState } from "./types";
 import type { RecalledMemory } from "./selectors";
 
@@ -11,7 +12,7 @@ export function buildMemoryRecallBlock(args: {
   recalled: RecalledMemory[];
   maxChars?: number;
 }): { text: string; usedIds: string[]; digest: string } {
-  const maxChars = Math.max(120, Math.min(900, args.maxChars ?? 520));
+  const maxChars = clamp(args.maxChars ?? 520, 120, 900);
   const rows = (args.recalled ?? []).slice(0, 12);
   const used: string[] = [];
   const lines: string[] = [];
@@ -32,8 +33,8 @@ export function buildMemoryRecallBlock(args: {
 }
 
 export function pickPromotionTexts(entries: MemorySpineEntry[], opts?: { maxItems?: number; maxCharsPerItem?: number }): string[] {
-  const maxItems = Math.max(0, Math.min(4, opts?.maxItems ?? 2));
-  const maxCharsPerItem = Math.max(24, Math.min(160, opts?.maxCharsPerItem ?? 96));
+  const maxItems = clamp(opts?.maxItems ?? 2, 0, 4);
+  const maxCharsPerItem = clamp(opts?.maxCharsPerItem ?? 96, 24, 160);
   const picks = entries
     .filter((e) => e.promoteToLore)
     .filter((e) => e.status === "active" || e.status === "resolved")

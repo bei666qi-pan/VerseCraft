@@ -8,9 +8,6 @@
  * DM 编排时的硬参考。
  */
 
-// FloorId removed (unused)
-// import type { FloorId } from "./types";
-
 // ── 空间特征 ──
 
 /** 13 楼空间基本常数 */

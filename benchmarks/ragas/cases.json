@@ -1,0 +1,30 @@
+[
+  {
+    "id": "opening-location-grounding",
+    "datasetVersion": "opening-grounding-v1",
+    "retrievalTraceRef": "golden:opening-location",
+    "groundTruthProvenance": "registry/opening canon",
+    "question": "玩家醒来后身处何处？",
+    "answer": "玩家在如月公寓一层的昏暗走廊醒来。",
+    "contexts": [
+      { "id": "opening:location", "text": "玩家从教学楼坠入黑暗，再醒来时位于如月公寓一层走廊。" },
+      { "id": "opening:exit-rule", "text": "传言玩家必须在十日内找到公寓出口。" }
+    ],
+    "referenceContextIds": ["opening:location"],
+    "groundTruth": "如月公寓一层走廊。"
+  },
+  {
+    "id": "opening-exit-rule-grounding",
+    "datasetVersion": "opening-grounding-v1",
+    "retrievalTraceRef": "golden:opening-exit-rule",
+    "groundTruthProvenance": "registry/opening canon",
+    "question": "玩家面临的核心时限是什么？",
+    "answer": "玩家需要在十日内找到出口，否则会永远留在公寓。",
+    "contexts": [
+      { "id": "opening:exit-rule", "text": "传言十日之内找不到出口就会永远留在如月公寓。" },
+      { "id": "opening:location", "text": "玩家当前位于一层走廊。" }
+    ],
+    "referenceContextIds": ["opening:exit-rule"],
+    "groundTruth": "十日内找到出口。"
+  }
+]

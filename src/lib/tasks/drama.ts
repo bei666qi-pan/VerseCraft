@@ -1,3 +1,4 @@
+import { clamp as clampNumber } from "@/lib/clamp";
 import { inferEffectiveNarrativeLayer, type IssuerPersonaMode, type IssuerSoftRevealMode } from "@/lib/tasks/taskRoleModel";
 import type { GameTaskV2, TaskDramaticType } from "./taskV2";
 
@@ -51,8 +52,8 @@ export function buildTaskDramaPacket(args: {
   maxTasks?: number;
   maxChars?: number;
 }): string {
-  const maxTasks = Math.max(0, Math.min(2, args.maxTasks ?? 2));
-  const maxChars = Math.max(120, Math.min(800, args.maxChars ?? 420));
+  const maxTasks = clampNumber(args.maxTasks ?? 2, 0, 2);
+  const maxChars = clampNumber(args.maxChars ?? 420, 120, 800);
   if (maxTasks === 0) return "";
   const byId = new Map(args.tasks.map((t) => [t.id, t]));
   const picked: GameTaskV2[] = [];
@@ -109,4 +110,3 @@ export function buildTaskDramaPacket(args: {
   lines.push("不同委托人语气必须彼此区分；以上要点只做潜台词参照，禁止逐字复述进正文。");
   return clamp(lines.join("\n"), maxChars);
 }
-

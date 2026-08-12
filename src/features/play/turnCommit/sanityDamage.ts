@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 export function normalizeTurnSanityDamage(args: {
   rawDamage: unknown;
   isOpeningSystemRequest?: boolean;
@@ -9,7 +10,7 @@ export function normalizeTurnSanityDamage(args: {
     typeof args.rawDamage === "number" && Number.isFinite(args.rawDamage)
       ? Math.trunc(args.rawDamage)
       : Math.trunc(Number.parseInt(String(args.rawDamage ?? "0"), 10)) || 0;
-  damage = Math.max(0, Math.min(9999, damage));
+  damage = clamp(damage, 0, 9999);
   if (args.passiveMitigation && damage > 0) damage = Math.max(0, damage - 1);
   if (args.activeMitigation && damage > 0) damage = Math.max(0, damage - 1);
   return damage;

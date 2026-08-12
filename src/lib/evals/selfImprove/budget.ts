@@ -1,5 +1,5 @@
 /**
- * Self-Improving Agent System — Budget Tracker
+ * Evaluation & Regression Campaign — Budget Tracker
  *
  * Tracks live model calls, wall-clock time, and round usage
  * against the configured budget. Provides checkpoints for

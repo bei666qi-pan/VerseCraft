@@ -1,4 +1,5 @@
 import type { CanonicalGender } from "@/lib/registry/types";
+import { clamp as clampNumber } from "@/lib/clamp";
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 
 export type GenderFixSeverity = "none" | "minor" | "moderate" | "severe";
@@ -57,8 +58,8 @@ function rewriteWindowOutsideQuotes(args: {
   from: "他" | "她";
   to: "他" | "她";
 }): { out: string; changed: boolean } {
-  const s = Math.max(0, Math.min(args.text.length, args.start));
-  const e = Math.max(s, Math.min(args.text.length, args.end));
+  const s = clampNumber(args.start, 0, args.text.length);
+  const e = clampNumber(args.end, s, args.text.length);
   const chars = [...args.text];
   const isInQuote = (idx: number) => args.spans.some((sp) => idx >= sp.start && idx < sp.end);
   let changed = false;
@@ -171,4 +172,3 @@ export function applyGenderPronounPostGeneration(input: {
   const severity: GenderFixSeverity = changeCount >= 4 ? "severe" : changeCount >= 2 ? "moderate" : "minor";
   return { narrative: clamp(out, 50000), severity, triggered: true, logs };
 }
-

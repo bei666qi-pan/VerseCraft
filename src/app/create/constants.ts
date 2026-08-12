@@ -1,4 +1,5 @@
 import type { StatType } from "@/lib/registry/types";
+import { clamp } from "@/lib/clamp";
 import type { EchoTalent } from "@/store/useGameStore";
 import type { GameLanguage } from "@/lib/i18n/language";
 
@@ -75,5 +76,5 @@ export function calculateRemainingPoints(stats: Record<StatType, number>): numbe
 
 export function clampInt(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
+  return clamp(Math.trunc(n), min, max);
 }

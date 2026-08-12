@@ -17,6 +17,8 @@ export type OptionsRegenResponse = {
   decision_required: boolean;
   decision_options: string[];
   debug_reason_codes?: string[];
+  request_id?: string;
+  trace_id?: string;
 };
 
 export function buildOptionsRegenResponse(args: {
@@ -25,6 +27,8 @@ export function buildOptionsRegenResponse(args: {
   // If the generator itself reported success; we still apply length gate.
   generatorOk?: boolean;
   debugReasonCodes?: string[];
+  requestId?: string;
+  traceId?: string;
 }): OptionsRegenResponse {
   // Always allow options generation regardless of turn_mode.
   // Players should always have clickable options available; they can switch to
@@ -46,6 +50,8 @@ export function buildOptionsRegenResponse(args: {
       decision_options: [],
       options: [],
       debug_reason_codes: Array.isArray(args.debugReasonCodes) ? args.debugReasonCodes.slice(0, 8) : [],
+      ...(args.requestId ? { request_id: args.requestId } : {}),
+      ...(args.traceId ? { trace_id: args.traceId } : {}),
     };
   }
   return {
@@ -56,6 +62,7 @@ export function buildOptionsRegenResponse(args: {
     decision_options: opts,
     options: opts, // legacy mirror
     debug_reason_codes: Array.isArray(args.debugReasonCodes) ? args.debugReasonCodes.slice(0, 8) : [],
+    ...(args.requestId ? { request_id: args.requestId } : {}),
+    ...(args.traceId ? { trace_id: args.traceId } : {}),
   };
 }
-

@@ -3,6 +3,7 @@
  * 仅解析已约定格式字段，未知内容忽略。
  */
 
+import { clamp } from "@/lib/clamp";
 import { computeSanityBand, computeSanityRatio, type SanityBandId } from "./sanityStateRegistry";
 
 const TIME_RE = /游戏时间\[第(\d+)日\s+(\d+)时\]/;
@@ -73,7 +74,7 @@ function parseMainThreatMap(raw: string): PlayerWorldSignals["mainThreatByFloor"
       phaseRaw === "idle" || phaseRaw === "active" || phaseRaw === "suppressed" || phaseRaw === "breached"
         ? phaseRaw
         : "idle";
-    const suppressionProgress = Math.max(0, Math.min(100, Number(m[4] ?? "0") || 0));
+    const suppressionProgress = clamp(Number(m[4] ?? "0") || 0, 0, 100);
     if (floorId && threatId) out[floorId] = { threatId, phase, suppressionProgress };
   }
   return out;

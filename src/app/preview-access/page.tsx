@@ -3,7 +3,6 @@ import { sanitizePreviewAccessNext } from "@/lib/previewAccess";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { PreviewAccessForm } from "./PreviewAccessForm";
 
-export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {

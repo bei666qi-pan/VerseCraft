@@ -1,5 +1,6 @@
 "use client";
 
+import { fireAndForget } from "@/lib/fireAndForget";
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
@@ -103,11 +104,13 @@ import {
 import { resolveTurnFromSse } from "@/features/play/stream/turnResolve";
 import { getCommitFailureRecovery } from "./commitFailureRecovery";
 import {
+  buildOptionsOnlyContextMessages,
   backfillAcceptedOptionsFromModel,
   getOptionsOnlyDeadlineMs,
 } from "./optionsRegenUx";
 import {
   OPTIONS_REGEN_FAILURE_HINT,
+  formatOptionsRegenFailureHint,
   parseOptionsFromSsePayload,
   type OptionsRegenParseResult,
 } from "./optionsRegenParsing";
@@ -244,7 +247,7 @@ type OptionsOnlyAttemptOutcome =
       kind: "transport_failed";
       status: number;
       reason: string;
-      retryAfterMs: number;
+      retryAfterMs: number | null;
       localRateLimited: boolean;
       recoverable: boolean;
     };
@@ -280,11 +283,11 @@ function parseRetryAfterMs(value: string | null, fallbackMs = 1_100): number {
 async function sleepWithinOptionsDeadline(args: {
   startedAt: number;
   deadlineMs: number;
-  requestedDelayMs: number;
+  requestedDelayMs: number | null;
 }): Promise<boolean> {
   const remaining = Math.max(0, args.deadlineMs - (Date.now() - args.startedAt) - 250);
   if (remaining <= 0) return false;
-  await new Promise((resolve) => window.setTimeout(resolve, Math.min(args.requestedDelayMs, remaining)));
+  await new Promise((resolve) => window.setTimeout(resolve, Math.min(args.requestedDelayMs ?? 350, remaining)));
   return true;
 }
 
@@ -897,14 +900,14 @@ function PlayContent() {
         endingTelemetrySeenRef.current.add(key);
       }
       pushEndingDecisionDebugEvent({ eventName, payload, note: options.note });
-      void trackGameplayEvent({
+      fireAndForget(() => trackGameplayEvent({
         eventName,
         sessionId: guestId ?? "guest_play",
         page: "/play",
         source: "ending",
         idempotencyKey: key,
         payload,
-      }).catch(() => {});
+      }), "asyncOp");
     },
     [guestId]
   );
@@ -1160,14 +1163,14 @@ function PlayContent() {
     if (!isHydrated || !isGameStarted) return;
     if (hasEnteredGameEventRef.current) return;
     hasEnteredGameEventRef.current = true;
-    void trackGameplayEvent({
+    fireAndForget(() => trackGameplayEvent({
       eventName: "enter_main_game",
       sessionId: guestId ?? "guest_play",
       page: "/play",
       source: "play_page",
       idempotencyKey: `enter_main_game:${guestId ?? "guest"}:${Date.now()}`,
       payload: { isGuest },
-    }).catch(() => {});
+    }), "asyncOp");
   }, [guestId, isGameStarted, isGuest, isHydrated]);
 
   useEffect(() => {
@@ -1447,14 +1450,14 @@ function PlayContent() {
     if (process.env.NODE_ENV !== "production" || VC_PERF_FLAGS.clientPerfDebug) {
       console.debug("[play][chat_client_perf]", payload);
     }
-    void trackGameplayEvent({
+    fireAndForget(() => trackGameplayEvent({
       eventName: "chat_client_perf",
       sessionId: guestId ?? "guest_play",
       page: "/play",
       source: "play_page",
       idempotencyKey: `${p.requestId}:chat_client_perf`,
       payload,
-    }).catch(() => {});
+    }), "asyncOp");
   }, [guestId, streamPhase, waitUxDisplayStage]);
 
   // Lift primitive values to avoid deep-object dependency churn — every
@@ -1886,7 +1889,7 @@ function PlayContent() {
     const prev = prevPathnameForAbortRef.current;
     if (prev !== null && prev === "/play" && pathname !== "/play") {
       streamAbortRef.current?.abort();
-      void streamReaderRef.current?.cancel().catch(() => {});
+      fireAndForget(() => streamReaderRef.current?.cancel(), "streamCancel");
     }
     prevPathnameForAbortRef.current = pathname;
   }, [pathname]);
@@ -2426,12 +2429,10 @@ function PlayContent() {
       };
 
       const useOptionsOnlyPath = getClientOptionsOnlyRegenPathV2Enabled();
-      const assistantContextMessages: ChatMessage[] = lastAssistant
-        ? [{ role: "assistant", content: lastAssistant }]
-        : [];
-      const userContextMessages: ChatMessage[] = lastUser
-        ? [{ role: "user", content: lastUser }]
-        : [];
+      const optionsOnlyContextMessages: ChatMessage[] = buildOptionsOnlyContextMessages({
+        latestNarrative: lastAssistant,
+        latestPlayerAction: lastUser,
+      });
       // Phase-5：options-only 补齐是”低成本工具”，不允许无上限等待。
       const optionsOnlyDeadlineMs = getOptionsOnlyDeadlineMs(trigger);
       let ac: AbortController;
@@ -2489,8 +2490,7 @@ function PlayContent() {
       ): Promise<OptionsOnlyAttemptOutcome> => {
         const attemptMessages: ChatMessage[] = useOptionsOnlyPath
           ? [
-              ...assistantContextMessages,
-              ...userContextMessages,
+              ...optionsOnlyContextMessages,
             ]
           : [
               { role: "system", content: OPTIONS_REGEN_SYSTEM_PROMPT },
@@ -2851,7 +2851,7 @@ function PlayContent() {
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(null);
-        setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
+        setOptionsRegenFailureMessage(formatOptionsRegenFailureHint(firstPass.requestId));
         logOptionsRegenTelemetry({
           success: false,
           failureReason: firstPass.failure?.reason ?? "insufficient_options_after_repair",
@@ -3936,7 +3936,7 @@ function PlayContent() {
     }
 
     if (parsed.is_action_legal && !isSystemAction) {
-      void trackGameplayEvent({
+      fireAndForget(() => trackGameplayEvent({
         eventName: "effective_action",
         sessionId: guestId ?? "guest_play",
         page: "/play",
@@ -3945,10 +3945,10 @@ function PlayContent() {
           actionLength: trimmed.length,
           isResume: !!isResume,
         },
-      }).catch(() => {});
+      }), "asyncOp");
       if (!hasFirstEffectiveActionRef.current) {
         hasFirstEffectiveActionRef.current = true;
-        void trackGameplayEvent({
+        fireAndForget(() => trackGameplayEvent({
           eventName: "first_effective_action",
           sessionId: guestId ?? "guest_play",
           page: "/play",
@@ -3957,7 +3957,7 @@ function PlayContent() {
           payload: {
             actionLength: trimmed.length,
           },
-        }).catch(() => {});
+        }), "asyncOp");
       }
     }
 
@@ -5514,6 +5514,7 @@ function PlayContent() {
                 <MobileOptionsEmptyState
                   busy={optionsRegenBusy}
                   message={optionsRegenFailureMessage}
+                  onRetry={() => void requestFreshOptions("manual_button")}
                   stage={optionsRegenStage}
                   progress={optionsRegenProgress}
                 />

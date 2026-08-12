@@ -19,8 +19,6 @@ import type {
 import type { GameState } from "@/store/useGameStore";
 import type { Item } from "@/lib/registry/types";
 import { LIGHT_FORGE_RECIPES, type LightForgeRecipe } from "@/lib/registry/forge";
-// import { resolveCombat } from "@/lib/combat/resolveCombat"; // not currently used, import removed
-// import type { NpcCombatStoryClass } from "@/lib/combat/types"; // not currently used
 
 // === Real Combat Integration (T11) ===
 import { computePlayerCombatScore } from "@/lib/combat/playerCombatScore";

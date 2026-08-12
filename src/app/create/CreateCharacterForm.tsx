@@ -240,9 +240,8 @@ export function CreateCharacterForm() {
               data-testid="quick-create-character"
               aria-label={isEnglish ? "Create a local character with random values" : "一键注册角色（仅生成本地角色档案，不生成账号）"}
               onClick={fillQuickCharacter}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-vc-line bg-vc-paper-raised/90 py-1 pl-1.5 pr-4 vc-reading-serif text-[14px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.97]"
+              className="inline-flex h-10 shrink-0 items-center rounded-full border border-vc-line bg-vc-paper-raised/90 px-4 vc-reading-serif text-[14px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.97]"
             >
-              <VerseCraftPaperMark className="h-7 w-7 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
               <span className="whitespace-nowrap">{isEnglish ? "Quick start" : "一键注册"}</span>
             </button>
           </div>

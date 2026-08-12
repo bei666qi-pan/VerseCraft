@@ -1,18 +1,18 @@
 #!/usr/bin/env tsx
 /**
- * Self-Improving Agent System — Baseline Runner
+ * Evaluation & Regression Campaign — Baseline Runner
  *
  * Runs the current test suites to establish a quality baseline
- * before any self-improvement modifications are made.
+ * before an explicit implementation task is started.
  *
  * Usage:
- *   pnpm self-improve:baseline
- *   pnpm self-improve:baseline -- --out .runtime-data/self-improve/baseline.json
+ *   pnpm eval:baseline
+ *   pnpm eval:baseline -- --out .runtime-data/self-improve/baseline.json
  */
 
 import { execSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 
 interface BaselineResult {
   timestamp: string;
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   const commit = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
 
   console.log("=".repeat(50));
-  console.log("VerseCraft Self-Improve — Baseline");
+  console.log("VerseCraft Evaluation — Baseline");
   console.log(`Commit: ${commit}`);
   console.log("=".repeat(50));
 

@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type {
   WorldFactCategory,
   WorldFactSource,
@@ -89,10 +90,6 @@ function asStringArray(value: unknown, maxLen: number): string[] {
 function asNumber(value: unknown, fallback: number): number {
   const n = typeof value === "number" && Number.isFinite(value) ? value : Number(String(value ?? ""));
   return Number.isFinite(n) ? n : fallback;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 function safeJsonByteLength(value: unknown): number {

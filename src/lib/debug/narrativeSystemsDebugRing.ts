@@ -1,3 +1,4 @@
+import { clamp } from "@/lib/clamp";
 import type { EndingTelemetryEventName, EndingTelemetryPayload } from "@/lib/endings/telemetry";
 
 /**
@@ -112,7 +113,7 @@ export function pushEndingDecisionDebugEvent(input: {
 }
 
 export function getNarrativeSystemsDebugTail(n = 8): NarrativeSystemsDebugEvent[] {
-  return ring.slice(0, Math.max(0, Math.min(n, MAX)));
+  return ring.slice(0, clamp(MAX, 0, n));
 }
 
 export function clearNarrativeSystemsDebugRing(): void {

@@ -5,6 +5,7 @@
  * 所有新能力均通过独立灰度开关控制，关闭后旧 world director 路径不受影响。
  */
 
+import { clamp } from "@/lib/clamp";
 import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import type { ActorSimulationFlags } from "./types";
 
@@ -52,11 +53,11 @@ export function resolveActorSimulationFlags(): ActorSimulationFlags {
   return {
     enabled,
     mode,
-    maxActors: Math.max(0, Math.min(5, maxActors)),
-    horizonTurns: Math.max(1, Math.min(3, horizonTurns)),
-    totalTickBudgetMs: Math.max(5_000, Math.min(60_000, totalTickBudgetMs)),
-    perActorTimeoutMs: Math.max(2_000, Math.min(20_000, perActorTimeoutMs)),
-    maxActionsPerActor: Math.max(1, Math.min(5, maxActionsPerActor)),
+    maxActors: clamp(maxActors, 0, 5),
+    horizonTurns: clamp(horizonTurns, 1, 3),
+    totalTickBudgetMs: clamp(totalTickBudgetMs, 5_000, 60_000),
+    perActorTimeoutMs: clamp(perActorTimeoutMs, 2_000, 20_000),
+    maxActionsPerActor: clamp(maxActionsPerActor, 1, 5),
   };
 }
 

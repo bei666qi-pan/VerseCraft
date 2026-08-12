@@ -11,8 +11,6 @@
  */
 import { NPCS } from "@/lib/registry/npcs";
 import { resolveActionsFromNarrative } from "@/lib/turnEngine/actionResolver";
-// CodexEntry removed (unused)
-// import type { CodexEntry } from "@/store/useGameStore";
 
 // ── Known locations for backfilling ──────────────────────────────
 
