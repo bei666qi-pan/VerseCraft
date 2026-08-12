@@ -76,9 +76,9 @@ export async function getRuntimeLore(input: RuntimeLoreRequest, deps: RuntimeLor
     floorHintCount: plan.floorHints.length,
     maxRevealRank: plan.maxRevealRank,
     ftsQueryLength: plan.ftsQuery.length,
-    semanticQueryLength: plan.semanticQuery.length,
+    semanticQueryLength: plan.semanticQuery?.length ?? 0,
     expandedTokenCount: plan.retrievalBudget.maxFacts,
-    entityCount: plan.exactCodes.length + plan.exactCanonicalNames.length,
+    entityCount: plan.exactCodes.length + (plan.exactCanonicalNames?.length ?? 0),
   }));
 
   // ── Stage 2: Cache Read ──

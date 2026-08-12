@@ -116,7 +116,7 @@ test("narrative expansion remains a bounded final hook with a p95 deadline", () 
   assert.ok(routeContent.includes("performanceBudgetMs - 250"));
   assert.ok(routeContent.includes("ABSOLUTE_EXPANSION_CAP_MS"));
   assert.ok(routeContent.includes("8_000"));
-  assert.ok(logicalTasksContent.includes("Math.min(10_000, args.budgetMs ?? 6_000)"));
+  assert.ok(logicalTasksContent.includes("clamp(args.budgetMs ?? 6_000, 1, 10_000)"));
 });
 
 test("non-injection entity hard blocks receive a bounded model repair before deterministic fallback", () => {
@@ -130,5 +130,5 @@ test("non-injection entity hard blocks receive a bounded model repair before det
   assert.ok(content.includes("narrativeSafetyEnforcement.shouldBlockCommit"));
   assert.ok(content.includes("!narrativeSafetyEnforcement.promptInjectionBlocked"));
   assert.ok(content.includes("narrativeSafetyReport = narrativeSafetyRuntime.kernelEnabled"));
-  assert.ok(logicalTasksContent.includes("Math.min(6_000, args.budgetMs ?? 2_500)"));
+  assert.ok(logicalTasksContent.includes("clamp(args.budgetMs ?? 2_500, 500, 6_000)"));
 });

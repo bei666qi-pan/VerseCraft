@@ -162,7 +162,8 @@ test("A4：stable 前缀体积；minimal/full runtime + compose 主链路", () =
     });
     const dual = composePlayerChatSystemMessages(stable, dyn, true);
     assert.strictEqual(dual.length, 2);
-    assert.ok(dual[0]!.content.includes("major_npc"));
+    assert.ok(!dual[0]!.content.includes("major_npc_relink_packet"));
+    assert.ok(dual[1]!.content.includes("major_npc_relink_packet"));
     const single = composePlayerChatSystemMessages(stable, dyn, false);
     assert.strictEqual(single.length, 1);
     assert.ok(single[0]!.content.length > stable.length);

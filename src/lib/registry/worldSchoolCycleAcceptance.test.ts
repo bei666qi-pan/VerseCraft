@@ -211,9 +211,9 @@ test("prompt：stable 前缀体积可控且含 packet 边界句", () => {
   // v4 升级：5 个描述式 NPC 升格为真名 + 新增 N-021 双胞胎分裂后行数增多；
   // 阈值同步上调但仍保留可控余量，防止后续无节制增长。Commit 3 扩到 43 后再观察。
   assert.ok(s.length < 11500, `stable prefix length ${s.length}`);
-  assert.ok(s.includes("major_npc_relink_packet"));
-  assert.ok(s.includes("no-instant-party"));
-  assert.ok(s.includes("reveal-first"));
+  assert.ok(!s.includes("major_npc_relink_packet"));
+  assert.ok(!s.includes("no-instant-party"));
+  assert.ok(!s.includes("reveal-first"));
   assert.ok(s.includes("xinlan-anchor"));
 });
 

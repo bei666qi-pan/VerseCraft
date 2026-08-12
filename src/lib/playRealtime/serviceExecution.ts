@@ -354,14 +354,14 @@ export function applyB1ServiceExecutionGuard(args: {
   const stats = (() => {
     const s = (args.clientState as any)?.stats;
     const obj = s && typeof s === "object" && !Array.isArray(s) ? s : null;
-    const clamp = (n: unknown) =>
+    const clampStat = (n: unknown) =>
       typeof n === "number" && Number.isFinite(n) ? clamp(Math.trunc(n), 0, 99) : 0;
     return {
-      sanity: clamp(obj?.sanity),
-      agility: clamp(obj?.agility),
-      luck: clamp(obj?.luck),
-      charm: clamp(obj?.charm),
-      background: clamp(obj?.background),
+      sanity: clampStat(obj?.sanity),
+      agility: clampStat(obj?.agility),
+      luck: clampStat(obj?.luck),
+      charm: clampStat(obj?.charm),
+      background: clampStat(obj?.background),
     } as Record<string, number>;
   })();
 

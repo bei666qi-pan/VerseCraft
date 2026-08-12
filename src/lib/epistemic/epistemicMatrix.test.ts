@@ -121,7 +121,7 @@ test("矩阵7：validator 拦截 narrative 泄密", () => {
 
 test("矩阵8：validator 不误杀欣蓝合理 world 措辞", () => {
   const canon = "星港学院学制循环与观测者签名规则属于系统正史条目";
-  const facts = [f("w", canon, "world", { sourceType: "system_canon" })];
+  const facts = [f("w", canon, "world", { sourceType: "system_canon", tags: ["xinlan_known"] })];
   const profile = buildNpcEpistemicProfile(XINLAN_NPC_ID);
   assert.equal(profile.isXinlanException, true);
   const { dmRecord, telemetry } = applyEpistemicPostGenerationValidation({

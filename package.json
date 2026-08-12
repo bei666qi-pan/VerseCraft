@@ -39,7 +39,7 @@
     "db:ensure-schema": "node scripts/ensure-runtime-schema.mjs",
     "db:generate": "drizzle-kit generate",
     "test:e2e:webview": "playwright test e2e/webview-inapp-transport.spec.ts",
-    "test:unit": "tsx --test --test-force-exit \"src/**/*.test.ts\"",
+    "test:unit": "node scripts/run-unit-tests.mjs",
     "verify:ai-gateway": "tsx scripts/verify-ai-gateway.ts",
     "test:e2e:chat": "playwright test e2e/chat-sse-contract.spec.ts",
     "test:e2e:mock": "playwright test e2e/chat-latency-budget.spec.ts e2e/chat-sse-contract.spec.ts e2e/english-language-regression.spec.ts",
