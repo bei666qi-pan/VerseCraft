@@ -42,7 +42,7 @@ describe("GameRunner SSE Reader Lifecycle", () => {
           setTimeout(() => {
             cancelReader(r);
             reject(new DOMException("SSE stream stalled (no bytes)", "TimeoutError"));
-          }, deadlineMs).unref()
+          }, deadlineMs)
         ),
       ]);
       return result;
@@ -86,7 +86,7 @@ describe("GameRunner SSE Reader Lifecycle", () => {
           setTimeout(() => {
             cancelReader(r);
             reject(new DOMException("SSE stream stalled (no bytes)", "TimeoutError"));
-          }, deadlineMs).unref()
+          }, deadlineMs)
         ),
       ]);
       return result;

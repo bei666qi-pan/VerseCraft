@@ -25,6 +25,10 @@ import { readAdminResponseJson } from "@/lib/admin/parseAdminEnvelope";
 import { clamp } from "@/lib/clamp";
 import { formatDurationSeconds } from "@/lib/time/durationUnits";
 
+const ROW_FLEX_BETWEEN = "flex items-center justify-between gap-3";
+const ROW_FLEX_CENTER = "flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm";
+const BADGE_DEGRADED = "rounded-full border border-[#c4914a]/35 bg-[#fff2cf] px-2 py-0.5 text-[11px] text-[#7a4e15]";
+
 type ChartPoint = { date: string; tokens: number; activeUsers?: number; dailyTokens?: number };
 type DashboardUserRow = { id: string; name: string; tokensUsed: number; playTime: number; lastActive: string | Date; isOnline: number; feedbackContent: string; feedbackCreatedAt: string | null };
 
@@ -773,10 +777,6 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
       return next.length > 0 ? next : [null];
     });
   }
-
-  const ROW_FLEX_BETWEEN = {ROW_FLEX_BETWEEN};
-  const ROW_FLEX_CENTER = {ROW_FLEX_CENTER};
-  const BADGE_DEGRADED = {BADGE_DEGRADED};
 
   return (
     <main className="vc-reading-surface min-h-screen p-3 text-[#173f39] md:p-6" data-testid="admin-paper-shell">

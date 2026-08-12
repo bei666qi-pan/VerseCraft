@@ -1,7 +1,7 @@
 import { clamp } from "@/lib/clamp";
 import type { ProductQualityScorecard, ProductQualitySignals, QualityDimension } from "./types";
 
-const clamp = (value: number) => clamp(value, 0, 100);
+const clampScore = (value: number) => clamp(value, 0, 100);
 const clamp01 = (value: number) => clamp(value, 0, 1);
 const zFromConfidenceLevel = (confidenceLevel: number): number => confidenceLevel === 0.99 ? 2.576 : 1.96;
 
@@ -100,19 +100,19 @@ const allowHeuristicConfidence = process.env.VERSECRAFT_EVAL_ALLOW_HEURISTIC_CON
   const turnEvidence = evidenceForTurns(signals.turns);
   const reliability = signals.runs === 0
     ? null
-    : clamp(signals.passRate * 75 + (1 - signals.softlockRate) * 15 + (1 - signals.errorRate) * 10);
+    : clampScore(signals.passRate * 75 + (1 - signals.softlockRate) * 15 + (1 - signals.errorRate) * 10);
   const performance = signals.p95LatencyMs === null
     ? null
-    : clamp(100 - Math.max(0, signals.p95LatencyMs - 5_000) / 150);
+    : clampScore(100 - Math.max(0, signals.p95LatencyMs - 5_000) / 150);
   const playability = signals.progressionTurnRate !== null && signals.agencyResponseRate !== null && signals.structuredConsequenceRate !== null
-    ? clamp((signals.progressionTurnRate * 0.30 + signals.agencyResponseRate * 0.35 + signals.structuredConsequenceRate * 0.25 + (1 - (signals.deadTurnRate ?? 0)) * 0.10) * 100)
+    ? clampScore((signals.progressionTurnRate * 0.30 + signals.agencyResponseRate * 0.35 + signals.structuredConsequenceRate * 0.25 + (1 - (signals.deadTurnRate ?? 0)) * 0.10) * 100)
     : null;
   const narrativeBase = signals.narrativeScore5 === null || signals.repetitionRate === null
     ? null
-    : clamp((signals.narrativeScore5 / 5 * 0.7 + (1 - signals.repetitionRate) * 0.3) * 100);
+    : clampScore((signals.narrativeScore5 / 5 * 0.7 + (1 - signals.repetitionRate) * 0.3) * 100);
   const narrative = narrativeBase === null
     ? null
-    : clamp(narrativeBase - Math.min(45, (signals.worldConsistencyIssueTurnRate ?? 0) * 55));
+    : clampScore(narrativeBase - Math.min(45, (signals.worldConsistencyIssueTurnRate ?? 0) * 55));
   const totalTokens = signals.tokenInput === null || signals.tokenOutput === null ? null : signals.tokenInput + signals.tokenOutput;
   const contextTokensPerTurn = totalTokens === null || signals.tokenCoveredTurns === 0 ? null : totalTokens / signals.tokenCoveredTurns;
   const costEquivalentPerTurn = signals.tokenCostEquivalent == null || signals.tokenCoveredTurns === 0
@@ -121,7 +121,7 @@ const allowHeuristicConfidence = process.env.VERSECRAFT_EVAL_ALLOW_HEURISTIC_CON
   // Context size and provider spend are deliberately separate. A cache hit still
   // consumes context, but charging it as a full-price miss would punish healthy
   // stable-prefix caching and drive the wrong prompt-deletion decision.
-  const costEfficiency = costEquivalentPerTurn === null ? null : clamp(100 - Math.max(0, costEquivalentPerTurn - 4_000) / 100);
+  const costEfficiency = costEquivalentPerTurn === null ? null : clampScore(100 - Math.max(0, costEquivalentPerTurn - 4_000) / 100);
 
   const dimensions: QualityDimension[] = [
     { id: "reliability", score: reliability, weight: 0.30, evidence: runEvidence, reasons: [`conclusiveRuns=${signals.runs}`, `pass=${(signals.passRate * 100).toFixed(1)}%`, `softlock=${(signals.softlockRate * 100).toFixed(1)}%`, `error=${(signals.errorRate * 100).toFixed(1)}%`] },

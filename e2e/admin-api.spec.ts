@@ -89,6 +89,12 @@ test.describe("Admin API integration", () => {
       const body = (await res.json()) as Record<string, unknown>;
       expect(body).toHaveProperty("ok");
       expect(body).toHaveProperty("degraded");
+      if (path.startsWith("/api/admin/player-journey")) {
+        const journeyData = body.data as Record<string, unknown> | null;
+        const expectedMode = path.includes("mode=any_order") ? "any_order" : "strict";
+        expect(journeyData, `${path} should include a usable fallback payload`).not.toBeNull();
+        expect(journeyData?.mode, `${path} should preserve the requested funnel mode`).toBe(expectedMode);
+      }
     }
 
     const usersList = await request.get("/api/admin/users?limit=5", {
@@ -155,4 +161,3 @@ test.describe("Admin API integration", () => {
     expect(rebuildBody).toHaveProperty("degraded");
   });
 });
-

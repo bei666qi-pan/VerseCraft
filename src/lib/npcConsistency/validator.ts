@@ -405,7 +405,7 @@ export function applyNpcConsistencyPostGeneration(input: {
   if (enableNpcConsistencyValidator()) {
     // T1 已运行 persona mixup 与 offscreen dialogue，此处仅运行焦点 NPC 特权校验。
 
-    if (!privileged && OLD_FRIEND_RE.test(narrativeWork)) {
+    if (!privileged && OLD_FRIEND_RE.test(String(input.dmRecord.narrative ?? ""))) {
       violations.push("narrative_old_friend_tone");
       vtypes.push("normal_npc_old_friend_tone");
       narrativeWork = rewriteNarrativeOldFriendLeak(narrativeWork);

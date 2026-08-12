@@ -1,6 +1,5 @@
 import { AdminShadowGate } from "@/components/admin/AdminShadowGate";
 import AdminDashboardV2 from "@/components/admin/AdminDashboardV2";
-import { ensureRuntimeSchema } from "@/db/ensureSchema";
 import { requireAdminSession } from "@/lib/admin/authGuard";
 import { unwrapPageDynamicOnServer, type AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 
@@ -13,12 +12,6 @@ export default async function ShadowAdminPage(props: AppPageDynamicProps) {
 
   if (!actor) {
     return <AdminShadowGate />;
-  }
-
-  try {
-    await ensureRuntimeSchema();
-  } catch (e) {
-    console.warn("[saiduhsa] ensureRuntimeSchema best-effort failed", e);
   }
 
   return (
