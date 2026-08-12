@@ -88,6 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -100,57 +102,53 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Scan for false-green patterns
+        env:
+          INTEGRITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           node <<'SCAN'
           const { execSync } = require("node:child_process");
-          const fs = require("node:fs");
-          const path = require("node:path");
 
-          // 收集所有测试文件
-          const testFiles = [];
-          function walk(dir) {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-              const full = path.join(dir, entry.name);
-              if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules") {
-                walk(full);
-              } else if (entry.name.endsWith(".test.ts") || entry.name.endsWith(".spec.ts")) {
-                testFiles.push(full);
-              }
-            }
-          }
-          walk("src");
-          walk("e2e");
-          walk("tests");
+          const zeroSha = /^0{40}$/;
+          let base = process.env.INTEGRITY_BASE_SHA?.trim() ?? "";
+          if (!base || zeroSha.test(base)) base = execSync("git rev-parse HEAD^", { encoding: "utf8" }).trim();
+          const diff = execSync(
+            `git diff --unified=0 --no-ext-diff ${base} HEAD -- src e2e tests`,
+            { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+          );
 
           let errors = 0;
           let warnings = 0;
+          let file = "";
+          let addedLines = 0;
 
-          for (const file of testFiles) {
-            const content = fs.readFileSync(file, "utf8");
-            const lines = content.split("\n");
+          for (const rawLine of diff.split("\n")) {
+            if (rawLine.startsWith("+++ b/")) {
+              file = rawLine.slice(6);
+              continue;
+            }
+            if (!rawLine.startsWith("+") || rawLine.startsWith("+++")) continue;
+            if (!file.endsWith(".test.ts") && !file.endsWith(".spec.ts")) continue;
+            // The integrity checker's own unit tests intentionally contain
+            // literal bad-pattern fixtures and are validated separately.
+            if (file === "src/lib/testing/integrityChecker.test.ts") continue;
+            const line = rawLine.slice(1);
+            addedLines++;
 
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
-
-              // R1: assert.ok(true)
-              if (/assert\.ok\(\s*true\s*\)/.test(line)) {
-                console.error("R1 STUB: " + file + ":" + (i+1) + " — assert.ok(true)");
-                errors++;
-              }
-              // R2: test.skip(true)
-              if (/test\.skip\(\s*true\s*[,)]/.test(line) || /test\.skip\(\s*\)/.test(line)) {
-                console.error("R2 SKIP: " + file + ":" + (i+1) + " — permanent skip");
-                errors++;
-              }
-              // R4: passRate: 1
-              if (/passRate\s*[:=]\s*1\s*[,;})\s]/.test(line)) {
-                console.warn("R4 PASSRATE: " + file + ":" + (i+1) + " — passRate hardcoded to 1");
-                warnings++;
-              }
+            if (/assert\.ok\(\s*true\s*\)/.test(line)) {
+              console.error("R1 STUB: " + file + " — newly added assert.ok(true)");
+              errors++;
+            }
+            if (/test\.skip\(\s*true\s*[,)]/.test(line) || /test\.skip\(\s*\)/.test(line)) {
+              console.error("R2 SKIP: " + file + " — newly added permanent skip");
+              errors++;
+            }
+            if (/passRate\s*[:=]\s*1\s*[,;})\s]/.test(line)) {
+              console.warn("R4 PASSRATE: " + file + " — newly added passRate hardcoded to 1");
+              warnings++;
             }
           }
 
-          console.log("Scanned " + testFiles.length + " files");
+          console.log("Scanned " + addedLines + " added test lines since " + base);
           console.log("Errors: " + errors + ", Warnings: " + warnings);
 
           if (errors > 0) {
