@@ -160,7 +160,7 @@ jobs:
           console.log("PASS: No integrity violations");
           SCAN
 
-    deterministic-assertions:
+  deterministic-assertions:
     name: deterministic-assertions
     runs-on: ubuntu-latest
     steps:
