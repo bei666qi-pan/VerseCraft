@@ -30,6 +30,7 @@ export const GET = createAdminRoute(async (ctx) => {
   onError: (_, ctx) => {
     const url = new URL(ctx.req.url);
     const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
+    const mode = parseJourneyFunnelMode(url.searchParams.get("mode"));
     return {
       reason: "player_journey_unavailable",
       fallback: {
