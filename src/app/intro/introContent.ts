@@ -6,7 +6,7 @@ export const INTRO_PAGE_SUBTITLE = "AI 互动叙事世界";
 export const INTRO_CTA = "进入公寓";
 export const INTRO_DISABLED_CTA = "世界观筹备中";
 
-const DARKMOON_CARD_IMAGE_BASE = assetUrl("/assets/intro/darkmoon-card-4547bc8069598bf27bca2e919033e05f");
+const DARKMOON_CARD_IMAGE_BASE = assetUrl("/assets/intro/darkmoon-card-4f0176bcea219a297458e2f65b940690");
 export const DARKMOON_CARD_IMAGE = `${DARKMOON_CARD_IMAGE_BASE}.jpg`;
 const XINGNI_CARD_IMAGE_BASE = assetUrl("/assets/intro/xingni-qingshi-card-119156d41d28583e94325ef25f4f761e");
 export const XINGNI_CARD_IMAGE = `${XINGNI_CARD_IMAGE_BASE}.jpg`;

@@ -42,7 +42,7 @@ export class PlayErrorBoundary extends Component<
           className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#f6f2ec] px-6 text-center"
         >
           <p className="text-lg font-medium text-[#4a3f35]">
-            抱歉，游戏遇到了一点问题，请刷新页面重试 [build:3d3dc0f]
+            抱歉，游戏遇到了一点问题，请刷新页面重试
           </p>
           {this.state.errorMessage ? (
             <p className="max-w-md break-all text-xs text-[#a39a8c] font-mono bg-[#ede8df] px-3 py-2 rounded">

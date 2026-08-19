@@ -102,3 +102,44 @@ dump.rdb
 
 # pnpm 本地 store（沙盒安装产物）
 /.pnpm-store
+
+# AI 编辑器配置（开发机本地，不入库）
+/.codex/
+/.kimi/
+
+# benchmark runtime artifacts（一次性评测产物，自动重生）
+/benchmarks/chat-benchmark-*.json
+/benchmarks/combat-*.json
+/benchmarks/director-live-*.json
+/benchmarks/eval-*.json
+/benchmarks/exploration-final.json
+/benchmarks/investigation-final.json
+/benchmarks/judge-*.jsonl
+/benchmarks/judge-calibration-report.json
+/benchmarks/langfuse-debug.log
+/benchmarks/lf-trace.log
+/benchmarks/mock-server-only.js
+/benchmarks/extract-stream-*.mjs
+/benchmarks/intent-grounded-playability.{json,md}
+/benchmarks/model-narrative-review.{json,md}
+/benchmarks/narrative-*-verification-*.md
+/benchmarks/narrative-quality-report-*.md
+/benchmarks/narrative-style-live-*.json
+/benchmarks/playability-defects*.json
+/benchmarks/single-case-input.json
+/benchmarks/social-final.json
+/benchmarks/tense-final.json
+/benchmarks/langfuse-local/
+/benchmarks/langfuse-repo/
+/benchmarks/calibration/
+/benchmarks/eval-live-cache/
+/benchmarks/coverage/
+/benchmarks/production-experience-canary/
+/benchmarks/ui-reference-verify/
+/benchmarks/self-improve-runtime/
+/benchmarks/next-ai-playtest-*/
+/benchmarks/live-eval-*/
+/benchmarks/playthrough/
+/benchmarks/browser-playthrough/
+/benchmarks/mock-playthrough/
+/benchmarks/traces/
