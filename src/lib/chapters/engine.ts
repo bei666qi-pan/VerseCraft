@@ -3,6 +3,7 @@ import { resolveChapterNarrativeBudget } from "./budget";
 import { advanceChapterBeats, countChapterStateChanges, shouldCountChapterTurn, shouldCountKeyChoice } from "./progress";
 import { buildChapterSummary } from "./summary";
 import { getChapterDisplayName, isWeakChapterBookmarkSnippet, sanitizeChapterTitleCandidate } from "./title";
+import { evaluateChapterAdvanceGate } from "./advanceGate";
 import type {
   ChapterCompletionRuntime,
   ChapterDefinition,
@@ -26,6 +27,14 @@ function isUniqueChapterTitleCandidate(state: ChapterState, chapterId: string, v
     if (normalizedTitleKey(title) === key) return false;
   }
   return true;
+}
+
+/**
+ * 公开版，便于 advanceGate / migration / live test 复用同一份去重判定。
+ * 与内联版本逻辑完全一致；保留内联版本以避免破坏现有调用顺序。
+ */
+export function isUniqueChapterTitleKey(state: ChapterState, chapterId: string, value: unknown): boolean {
+  return isUniqueChapterTitleCandidate(state, chapterId, value);
 }
 
 export function createChapterProgress(
@@ -199,6 +208,20 @@ export function recordChapterTurnInState(input: {
   const suppressCompletion = input.runtime?.suppressCompletion || input.signals.isDeath === true;
   if (shouldCompleteChapter(nextProgress, input.definition, { ...input.runtime, suppressCompletion })) {
     const nextDefinition = getChapterDefinition(input.definition.nextChapterId);
+    // Director 计划门控：chapter ≥ 2 必须先有有效的 nextChapterSeed 才能 advance。
+    // gate 失败时 keep `pendingChapterEndId` 原状，让玩家继续累积叙事直到 Director 给出 plan。
+    if (nextDefinition) {
+      const gate = evaluateChapterAdvanceGate({
+        state: nextState,
+        definition: input.definition,
+        nextDefinition,
+        directorChapter: input.runtime?.directorChapter ?? null,
+      });
+      if (!gate.ok) {
+        // 仅推进当前章节，不替换 chapterTitlesById，不调用 enterNextChapter。
+        return nextState;
+      }
+    }
     const completedAt = input.now ?? Date.now();
     const summary = buildChapterSummary({
       definition: input.definition,
@@ -209,6 +232,13 @@ export function recordChapterTurnInState(input: {
       title: getChapterDisplayName(input.definition, nextState),
       closeDecision: input.runtime?.closeDecision ?? null,
     });
+    // 章节 ≥ 2：标题优先取 Director 的 `nextChapterSeed.title`（AI 实时生成），
+    // 其次是模型回合的 `nextChapterTitleCandidate`；两者都缺时仍允许 chapter-1 fallback。
+    const nextChapterTitleCandidate =
+      input.definition.order >= 2
+        ? (sanitizeChapterTitleCandidate(input.runtime?.directorChapter?.nextChapterSeed?.title, 32) ??
+          sanitizeChapterTitleCandidate(input.runtime?.closeDecision?.nextChapterTitleCandidate ?? null, 32))
+        : sanitizeChapterTitleCandidate(input.runtime?.closeDecision?.nextChapterTitleCandidate ?? null, 32);
     nextState = completeChapter({
       state: nextState,
       definition: input.definition,
@@ -217,7 +247,7 @@ export function recordChapterTurnInState(input: {
       now: completedAt,
       completedLogIndex:
         typeof input.signals.logCountAfter === "number" ? Math.max(0, input.signals.logCountAfter - 1) : null,
-      nextChapterTitleCandidate: input.runtime?.closeDecision?.nextChapterTitleCandidate ?? null,
+      nextChapterTitleCandidate,
     });
     if (nextDefinition) {
       nextState = {

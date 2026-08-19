@@ -156,6 +156,7 @@ import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import {
   createInitialChapterState,
   enterNextChapter,
+  evaluateChapterAdvanceGate,
   getChapterDisplayName,
   getChapterDefinition,
   listChapterDefinitionsForState,
@@ -1424,16 +1425,21 @@ export const useGameStore = create<GameState>()(
         const chapterState = normalizeChapterState(state.chapterState);
         const definition = getChapterDefinition(chapterState.activeChapterId);
         if (!definition) return chapterState;
-        const closeDecision = (() => {
+        const directorChapter = (() => {
           const chapter = (state as any).storyDirector?.chapter;
           if (!chapter || chapter.currentChapterId !== definition.id) return null;
-          return chapter.closeCandidate ?? null;
+          return chapter;
         })();
+        const closeDecision = directorChapter?.closeCandidate ?? null;
         const nextState = recordChapterTurnInState({
           state: chapterState,
           definition,
           signals,
-          runtime: { suppressCompletion: signals.isDeath === true, closeDecision },
+          runtime: {
+            suppressCompletion: signals.isDeath === true,
+            closeDecision,
+            directorChapter,
+          },
         });
         set({ chapterState: nextState });
         return nextState;
@@ -1448,6 +1454,30 @@ export const useGameStore = create<GameState>()(
             completedChapterIds: normalized.completedChapterIds,
             progressByChapterId: normalized.progressByChapterId,
           });
+          // Director 计划门控：chapter ≥ 2 必须先有有效的 nextChapterSeed 才能 advance。
+          const directorChapter = (s as any).storyDirector?.chapter ?? null;
+          const currentDefinition = getChapterDefinition(normalized.activeChapterId);
+          const nextDefinition = currentDefinition?.nextChapterId
+            ? getChapterDefinition(currentDefinition.nextChapterId)
+            : null;
+          if (currentDefinition && nextDefinition) {
+            const gate = evaluateChapterAdvanceGate({
+              state: normalized,
+              definition: currentDefinition,
+              nextDefinition,
+              directorChapter,
+            });
+            if (!gate.ok) {
+              if (process.env.NODE_ENV !== "production") {
+                console.warn(
+                  "[useGameStore] enterNextChapter blocked by director gate:",
+                  gate.reason,
+                  gate.detail ?? "",
+                );
+              }
+              return { chapterState: normalized };
+            }
+          }
           return { chapterState: enterNextChapter(normalized, definitions) };
         }),
       reviewChapter: (chapterId) =>

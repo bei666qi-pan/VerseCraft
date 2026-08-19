@@ -16,8 +16,8 @@ const SEED_CHAPTER_DEFINITIONS: readonly ChapterDefinition[] = [
     maxTurns: 6,
     minKeyChoices: 1,
     targetKeyChoices: 2,
-    targetTextChars: [1000, 1800],
-    hardTextChars: 2200,
+    targetTextChars: [2000, 3500],
+    hardTextChars: 4200,
     beats: [
       { id: "wake", label: "落地求生", description: "确认当前处境：这是哪、怎么活、先做什么。", required: true },
       { id: "first-contact", label: "第一个人", description: "在场 NPC 的第一眼印象或一句话，建立关系起点。", required: true },
@@ -40,8 +40,8 @@ const SEED_CHAPTER_DEFINITIONS: readonly ChapterDefinition[] = [
     maxTurns: 7,
     minKeyChoices: 2,
     targetKeyChoices: 2,
-    targetTextChars: [1200, 2200],
-    hardTextChars: 2600,
+    targetTextChars: [2000, 4000],
+    hardTextChars: 4500,
     beats: [
       { id: "new-objective", label: "新目标", description: "明确下一处调查方向。", required: true },
       { id: "search", label: "搜查判断", description: "围绕线索做出判断或搜查。", required: true },
@@ -90,8 +90,8 @@ function buildDynamicChapterDefinition(order: number): ChapterDefinition {
     maxTurns: 8,
     minKeyChoices: 2,
     targetKeyChoices: 2,
-    targetTextChars: [1200, 2200],
-    hardTextChars: 2600,
+    targetTextChars: [2000, 5000],
+    hardTextChars: 5200,
     beats: [
       { id: "objective", label: "新目标", description: "明确下一处调查方向。", required: true },
       { id: "search", label: "搜查判断", description: "围绕线索做出判断或搜查。", required: true },

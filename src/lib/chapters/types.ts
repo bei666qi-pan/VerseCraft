@@ -117,4 +117,11 @@ export interface ChapterCompletionRuntime {
     modelSummaryCandidate?: string;
     nextChapterTitleCandidate?: string | null;
   } | null;
+  /**
+   * Director 当前章节状态（来自 `useGameStore.storyDirector.chapter`）。
+   * 第二章及之后的章节推进必须先有有效的 `nextChapterSeed.title`；当 gate 失败时，
+   * `shouldCompleteChapter` 返回 false，章节不 advance，`pendingChapterEndId` 保持原状。
+   * 第一章（order === 1）不要求 seed，标题固定为 definition.title。
+   */
+  directorChapter?: import("@/lib/storyDirector/types").ChapterDirectorState | null;
 }

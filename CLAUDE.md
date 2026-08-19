@@ -372,6 +372,62 @@ foreshadow_ops
 
 ---
 
+## 5.5 章节 Director 计划与字数约束
+
+暗月世界观下的章节系统必须遵守以下硬契约（详见 `src/lib/chapters/advanceGate.ts` 与 `src/lib/storyDirector/types.ts` 的 trigger 函数）：
+
+### 字数
+
+- 每章 `narrative` 累计字数必须在 **2000-5000 字**之间。
+- 硬上限统一为 **5200 字**；超过部分由现有 `narrative_validator` / `repairNarrativeOnly` 链路收口。
+- 各 kind 的 `targetTextChars` / `hardTextChars` 见 `src/lib/chapters/budget.ts`：
+  - `first`（第一章）：target `[2000, 3500]`、hard `4200`
+  - `second`（第二章）：target `[2000, 4000]`、hard `4500`
+  - `standard`（动态章节）：target `[2000, 5000]`、hard `5200`
+  - `climax`：`[2200, 4500]`、`5200`
+  - `ending`：`[2500, 5000]`、`5200`
+- 旧预算（1000-2400 字）已被本仓库替换；新代码不允许重新降低。
+- 测试：`src/lib/chapters/__live__/chapterBudget.live.test.ts` 锁定 `targetTextChars[0] === 2000` / `targetTextChars[1] <= 5000` / `hardTextChars <= 5200`。
+
+### 章节标题 AI 化
+
+- 第一章标题固定为硬编码 `暗月初醒`（`src/lib/chapters/definitions.ts`）；不允许任何 seed 或模型输出覆盖。
+- 第二章及之后：标题来自 **Director 实时生成的** `nextChapterSeed.title`。
+  - 来源优先级：`directorChapter.nextChapterSeed.title` → `closeDecision.nextChapterTitleCandidate` → 兜底 derivation（`deriveNextChapterTitleCandidate`）。
+  - 所有标题必须通过 `sanitizeChapterTitleCandidate`（去除控制字符、模板前缀、legacy 短句），并通过 `isUniqueChapterTitleKey` 去重。
+  - 落地写入 `state.chapterTitlesById[chapterId]` 由 `recordChapterTurnInState` 在 `completeChapter` 时完成。
+
+### Director 半程触发
+
+- 公式：`triggerTurn = max(2, ceil(minTurns/2) + CHAPTER_DIRECTOR_PLAN_TRIGGER_TURN_OFFSET)`，见 `directorPlanTriggerTurnIndex`。
+- chapter-1（`minTurns=3`）→ trigger=3，等价「3 个 turn 后」开始准备下一章。
+- chapter-2（`minTurns=4`）→ trigger=3。
+- 触发后允许 `buildNextChapterSeed` 在 `closeDecision.shouldClose === false` 时也写出暂定 `nextChapterSeed`（基于 narrative_tail / 既有 seed / chapter promise 兜底）。
+- `closeDecision.shouldClose === true` 永远立即 build seed。
+
+### 章节推进门控（advance gate）
+
+- 新增 `src/lib/chapters/advanceGate.ts`：`evaluateChapterAdvanceGate(input)` 返回 `{ ok: true } | { ok: false, reason }`。
+- 规则：
+  - 第一章 → `ok`（标题固定为 `definition.title`，不要求 seed）。
+  - 第二章及之后 → 必须存在 `directorChapter.nextChapterSeed`，且 `title` 通过 `sanitizeChapterTitleCandidate` 与去重。
+- 调用点：`recordChapterTurnInState`（`src/lib/chapters/engine.ts`）和 `useGameStore.enterNextChapter`。
+- gate 失败时：
+  - `recordChapterTurnInState` 不调用 `completeChapter` / `enterNextChapter`，仅推进 `progress.turnCount` / beats。
+  - `pendingChapterEndId` 保持原状，玩家可继续累积叙事直到 Director 给出有效 plan。
+  - `chapterTitlesById` 不被破坏。
+
+### Plan 是引导参考，非强制
+
+- `nextChapterSeed.promise / mainQuestion / emotionalTone / mustEchoMemoryIds / inheritedThreadIds` 仅作为 Writer 的参考输入（注入到 `chapterContextPacket` / `buildDirectorDigestForServer`），不允许在客户端做硬规则校验。
+- Writer 可以偏离 plan；close 时由 `closeDecision` 重新生成新的 `nextChapterTitleCandidate` 覆盖暂定值。
+
+### 文档协同
+
+- 本节约束对应 `AGENTS.md` §2.3 与 §3；任何对预算 / 触发公式 / gate 规则的修改都需要双向同步两个文档。
+
+---
+
 ## 6. AI 服务层契约
 
 ### 6.1 统一入口

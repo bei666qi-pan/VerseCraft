@@ -36,7 +36,8 @@ function acceptedCloseDecision() {
 }
 
 function longNarrative(seed = "门缝后的潮气压在走廊里，灯影和脚步声一点点把新的线索推向更深处。"): string {
-  return seed.repeat(18);
+  // 每条 narrative 必须 ≥ MIN_CHAPTER_NARRATIVE_CHARS(=2000)；单条 70x ≈ 2170 字。
+  return seed.repeat(70);
 }
 
 function progressSignals(overrides: Partial<ChapterTurnSignals> = {}): ChapterTurnSignals {
@@ -88,25 +89,25 @@ test("chapter narrative budgets expose target ranges and hard caps", () => {
   };
 
   assert.deepEqual(resolveChapterNarrativeBudget(first), {
-    targetTextChars: [1000, 1800],
-    hardTextChars: 2200,
+    targetTextChars: [2000, 3500],
+    hardTextChars: 4200,
   });
   assert.deepEqual(resolveChapterNarrativeBudget(second), {
-    targetTextChars: [1200, 2200],
-    hardTextChars: 2600,
+    targetTextChars: [2000, 4000],
+    hardTextChars: 4500,
   });
   assert.deepEqual(
     resolveChapterNarrativeBudget(climaxDefinition),
     {
-      targetTextChars: [1800, 3500],
-      hardTextChars: 4200,
+      targetTextChars: [2200, 4500],
+      hardTextChars: 5200,
     }
   );
   assert.deepEqual(
     resolveChapterNarrativeBudget(endingDefinition),
     {
-      targetTextChars: [2200, 4000],
-      hardTextChars: 5000,
+      targetTextChars: [2500, 5000],
+      hardTextChars: 5200,
     }
   );
 });
@@ -155,6 +156,38 @@ test("chapter two completes from local readiness including state-change and next
       now: i + 2,
     });
   }
+  // 第二章结束回合：必须同时满足本地 ready 与 Director 计划门控（nextChapterSeed 存在）。
+  const directorChapterTwoSeed = {
+      currentChapterId: CHAPTER_TWO_ID,
+      chapterOrder: 2,
+      chapterTitle: "第二章",
+      chapterPhase: "closing" as const,
+      promise: "p",
+      mainQuestion: "q",
+      emotionalTone: "t",
+      startedTurn: 6,
+      minTurns: 4,
+      targetTurns: [4, 8] as [number, number],
+      softMaxTurns: 10,
+      openThreadIds: [],
+      resolvedThreadIds: [],
+      keyChoiceIds: [],
+      echoedChoiceIds: [],
+      mustEchoMemoryIds: [],
+      forbiddenRevealIds: [],
+      closeCandidate: null,
+      nextChapterSeed: {
+        title: "门缝低语",
+        promise: "承接余响",
+        mainQuestion: "门后会发生什么？",
+        emotionalTone: "压迫",
+        mustEchoMemoryIds: [],
+        inheritedThreadIds: [],
+      },
+      summaryForPlayer: null,
+      summaryForModel: null,
+      v: 1 as const,
+    };
   for (let i = 0; i < second.minTurns; i++) {
     state = recordChapterTurnInState({
       state,
@@ -167,6 +200,10 @@ test("chapter two completes from local readiness including state-change and next
         nextLocation: i === 0 ? "B1_Storage" : "B1_Storage",
         taskUpdateCount: 1,
       }),
+      runtime:
+        i === second.minTurns - 1
+          ? { closeDecision: acceptedCloseDecision(), directorChapter: directorChapterTwoSeed }
+          : { directorChapter: directorChapterTwoSeed },
       now: i + 10,
     });
   }
@@ -178,6 +215,49 @@ test("chapter two completes from local readiness including state-change and next
   }
   assert.equal(state.completedChapterIds.includes(CHAPTER_TWO_ID), true);
   assert.equal(state.pendingChapterEndId, CHAPTER_TWO_ID);
+  // 进入下一章（chapter-3）后，导演 seed 应被写入 chapter-3 标题。
+  assert.equal(state.activeChapterId, "chapter-3");
+  assert.equal(state.chapterTitlesById["chapter-3"], "门缝低语");
+});
+
+test("chapter two cannot complete without Director nextChapterSeed even when local readiness is met", () => {
+  let state = createInitialChapterState(1);
+  for (let i = 0; i < first.minTurns; i++) {
+    state = recordChapterTurnInState({
+      state,
+      definition: first,
+      signals: progressSignals(),
+      runtime: i === first.minTurns - 1 ? { closeDecision: acceptedCloseDecision() } : undefined,
+      now: i + 2,
+    });
+  }
+  // 第二章 close 但没有 directorChapter → 应当被 advance gate 拦住，
+  // 进度停留在 active，pendingChapterEndId 不变。
+  for (let i = 0; i < second.minTurns; i++) {
+    state = recordChapterTurnInState({
+      state,
+      definition: second,
+      signals: progressSignals({
+        logCountBefore: i + 10,
+        logCountAfter: i + 12,
+        narrativeText: longNarrative("没有导演计划，我无法走向下一章，只能继续堆砌现在的章节。"),
+        previousLocation: i === 0 ? "B1_Corridor" : "B1_Storage",
+        nextLocation: i === 0 ? "B1_Storage" : "B1_Storage",
+        taskUpdateCount: 1,
+      }),
+      runtime: undefined,
+      now: i + 10,
+    });
+  }
+
+  const progress = state.progressByChapterId[CHAPTER_TWO_ID];
+  assert.equal(progress.status, "active");
+  assert.equal(state.completedChapterIds.includes(CHAPTER_TWO_ID), false);
+  // pendingChapterEndId 来自第一章收尾（chapter-1）——第二章被 gate 拦住时
+  // 不产生新的 pendingChapterEndId 也不清除旧值，等待玩家继续累积叙事直到
+  // Director 给 plan。
+  assert.equal(state.pendingChapterEndId, CHAPTER_ONE_ID);
+  assert.equal(state.activeChapterId, CHAPTER_TWO_ID);
 });
 
 test("shouldCompleteChapter does not close before required local readiness", () => {
@@ -207,7 +287,7 @@ test("closeDecision still completes even when local required beats are incomplet
     ...createInitialChapterState(1).progressByChapterId[CHAPTER_ONE_ID],
     status: "active" as const,
     turnCount: first.minTurns,
-    narrativeCharCount: 1000,
+    narrativeCharCount: 2200,
     keyChoiceCount: 0,
     stateChangeCount: 0,
     completedBeatIds: ["wake", "observe"],
@@ -220,7 +300,7 @@ test("chapter cannot close before the minimum narrative length even with closeDe
     ...createInitialChapterState(1).progressByChapterId[CHAPTER_ONE_ID],
     status: "active" as const,
     turnCount: first.minTurns,
-    narrativeCharCount: 999,
+    narrativeCharCount: 1999,
     keyChoiceCount: first.minKeyChoices,
     stateChangeCount: 1,
     completedBeatIds: first.beats.map((beat) => beat.id),

@@ -5,14 +5,23 @@ export type ChapterNarrativeBudget = {
   hardTextChars: number;
 };
 
-export const MIN_CHAPTER_NARRATIVE_CHARS = 1000;
+/**
+ * 章节叙事预算统一约束：
+ *   - 任何章节正文（不含空白）必须落在 [2000, 5000] 字之间。
+ *   - hardTextChars 为收口硬上限，超过由 narrative validator 截断/重写。
+ *   - first/second 是开局与第二章的产品曲线偏短，但仍必须满足 2000 字下限。
+ *   - 详见 CLAUDE.md §章节 Director 计划与字数约束 与 AGENTS.md §3.5。
+ */
+export const MIN_CHAPTER_NARRATIVE_CHARS = 2000;
+export const MAX_CHAPTER_NARRATIVE_CHARS = 5000;
+export const HARD_CHAPTER_NARRATIVE_CHARS = 5200;
 
 const CHAPTER_TEXT_BUDGETS = {
-  first: { targetTextChars: [MIN_CHAPTER_NARRATIVE_CHARS, 1800], hardTextChars: 2200 },
-  second: { targetTextChars: [1200, 2200], hardTextChars: 2600 },
-  standard: { targetTextChars: [1200, 2400], hardTextChars: 3000 },
-  climax: { targetTextChars: [1800, 3500], hardTextChars: 4200 },
-  ending: { targetTextChars: [2200, 4000], hardTextChars: 5000 },
+  first: { targetTextChars: [MIN_CHAPTER_NARRATIVE_CHARS, 3500], hardTextChars: 4200 },
+  second: { targetTextChars: [MIN_CHAPTER_NARRATIVE_CHARS, 4000], hardTextChars: 4500 },
+  standard: { targetTextChars: [MIN_CHAPTER_NARRATIVE_CHARS, MAX_CHAPTER_NARRATIVE_CHARS], hardTextChars: HARD_CHAPTER_NARRATIVE_CHARS },
+  climax: { targetTextChars: [2200, 4500], hardTextChars: HARD_CHAPTER_NARRATIVE_CHARS },
+  ending: { targetTextChars: [2500, MAX_CHAPTER_NARRATIVE_CHARS], hardTextChars: HARD_CHAPTER_NARRATIVE_CHARS },
 } as const satisfies Record<string, ChapterNarrativeBudget>;
 
 export function resolveChapterNarrativeBudget(

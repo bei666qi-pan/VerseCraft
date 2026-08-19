@@ -58,9 +58,38 @@ VerseCraft（文界工坊）是由浏览器客户端、Next.js 服务端和后�
 - Director 不直接修改当前玩家回合结果，不提交客户端状态，不规定具体对白或描写，不泄露 sealed/private 事实，也不进入当前回合首字前路径。
 - Director、DB 或工具失败必须 fail-open；当前回合照常完成，并记录必要的结构化 telemetry。在线回合只裁决当前行动，world tick 由 final 之后非阻塞入队。
 
+**章节 Director 半程触发**（暗月世界观专属，详见 `CLAUDE.md §5.5`）：
+
+- 半程触发公式：`triggerTurn = max(2, ceil(minTurns/2) + CHAPTER_DIRECTOR_PLAN_TRIGGER_TURN_OFFSET)`。
+- 触发后允许 `buildNextChapterSeed` 在 `closeDecision.shouldClose === false` 时也写出暂定 `nextChapterSeed`（基于 narrative_tail / 既有 seed / chapter promise 兜底）。
+- `closeDecision.shouldClose === true` 永远立即 build seed。
+- chapter-1（`minTurns=3`）→ trigger=3；chapter-2（`minTurns=4`）→ trigger=3。
+- 实现：`src/lib/storyDirector/types.ts` 的 `directorPlanTriggerTurnIndex` / `shouldDirectorBuildNextChapterSeed`。
+
+**章节推进门控**（与 `CLAUDE.md §5.5` 对齐）：
+
+- 新增 `src/lib/chapters/advanceGate.ts`：`evaluateChapterAdvanceGate` 返回 `{ ok: true } | { ok: false, reason }`。
+- 第一章 → `ok`（标题固定为 `definition.title`，不要求 seed）。
+- 第二章及之后 → 必须存在 `directorChapter.nextChapterSeed`，且 `title` 通过 `sanitizeChapterTitleCandidate` 与 `isUniqueChapterTitleKey` 去重。
+- gate 失败时 `recordChapterTurnInState` 不调用 `completeChapter` / `enterNextChapter`；`pendingChapterEndId` 与 `chapterTitlesById` 保持原状。
+
+**章节字数 2000-5000**（与 `CLAUDE.md §5.5` 对齐）：
+
+- 每章 `narrative` 累计字数必须在 **2000-5000 字**之间，硬上限统一为 **5200 字**。
+- `src/lib/chapters/budget.ts` 的 `CHAPTER_TEXT_BUDGETS` 是唯一预算事实源；不允许重新降低。
+- 测试：`src/lib/chapters/__live__/chapterBudget.live.test.ts`。
+
+**章节标题 AI 化**（与 `CLAUDE.md §5.5` 对齐）：
+
+- 第一章标题固定为 `暗月初醒`；不允许任何 seed 或模型输出覆盖。
+- 第二章及之后：标题来自 Director 实时生成的 `nextChapterSeed.title`；优先级 `seed.title → closeDecision.nextChapterTitleCandidate → deriveNextChapterTitleCandidate`。
+- 所有标题必须通过 `sanitizeChapterTitleCandidate` 与 `isUniqueChapterTitleKey`。
+
 标准数据流：
 
 `玩家行动 → 意图/规则与过滤后上下文 → Writer 结构化候选 → 规范化/校验/提交 → __VERSECRAFT_FINAL__ → 异步 Director → 后续回合 hint`
+
+`章节进行到 trigger turn → Director 实时生成 nextChapterSeed → advanceGate 校验 → chapterTitlesById 写入 → recordChapterTurnInState advance`
 
 ## 3. 不可破坏的运行时契约
 
@@ -146,6 +175,16 @@ deepseek-v4-flash 在长 player-chat prompt 下偶尔忽略 strict function 的�
 - 不随意改表名、删字段、改事件名或关键 payload 键。schema 变更必须说明迁移、旧数据兼容、回填/双写及 admin/analytics 影响。
 - `analytics_events` 保持 append-only 与 `idempotencyKey` 语义，并保护既有统计、session memory 与 world engine 表。
 - 特别保护 `chat_request_finished`、`turn_lane_decided`、`turn_commit_summary`、`narrative_validator_issue`、`world_engine_enqueued`。
+
+### 3.3.1 章节 Director 与字数契约（与 `CLAUDE.md §5.5` 对齐）
+
+- 每章 `narrative` 累计字数必须在 **2000-5000 字**之间，硬上限统一为 **5200 字**。
+- 第一章标题固定为 `暗月初醒`；第二章及之后的标题必须来自 Director 实时生成的 `nextChapterSeed.title`。
+- `recordChapterTurnInState` 与 `useGameStore.enterNextChapter` 必须调用 `evaluateChapterAdvanceGate`：
+  - 第一章 → `ok`；
+  - 第二章及之后 → `directorChapter.nextChapterSeed.title` 通过 `sanitizeChapterTitleCandidate` 且 `isUniqueChapterTitleKey`。
+- gate 失败时**不得破坏** `chapterTitlesById` / `pendingChapterEndId` / `activeChapterId`；玩家继续累积叙事直到 Director 给有效 plan。
+- `nextChapterSeed` 的 promise / mainQuestion / emotionalTone / mustEchoMemoryIds / inheritedThreadIds 是引导参考，Writer 可偏离。
 
 ### 3.4 实时性能
 

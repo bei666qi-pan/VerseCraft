@@ -233,3 +233,33 @@ export function createEmptyDirectorState(nowTurn: number): StoryDirectorState {
 export function createEmptyIncidentQueue(): IncidentQueueState {
   return { v: 1, items: [] };
 }
+
+/**
+ * 章节 Director 半程触发偏移：章节进行到 `ceil(minTurns/2) + offset` 时开始准备
+ * 下一章的 nextChapterSeed。chapter-1 (minTurns=3) 默认在 3 回合后开始，
+ * 符合「导演在章节进行到一半后开始制定下一章标题与 plan」的契约。
+ *
+ * 详见 CLAUDE.md §章节 Director 计划与字数约束 / AGENTS.md §2.3。
+ */
+export const CHAPTER_DIRECTOR_PLAN_TRIGGER_TURN_OFFSET = 1;
+export const CHAPTER_DIRECTOR_PLAN_MIN_TRIGGER_TURN = 2;
+
+export function directorPlanTriggerTurnIndex(chapter: Pick<ChapterDirectorState, "minTurns">): number {
+  const minTurns = Math.max(1, Math.trunc(Number(chapter?.minTurns ?? 1) || 1));
+  const halfway = Math.ceil(minTurns / 2);
+  return Math.max(
+    CHAPTER_DIRECTOR_PLAN_MIN_TRIGGER_TURN,
+    halfway + CHAPTER_DIRECTOR_PLAN_TRIGGER_TURN_OFFSET,
+  );
+}
+
+export function shouldDirectorBuildNextChapterSeed(args: {
+  chapter: Pick<ChapterDirectorState, "minTurns" | "startedTurn" | "closeCandidate">;
+  nowTurn: number;
+}): boolean {
+  const nowTurn = Math.max(0, Math.trunc(Number(args.nowTurn) || 0));
+  const startedTurn = Math.max(0, Math.trunc(Number(args.chapter?.startedTurn) || 0));
+  const turnsInChapter = Math.max(0, nowTurn - startedTurn);
+  if (args.chapter?.closeCandidate?.shouldClose === true) return true;
+  return turnsInChapter >= directorPlanTriggerTurnIndex(args.chapter);
+}

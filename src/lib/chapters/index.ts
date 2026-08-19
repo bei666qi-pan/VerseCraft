@@ -1,6 +1,7 @@
 export * from "./definitions";
 export * from "./budget";
 export * from "./engine";
+export * from "./advanceGate";
 export * from "./migration";
 export * from "./progress";
 export * from "./reviewLog";

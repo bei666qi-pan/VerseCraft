@@ -1,5 +1,6 @@
 import type { ChapterDefinition, ChapterId, ChapterState, ChapterSummary } from "./types";
 import type { GameLanguage } from "@/lib/i18n/language";
+import { getChapterDefinition } from "./definitions";
 
 const CHINESE_ORDER_LABELS: Record<number, string> = {
   1: "一",
@@ -127,4 +128,43 @@ export function formatChapterTitle(
   const orderText = `第${toChineseChapterOrder(definition.order)}章`;
   const title = getChapterDisplayName(definition, state);
   return title ? `${orderText}：${title}` : orderText;
+}
+
+/**
+ * 把 Director 的 `nextChapterSeed.title` 落到 chapter ≥ 2 的 `chapterTitlesById[chapterId]`。
+ * 第一章固定为 definition.title，绝不会被覆盖。
+ *
+ * 调用方：`recordChapterTurn` 末尾。属于纯函数：
+ *   - 若当前章节已有 title，不做任何改动（标题稳定，避免覆盖已通过 seed 写入的合法标题）。
+ *   - 若 Director 提供了非空且通过 sanitize 的 title，写入并返回新 map。
+ *   - 否则返回原 map（`Map`/对象引用保持原样，便于 `Object.is` 比较）。
+ */
+export function ensureChapterTitleFromDirector(args: {
+  state: ChapterState;
+  chapterId: ChapterId;
+  directorTitleCandidate: unknown;
+}): { state: ChapterState; changed: boolean } {
+  const { state, chapterId, directorTitleCandidate } = args;
+  if (!state) return { state, changed: false };
+  const existing = state.chapterTitlesById?.[chapterId];
+  if (existing) return { state, changed: false };
+  const definition = getChapterDefinitionForTitleFallback(chapterId);
+  if (definition && definition.order === 1) return { state, changed: false };
+  const sanitized = sanitizeChapterTitleCandidate(directorTitleCandidate, 32);
+  if (!sanitized) return { state, changed: false };
+  return {
+    state: {
+      ...state,
+      chapterTitlesById: { ...(state.chapterTitlesById ?? {}), [chapterId]: sanitized },
+    },
+    changed: true,
+  };
+}
+
+function getChapterDefinitionForTitleFallback(id: ChapterId) {
+  try {
+    return getChapterDefinition(id);
+  } catch {
+    return null;
+  }
 }

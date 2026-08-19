@@ -26,6 +26,7 @@ import {
   type NextChapterSeed,
   type StoryDirectorState,
 } from "./types";
+import { shouldDirectorBuildNextChapterSeed } from "./types";
 
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
@@ -365,13 +366,24 @@ function buildNextChapterSeed(args: {
   closeCandidate: ChapterCloseDecision | null;
   openThreadIds: string[];
   mustEchoMemoryIds: string[];
+  /** 非关闭态下也允许构建暂定种子；title 来自 fallbackTitleCandidate，promise/tone 仍按 chapter 派生。 */
+  fallbackTitleCandidate?: string | null;
 }): NextChapterSeed | null {
-  if (!args.closeCandidate?.shouldClose) return null;
-  const title = sanitizeChapterTitleCandidate(args.closeCandidate.nextChapterTitleCandidate, 32);
+  const explicitTitle = sanitizeChapterTitleCandidate(
+    args.closeCandidate?.shouldClose ? args.closeCandidate.nextChapterTitleCandidate : null,
+    32,
+  );
+  const provisionalTitle = args.closeCandidate?.shouldClose
+    ? null
+    : sanitizeChapterTitleCandidate(args.fallbackTitleCandidate ?? null, 32);
+  const title = explicitTitle ?? provisionalTitle;
   if (!title) return null;
+  const isProvisional = !explicitTitle;
   return {
     title,
-    promise: `承接${args.chapter.chapterTitle}留下的余响，让玩家刚做出的选择在新场景里被回应。`,
+    promise: isProvisional
+      ? `暂定承接${args.chapter.chapterTitle}留下的余响，等待 close 信号后定型。`
+      : `承接${args.chapter.chapterTitle}留下的余响，让玩家刚做出的选择在新场景里被回应。`,
     mainQuestion: "新的异常会怎样回应玩家刚刚留下的痕迹？",
     emotionalTone:
       args.chapter.chapterPhase === "aftershock" || args.chapter.chapterPhase === "closing"
@@ -438,12 +450,37 @@ function advanceChapterDirectorState(args: {
     baseCloseCandidate?.shouldClose && modelTitleCandidate
       ? { ...baseCloseCandidate, nextChapterTitleCandidate: modelTitleCandidate }
       : baseCloseCandidate;
-  const nextChapterSeed = buildNextChapterSeed({
+  const triggerBuildSeed = shouldDirectorBuildNextChapterSeed({
+    chapter: args.chapter,
+    nowTurn: args.nowTurn,
+  });
+  // 半程触发后允许基于已有 seed / model title / chapter promise 派生暂定 title。
+  // 关闭时由 closeCandidate 决定；非关闭时按 priority 合并 fallback 候选。
+  const provisionalTitleFallback = !closeCandidate?.shouldClose
+    ? [
+        args.chapter.nextChapterSeed?.title ?? null,
+        modelTitleCandidate ?? null,
+        typeof args.chapter.promise === "string" && args.chapter.promise.trim() ? args.chapter.promise.trim() : null,
+      ]
+        .map((value) => sanitizeChapterTitleCandidate(value, 32))
+        .find((value): value is string => Boolean(value)) ?? null
+    : null;
+  let nextChapterSeed = buildNextChapterSeed({
     chapter: args.chapter,
     closeCandidate,
     openThreadIds,
     mustEchoMemoryIds,
+    fallbackTitleCandidate: provisionalTitleFallback,
   });
+  if (!nextChapterSeed && triggerBuildSeed && provisionalTitleFallback) {
+    nextChapterSeed = buildNextChapterSeed({
+      chapter: args.chapter,
+      closeCandidate: null,
+      openThreadIds,
+      mustEchoMemoryIds,
+      fallbackTitleCandidate: provisionalTitleFallback,
+    });
+  }
 
   const chapterWithCandidates: ChapterDirectorState = {
     ...args.chapter,
