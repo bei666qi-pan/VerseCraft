@@ -32,10 +32,10 @@ ENV PNPM_REGISTRY_FALLBACK=${PNPM_REGISTRY_FALLBACK}
 # 公共 pnpm 配置：更短的重试退避（原来最长退避 120s，超时时会白等 2 分钟）+
 # 调低并发（默认约16）降低国内镜像源单包被限速/超时的概率
 RUN corepack enable && corepack prepare pnpm@10.0.0 --activate \
- && pnpm config set fetch-retries 6 \
- && pnpm config set fetch-retry-mintimeout 10000 \
- && pnpm config set fetch-retry-maxtimeout 30000 \
- && pnpm config set network-concurrency 8
+ && pnpm config set fetch-retries 4 \
+ && pnpm config set fetch-retry-mintimeout 3000 \
+ && pnpm config set fetch-retry-maxtimeout 15000 \
+ && pnpm config set network-concurrency 24
 
 # ---- 第一阶段：锁文件驱动的 package store（冷构建只下载一次）----
 # 不使用 BuildKit cache mount：当前 Coolify builder 明确不支持 BuildKit。
@@ -45,7 +45,7 @@ FROM base AS package-cache
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm config set registry "$PNPM_REGISTRY" \
- && ( timeout 480 pnpm fetch --frozen-lockfile \
+ && ( timeout 240 pnpm fetch --frozen-lockfile \
       || ( echo "[package-cache] 主源超时/失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
            && pnpm config set registry "$PNPM_REGISTRY_FALLBACK" \
            && pnpm fetch --frozen-lockfile ) )
@@ -69,7 +69,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV NODE_OPTIONS=--max-old-space-size=2048
+ENV NEXT_CPU_COUNT=2
+ENV NEXT_PRIVATE_TURBOPACK_WORKERS=2
 
 RUN pnpm run build
 
