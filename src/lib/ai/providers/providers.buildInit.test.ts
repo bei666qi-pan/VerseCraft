@@ -53,7 +53,7 @@ test("openaiCompatibleGateway shallow-merges extraBody without overriding reserv
   assert.equal(body.user, "versecraft-test");
 });
 
-test("openaiCompatibleGateway marks codex-ds VerseCraft requests for exact metering", () => {
+test("openaiCompatibleGateway does not derive transport headers from deprecated direct-session env", () => {
   const previous = process.env.VC_AI_DIRECT_SOURCE;
   process.env.VC_AI_DIRECT_SOURCE = "codex-deepseek";
   try {
@@ -63,7 +63,7 @@ test("openaiCompatibleGateway marks codex-ds VerseCraft requests for exact meter
       stream: false,
       maxTokens: 10,
     });
-    assert.equal(new Headers(init.headers).get("x-deepseek-meter-source"), "VerseCraft /api/chat");
+    assert.equal(new Headers(init.headers).get("x-deepseek-meter-source"), null);
   } finally {
     if (previous === undefined) delete process.env.VC_AI_DIRECT_SOURCE;
     else process.env.VC_AI_DIRECT_SOURCE = previous;

@@ -231,7 +231,7 @@ test("production role policy keeps enhance and reasoner on their intended lanes"
   assert.deepEqual(resolveOrderedRoleChain("WORLDBUILD_OFFLINE", env, "full")[0], "reasoner");
   assert.deepEqual(resolveOrderedRoleChain("STORYLINE_SIMULATION", env, "full")[0], "reasoner");
   assert.deepEqual(resolveOrderedRoleChain("DEV_ASSIST", env, "full")[0], "reasoner");
-  assert.deepEqual(resolveOrderedRoleChain("PLAYER_CHAT", env, "full"), ["main", "control"]);
+  assert.deepEqual(resolveOrderedRoleChain("PLAYER_CHAT", env, "full"), ["writer", "main"]);
 });
 
 test("DIRECTOR_PLAN_CRITIC stays on the Pro reasoner lane", () => {
@@ -248,19 +248,19 @@ test("DIRECTOR_PLAN_CRITIC stays on the Pro reasoner lane", () => {
   assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "enhance"), true);
 });
 
-test("resolveOrderedRoleChain PLAYER_CHAT merges env extras and filters missing models", () => {
+test("resolveOrderedRoleChain PLAYER_CHAT keeps managed roles independent of legacy env model strings", () => {
   const onlyMain = baseEnv({
     modelsByRole: { main: "a", control: "", enhance: "", reasoner: "" },
     playerRoleFallbackChain: ["control", "main"],
   });
   const chainMain = resolveOrderedRoleChain("PLAYER_CHAT", onlyMain, "full");
-  assert.deepEqual(chainMain, ["main"]);
+  assert.deepEqual(chainMain, ["writer", "main"]);
 
   const both = baseEnv({
     playerRoleFallbackChain: ["control"],
   });
   const chainBoth = resolveOrderedRoleChain("PLAYER_CHAT", both, "full");
-  assert.deepEqual(chainBoth, ["main", "control"]);
+  assert.deepEqual(chainBoth, ["writer", "main"]);
 
   const emerg = baseEnv({ playerRoleFallbackChain: ["control", "reasoner"] });
   const chain = resolveOrderedRoleChain("PLAYER_CHAT", emerg, "emergency");
@@ -268,11 +268,12 @@ test("resolveOrderedRoleChain PLAYER_CHAT merges env extras and filters missing 
 
   const full = baseEnv({
     playerRoleFallbackChain: ["control", "main"],
+    playerChatMaxRoleCandidates: 3,
   });
   const fullChain = resolveOrderedRoleChain("PLAYER_CHAT", full, "full");
-  assert.ok(fullChain.includes("control"));
+  assert.deepEqual(fullChain, ["writer", "main", "control"]);
   const safe = resolveOrderedRoleChain("PLAYER_CHAT", full, "safe");
-  assert.deepEqual(safe, ["main"]);
+  assert.deepEqual(safe, ["writer", "main"]);
 });
 
 test("resolveFallbackPolicy exposes ordered chain", () => {
@@ -280,15 +281,15 @@ test("resolveFallbackPolicy exposes ordered chain", () => {
     playerRoleFallbackChain: ["control", "main"],
   });
   const p = resolveFallbackPolicy("PLAYER_CHAT", env, "full");
-  assert.deepEqual(p.chain, ["main", "control"]);
+  assert.deepEqual(p.chain, ["writer", "main"]);
 });
 
-test("explainTaskRouting marks missing model config", () => {
+test("explainTaskRouting defers model availability to managed runtime", () => {
   const env = baseEnv({
     modelsByRole: { main: "", control: "c", enhance: "e", reasoner: "r" },
   });
   const lines = explainTaskRouting("PLAYER_CHAT", env, "full");
   const mainLine = lines.find((l) => l.role === "main");
-  assert.equal(mainLine?.excluded, true);
-  assert.equal(mainLine?.reason, "no_model_config");
+  assert.equal(mainLine?.excluded, false);
+  assert.equal(mainLine?.reason, undefined);
 });

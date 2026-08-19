@@ -1,3 +1,5 @@
+> **Status: Superseded (not archived).** Replaced by `unify-world-director-runtime`; do not implement remaining tasks from this change.
+
 ## Why
 
 当前导演智能体编排（World Director 推演管线、Actor Simulation 管线、DM Agent tool loop）全部依赖手工编写的串行/条件流程代码。随着编排逻辑日益复杂——加载→推理→解析→校验→critic→写入→注入 prompt——手工管道的可维护性、可观测性和可恢复性逐渐下降。

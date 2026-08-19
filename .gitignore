@@ -75,6 +75,7 @@ pnpm-debug.log*
 !/.ops/autoops/runtime/.gitkeep
 /tmp/
 /temp/
+/traces/
 
 # editor
 .vscode/*

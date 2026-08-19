@@ -1,42 +1,25 @@
-# AI 多模型链路故障排查
+# AI 服务故障排查
 
-## 现象：玩家对话立即报错 / SSE 无内容
+## 玩家对话立即降级
 
-1. **网关**：是否配置 `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`，且 `AI_MODEL_MAIN`（及 fallback 所需 `AI_MODEL_CONTROL` 等）非空？见 `resolveOrderedRoleChain` 与 `anyAiProviderConfigured`。未配置时 `/api/chat` 可能返回 **200 + `X-VerseCraft-Ai-Status: keys_missing`**（降级 SSE），与真流式不同 — 详见 [`docs/ai-gateway.md`](ai-gateway.md) 测试一节。
-2. **模式**：是否误设 `AI_OPERATION_MODE=emergency`？紧急模式玩家链仅 **main** 角色。
-3. **熔断**：连续上游失败会打开 provider / logicalRole 电路（见 `docs/ai-fallback.md`）。重启进程或等待 `AI_CIRCUIT_COOLDOWN_MS` 后重试。
-4. **日志**：搜索 `[ai/taskPolicy]`、`[ai]`、`ai.telemetry` 相关结构化日志，确认 `failureKind`（429、5xx、超时等）。
+打开 `/saiduhsa` → “系统状态”。AI 显示“需关注”时，再进入“AI 管理”确认：至少一个故事生成模型已启用、连接测试成功，并已加入“玩家故事生成”候选顺序。缺少配置时 `/api/chat` 会返回兼容的 `200 + keys_missing` SSE。
 
-## 现象：JSON 解析失败 / DM 结构异常
+若提示安全密钥问题，部署人员需确认 `AI_CONFIG_ENCRYPTION_KEY` 存在、长度正确且未在已有密文后更换。系统会 fail-closed，不会尝试旧环境变量。
 
-1. **JSON mode**：需要 JSON 的任务在网关路径上带 `response_format: json_object`；增强类任务（`responseFormatJsonObject: false`）由 prompt 约束。若 one-api 背后模型不支持该模式，会在网关层报错或返回非 JSON — 请在 one-api **换通道/模型** 或关闭不兼容任务链。
-2. **上行消息**：确认历史消息已剥离 `reasoning_content`（`stream/sanitize.ts`）；否则上游可能 400。
+## 调用失败或频繁切备用
 
-## 现象：长时间「正在生成」或整段超时
+在服务行点击“测试”。认证或服务级限流会跳过同服务并尝试下一服务；模型格式或不存在只跳过当前模型。熔断按服务和模型隔离，等待冷却后会恢复尝试。
 
-1. **两层超时**：`/api/chat` 对玩家 SSE 有 **路由级约 60s** 中止；`execute` 内重试/单次请求超时由 **`AI_REQUEST_TIMEOUT_MS` / `AI_TIMEOUT_MS`** 控制；控制面预检另有 **约 11s** 上限。三者关系见 [`docs/ai-gateway.md`「超时说明」](ai-gateway.md)。
-2. **探活**：配置齐全后可用 `pnpm probe:ai-gateway` 验证 one-api 是否可达（极小请求，可能少量计费）。
+## JSON 或向量异常
 
-## 现象：增强叙事从未触发
+- 需要结构化输出的模型必须支持对应的 OpenAI 兼容能力。
+- 向量模型的后台维度必须与真实返回一致；不一致会拒绝保存或调用结果。
+- 上行消息仍由 `stream/sanitize.ts` 移除 `reasoning_content`。
 
-1. **门控**：`enhancementRulesPure.ts` 中 `evaluateNarrativeEnhancementGate` 需要控制面 `enhance_scene` / `enhance_npc_emotion` 与规则快照同时满足；并受会话预算约束（`docs/ai-governance.md`）。
-2. **任务类型**：**enhance** 角色仅绑定 `SCENE_ENHANCEMENT` / `NPC_EMOTION_POLISH`，禁止表阻止 **enhance** / **reasoner** 进入 `PLAYER_CHAT`。
+## 长时间生成
 
-## 现象：本地正常、Coolify 异常
+连接、重试和玩家回合预算仍由现有 AI 调优环境变量控制；URL、Key 和模型名不再由环境变量提供。查看系统状态和脱敏 telemetry，禁止把 prompt、玩家输入或上游响应正文写入日志。
 
-1. 环境变量键名是否与 `.env.example` **完全一致**（`AI_GATEWAY_*`、`AI_MODEL_*`）？
-2. `DATABASE_URL` / `AUTH_SECRET` 是否在启动阶段通过校验（`validateCriticalEnv.ts`）？启动失败时检查容器日志中的 `[VerseCraft config]`。
+## 本地正常、生产异常
 
-## 相关源码入口
-
-- 玩家 SSE：`router/execute.ts` → `executePlayerChatStream`
-- 非流式任务：`executeChatCompletion`
-- 环境：`config/env.ts`、`config/envRaw.ts`
-- 降级：`degrade/mode.ts`
-# World Director 故障排查补充
-
-1. 确认灰度开关：`AI_ENABLE_WORLD_DIRECTOR`、`AI_DIRECTOR_MODE`、`AI_ENABLE_DIRECTOR_HINT_INJECTION`。`off` 完全跳过；`shadow` 只写 agenda；`soft` 才允许 due agenda 进入 prompt。
-2. 若 `/play` 回复变慢，先查 `AI_DIRECTOR_AGENDA_QUERY_TIMEOUT_MS` 和 `director_agenda_injected` telemetry；due agenda 查询应短超时 fail-open，不应阻塞首字。
-3. 若 agenda 未生成，查 worker 日志中的 `WORLD_ENGINE_TICK`、`world_director_skipped`、`world_director_tick_failed`、validator reject reason，以及 `world_engine_runs.status`。
-4. 若怀疑泄露隐藏信息，检查 `world_engine_event_queue.injection_hint` 与 `agency_constraints`；`player_private_hooks` 只应存在于 run output / snapshot，不应进入 `DirectorHintBlock` 或最终 SSE payload。
-5. 快速本地回归：`pnpm exec tsx --test src/lib/worldEngine/engine.test.ts src/lib/storyDirector/storyDirector.test.ts && pnpm eval:director`。
+确认生产已应用 `0019_admin_ai_management.sql`，`AI_CONFIG_ENCRYPTION_KEY` 与录入配置时一致，并且服务地址是公开 HTTPS。Redis 不可用不会阻止热更新，五秒数据库版本轮询会兜底。

@@ -157,16 +157,22 @@ async function processOne(
         break;
       }
       case "WORLD_ENGINE_TICK": {
-        const payload = job.payload as import("../src/lib/worldEngine/contracts").WorldEngineTickPayload;
-        const result = await deps.runWorldEngineTick(payload);
+        const { normalizeWorldEngineTickPayload } = await import("../src/lib/worldEngine/contracts");
+        const normalized = normalizeWorldEngineTickPayload(job.payload);
+        if (!normalized.ok) throw new Error(`invalid_world_engine_payload:${normalized.reason}`);
+        const result = await deps.runWorldEngineTick(normalized.payload);
         if (!result.ok) throw new Error(result.reason);
-        logJson({
-          level: "info",
-          msg: "world_engine_tick_succeeded",
-          jobId: job.jobId,
-          runId: result.runId,
-          worldRevision: result.worldRevision.toString(),
-        });
+        if (result.skipped) {
+          logJson({ level: "info", msg: "world_engine_tick_skipped", jobId: job.jobId, reason: result.reason });
+        } else {
+          logJson({
+            level: "info",
+            msg: "world_engine_tick_succeeded",
+            jobId: job.jobId,
+            runId: result.runId,
+            worldRevision: result.worldRevision.toString(),
+          });
+        }
         break;
       }
       default:

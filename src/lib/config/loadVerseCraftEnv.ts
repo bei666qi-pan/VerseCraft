@@ -21,6 +21,16 @@ function loadEnvConfigSync(root: string): void {
 
 /** Env names used by `envCore.resolveAiEnv` / `anyAiProviderConfigured`. */
 const AI_SECRET_ENV_NAMES = [
+  "DEEPSEEK_API_KEY",
+  "VC_AI_DIRECT_BASE_URL",
+  "VC_AI_DIRECT_API_KEY",
+  "VC_AI_DIRECT_MODEL",
+  "VC_AI_DIRECT_MODEL_MAIN",
+  "VC_AI_DIRECT_MODEL_CONTROL",
+  "VC_AI_DIRECT_MODEL_ENHANCE",
+  "VC_AI_DIRECT_MODEL_REASONER",
+  "VC_AI_DIRECT_MODEL_WRITER",
+  "VC_AI_DIRECT_PLAYER_MODEL",
   "AI_GATEWAY_BASE_URL",
   "AI_GATEWAY_API_KEY",
   "AI_GATEWAY_PROVIDER",

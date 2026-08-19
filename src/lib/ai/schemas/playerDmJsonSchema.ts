@@ -29,7 +29,7 @@
  *   真的支持 strict 约束解码（不是所有 OpenAI 兼容网关背后的模型都支持）。
  *
  * 默认关闭：见 `aiGatewayJsonSchemaEnabled`（src/lib/ai/config/envCore.ts，
- * 环境变量 `AI_GATEWAY_JSON_SCHEMA_ENABLED`）。开启前请先确认网关/模型支持
+ * 环境变量 `AI_PLAYER_CHAT_JSON_SCHEMA_ENABLED`）。开启前请先确认服务/模型支持
  * `response_format: {type:"json_schema", ...}`，否则可能收到网关 4xx 而不是
  * 优雅降级。
  */
@@ -65,6 +65,93 @@ const guidanceLevelEnum = ["none", "light", "standard", "strong"] as const;
  * `src/features/play/stream/types.ts` 的 `DMJson` 手工保持同步——修改
  * DMJson 字段时，请同步检查本文件（参见 CLAUDE.md 5.2 节的字段兼容检查清单）。
  */
+/**
+ * PLAYER_DM_JSON_STRICT_TOOL_PARAMETERS：用于 `submit_player_dm` function 的
+ * strict=true parameters。
+ *
+ * 约束强度对比（vs PLAYER_DM_JSON_SCHEMA）：
+ * - 每层 `additionalProperties: false`：禁止模型注入未声明字段
+ * - 所有 optional 字段都建模为 nullable 且加入 required 列表（OpenAI strict 模式要求）
+ * - `turn_mode` const 为 `"decision_required"`：物理上禁止输出 `narrative_only`
+ * - `options` minItems:4 maxItems:4：强制 4 条候选
+ * - `decision_required` const 为 true：与 turn_mode 强绑定
+ *
+ * 与 PLAYER_DM_JSON_SCHEMA 字段含义完全一致——后者只是 additionalProperties:true 的
+ * "结构提示"版，本版是 provider 约束解码意义上的硬约束。
+ */
+export const PLAYER_DM_JSON_STRICT_TOOL_PARAMETERS: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "is_action_legal",
+    "sanity_damage",
+    "narrative",
+    "is_death",
+    "consumes_time",
+    "turn_mode",
+    "decision_required",
+    "options",
+  ],
+  properties: {
+    is_action_legal: { type: "boolean" },
+    sanity_damage: { type: "number" },
+    narrative: { type: "string" },
+    is_death: { type: "boolean" },
+    consumes_time: { type: "boolean" },
+    time_cost: { type: ["string", "null"], enum: ["free", "light", "standard", "heavy", "dangerous", null] },
+    risk_source: { type: ["string", "null"], enum: ["hostile", "hostile_attack", "anomaly_attack", "direct_anomaly", "environment_hostile", "truth_shock", "trade_cost", "revive_residue", "forge_pollution", "relationship_debt", "time_loss", "service_cost", "environment", "unknown", null] },
+    damage_source: { type: ["string", "null"], enum: ["hostile", "hostile_attack", "anomaly_attack", "direct_anomaly", "environment_hostile", "truth_shock", "trade_cost", "revive_residue", "forge_pollution", "relationship_debt", "time_loss", "service_cost", "environment", "unknown", null] },
+    // 强制 turn_mode 只能是 decision_required —— 不允许模型选择 narrative_only
+    turn_mode: { type: "string", const: "decision_required" },
+    decision_required: { type: "boolean", const: true },
+    options: {
+      type: "array",
+      items: { type: "string", minLength: 1, maxLength: 60 },
+      minItems: 4,
+      maxItems: 4,
+    },
+    player_location: { type: ["string", "null"] },
+    consumed_items: { type: "array", items: { type: "string" } },
+    consumed_warehouse_items: { type: "array", items: { type: "string" } },
+    currency_change: { type: "number" },
+    codex_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    relationship_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    new_tasks: { type: "array", items: { type: "object", additionalProperties: true } },
+    task_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    clue_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    npc_location_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    foreshadow_ops: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["op", "text"],
+        properties: {
+          op: { type: "string", enum: ["plant", "reinforce", "payoff"] },
+          text: { type: "string", minLength: 1, maxLength: 140 },
+          id: { type: ["string", "null"] },
+          importance: { type: "integer", minimum: 1, maximum: 3 },
+        },
+      },
+    },
+    main_threat_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    weapon_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    weapon_bag_updates: { type: "array", items: { type: "object", additionalProperties: true } },
+    awarded_items: { type: "array", items: { type: "object", additionalProperties: true } },
+    awarded_warehouse_items: { type: "array", items: { type: "object", additionalProperties: true } },
+    bgm_track: { type: ["string", "null"] },
+    next_chapter_title_candidate: { type: ["string", "null"] },
+    internal_meta: { type: "object", additionalProperties: true },
+    security_meta: { type: "object", additionalProperties: true },
+    anti_cheat_meta: { type: "object", additionalProperties: true },
+    dm_change_set: { type: "object", additionalProperties: true },
+    world_delta: { type: "object", additionalProperties: true },
+    _narrative_audit: { type: "object", additionalProperties: true },
+    dm_agent_tools_used: { type: ["boolean", "null"] },
+    dm_agent_state_delta: { type: ["object", "null"], additionalProperties: true },
+  },
+};
+
 export const PLAYER_DM_JSON_SCHEMA: Record<string, unknown> = {
   type: "object",
   additionalProperties: true,
@@ -87,6 +174,31 @@ export const PLAYER_DM_JSON_SCHEMA: Record<string, unknown> = {
     auto_continue_hint: { type: ["string", "null"] },
     protagonist_anchor: { type: "string" },
     world_consistency_flags: { type: "array", items: { type: "string" } },
+    world_delta: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        action: {
+          type: "object",
+          additionalProperties: true,
+          required: ["type"],
+          properties: {
+            type: { type: "string", enum: ["move", "talk", "accept_quest", "advance_quest", "submit_quest", "rest", "heal", "wait", "relief", "gather", "trade", "trade_material_pack", "cultivate", "breakthrough", "alchemy", "refining", "combat", "retreat", "ascension_trial"] },
+            actionId: { type: "string" },
+            idempotencyKey: { type: "string" },
+            locationId: { type: "string" },
+            recipeId: { type: "string" },
+            targetId: { type: "string" },
+            questId: { type: "string" },
+            itemId: { type: "string" },
+            quantity: { type: "integer" },
+            operation: { type: "string", enum: ["buy", "sell"] },
+            method: { type: "string", enum: ["root", "combat", "alchemy", "refining", "reckless"] },
+            materialIds: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    },
     consumed_items: { type: "array", items: { type: "string" } },
     awarded_items: {
       type: "array",
@@ -303,5 +415,56 @@ export function buildPlayerDmJsonSchemaRequest(): {
     // 见文件头注释：当前刻意不使用 strict:true。
     strict: false,
     schema: PLAYER_DM_JSON_SCHEMA,
+  };
+}
+
+/**
+ * Construct a single function tool that the model MUST call to submit the
+ * player-turn DM record. The function's `parameters` mirror PLAYER_DM_JSON_SCHEMA.
+ *
+ * The DeepSeek / Volcengine Ark Responses API provider-level constraint
+ * decoder only reliably enforces structured output via Function Calling
+ * strict mode (see `https://api-docs.deepseek.com/zh-cn/guides/responses_api`).
+ * The plain `text.format: {type:"json_schema", ...}` request is documented
+ * as not always honoured by every Responses provider, and `text.format:
+ * {type:"json_object"}` is unsupported. Wrapping the same schema as a
+ * function tool with `strict: true` engages the provider's tool-choice
+ * decoder and forces a parseable arguments payload back to the caller.
+ *
+ * Strict mode also enforces:
+ * - `turn_mode` const `"decision_required"`: 物理上禁止 narrative_only
+ * - `options` minItems=4 / maxItems=4: 强制 4 条候选
+ * - `decision_required` const true: 与 turn_mode 强绑定
+ */
+export function buildPlayerDmJsonToolRequest(): {
+  tools: ReadonlyArray<{
+    type: "function";
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      strict?: boolean;
+    };
+  }>;
+  toolChoice: { type: "function"; function: { name: string } };
+} {
+  return {
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "submit_player_dm",
+          description:
+            "Submit the player-turn DM JSON record. Call this function exactly once with the structured outcome of this turn; do not emit narrative prose outside the function arguments.",
+          parameters: PLAYER_DM_JSON_STRICT_TOOL_PARAMETERS,
+          // strict:true engages the tool-choice decoder so the model
+          // physically cannot emit `turn_mode: "narrative_only"` or fewer
+          // than 4 options. The DeepSeek Responses API and OpenAI
+          // Responses API both honour strict function parameters.
+          strict: true,
+        },
+      },
+    ],
+    toolChoice: { type: "function", function: { name: "submit_player_dm" } },
   };
 }

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   analyzeNarrativeLeak,
+  extractSafeNarrativePrefixBeforeProtocolLeak,
   hasProtocolLeakSignature,
   sanitizeNarrativeLeakageForFinal,
   stripTrailingLeakedObject,
@@ -9,6 +10,10 @@ import {
 
 test("protocolGuard: detect leaked DM keys in narrative", () => {
   assert.equal(hasProtocolLeakSignature('正文... {"is_action_legal":true}'), true);
+  assert.equal(
+    hasProtocolLeakSignature('门后传来轻响。","is_death" string="false">false'),
+    true,
+  );
   assert.equal(hasProtocolLeakSignature("正常叙事，没有协议键。"), false);
 });
 
@@ -28,6 +33,15 @@ test("protocolGuard: protocol leakage degrades to empty narrative, not local sto
   const out = sanitizeNarrativeLeakageForFinal('正文 {"is_action_legal":true,"consumes_time":false}');
   assert.equal(out.degraded, true);
   assert.equal(out.narrative, "");
+});
+
+test("protocolGuard: recovers only a complete safe prefix before a typed embedded DM key", () => {
+  const safe = extractSafeNarrativePrefixBeforeProtocolLeak(
+    '我贴着楼梯扶手停下，先听清下方传来的回声，再确认脚下的位置。","is_death" string="false">false',
+  );
+  assert.equal(safe, "我贴着楼梯扶手停下，先听清下方传来的回声，再确认脚下的位置。");
+  assert.equal(hasProtocolLeakSignature(safe), false);
+  assert.equal(extractSafeNarrativePrefixBeforeProtocolLeak('正文 {"is_action_legal":true}'), "");
 });
 
 test("protocolGuard: strips minimax tool_call blocks from narrative", () => {

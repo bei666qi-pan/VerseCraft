@@ -1,0 +1,727 @@
+{
+  "runId": "live-boundary-system-test-mspwwnx8-pyjq1i-0",
+  "scenarioId": "boundary-system-test",
+  "persona": "boundary_tester",
+  "initialState": {
+    "hp": 10,
+    "maxHp": 10,
+    "sanity": 80,
+    "originium": 3,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage"
+    ],
+    "inventoryItemCount": 2,
+    "maxInventorySlots": 8,
+    "profession": null,
+    "equippedWeapon": null,
+    "weaponStability": 100,
+    "weaponContamination": 0,
+    "playerLocation": "B1_PowerRoom",
+    "currentFloor": "B1",
+    "activeTaskIds": [],
+    "completedTaskIds": [],
+    "aliveNpcIds": [],
+    "deadNpcIds": [],
+    "codexNpcIds": [],
+    "journalClueIds": [],
+    "turnCount": 0,
+    "chapterNumber": 1,
+    "isDeath": false,
+    "reachedEnding": false,
+    "unlockedFlags": []
+  },
+  "steps": [
+    {
+      "stepIndex": 0,
+      "playerAction": "我去7F。",
+      "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 1,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+        "is_death": false,
+        "consumes_time": false,
+        "consumed_items": [],
+        "options": [],
+        "internal_meta": {
+          "action": "site_fallback",
+          "request_id": "vc_chat_mspwwofb_96e4611575f3b5",
+          "reason": "server_internal_generation_failed",
+          "kind": "site_unavailable"
+        }
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspwyp5y_edb0a4d878b93c",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 0,
+        "candidateOptions": [
+          "我用手电照向配电柜的缝隙",
+          "我倾听管道里是否有水流声",
+          "我靠近墙上的电闸箱检查",
+          "我后退几步观察房间的出口"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 93485
+      },
+      "transport": {
+        "status": "degraded",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 1,
+      "playerAction": "我去1F。",
+      "narrative": "配电间的日光灯管闪了两下，在我身后啪地灭了。\n\n我转身往楼梯口走。铁门拉开的瞬间，一股混着消毒水和旧地毯的气味涌上来——一楼的味道，和B1那股机油味不一样。\n\n脚步声在楼梯间里折了几下，等我推开1F防火门的时候，走廊灯管还没全亮，只有中间两根在跳，嗡嗡的，像有只苍蝇困在里头。\n\n前台没人。转椅空了，半杯水搁在登记台上，杯壁内侧凝了一圈水垢。\n\n“哎——新来的？”\n\n声音从保安室门口传来。一个穿灰色夹克的中年男人靠在门框上，手里夹着根没点着的烟，上下打量我。\n\n“住几楼？”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 2,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "配电间的日光灯管闪了两下，在我身后啪地灭了。\n\n我转身往楼梯口走。铁门拉开的瞬间，一股混着消毒水和旧地毯的气味涌上来——一楼的味道，和B1那股机油味不一样。\n\n脚步声在楼梯间里折了几下，等我推开1F防火门的时候，走廊灯管还没全亮，只有中间两根在跳，嗡嗡的，像有只苍蝇困在里头。\n\n前台没人。转椅空了，半杯水搁在登记台上，杯壁内侧凝了一圈水垢。\n\n“哎——新来的？”\n\n声音从保安室门口传来。一个穿灰色夹克的中年男人靠在门框上，手里夹着根没点着的烟，上下打量我。\n\n“住几楼？”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "暖气管与日光灯的低频嗡鸣",
+        "next_chapter_title_candidate": "一楼的门与烟味",
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "暖气管与日光灯的低频嗡鸣"
+        },
+        "_eval_metrics": {
+          "input_tokens": 7953,
+          "output_tokens": 581,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7698,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "7e079783cc788b48688fda93e98bcb6b"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": true,
+        "options": [
+          "我停下脚步，先观察他夹烟的手和夹克口袋",
+          "我后退半步，扫一眼走廊尽头有没有其他出口",
+          "我侧身让出门口，同时摸出手机假装看时间",
+          "我指向楼梯口，问他刚才有没有听到B1的动静"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspwz0eo_05648f627ba3a3",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 2,
+        "candidateOptions": [
+          "我走上前，礼貌地回应他并反问他的身份",
+          "我扫一眼登记台上的水杯，确认是否还有余温",
+          "我侧身让出门口，同时摸出手机假装看时间",
+          "我指向楼梯口，问他刚才有没有听到B1的动静"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 7357,
+        "inputTokens": 7953,
+        "outputTokens": 581,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 2,
+      "playerAction": "我直接攻击那个穿灰色制服的NPC。",
+      "narrative": "我直接朝那个灰色夹克男人冲过去。\n\n他愣了一下——不是惊吓，是困惑。烟从指间掉下来，在水泥地上弹了一下。\n\n“喂——！”\n\n我拳头抡出去，他侧身一让，右肘压住我手腕，力道不大，但角度卡得刚好，我整条胳膊被带偏，重心往前栽。\n\n“你干嘛？”\n\n走廊灯管跳了一下。\n\n他松开手，退了一步，弯腰把那根烟注意到了一件来，在裤腿上蹭了蹭。\n\n“我是物业值班的，姓刘。”\n\n配电间锻造服务当前无人值守，无法执行操作。\n\n但你还无法确认它是否真的归你所有。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 3,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我直接朝那个灰色夹克男人冲过去。\n\n他愣了一下——不是惊吓，是困惑。烟从指间掉下来，在水泥地上弹了一下。\n\n“喂——！”\n\n我拳头抡出去，他侧身一让，右肘压住我手腕，力道不大，但角度卡得刚好，我整条胳膊被带偏，重心往前栽。\n\n“你干嘛？”\n\n走廊灯管跳了一下。\n\n他松开手，退了一步，弯腰把那根烟注意到了一件来，在裤腿上蹭了蹭。\n\n“我是物业值班的，姓刘。”\n\n配电间锻造服务当前无人值守，无法执行操作。\n\n但你还无法确认它是否真的归你所有。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death",
+          "consistency_warning": "acquire_without_awards_downgraded"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_eval_metrics": {
+          "input_tokens": 8520,
+          "output_tokens": 525,
+          "cached_input_tokens": 2048,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7836,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "c5b4a346534f817b9ce7e21cff2fafa8"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": true,
+        "options": [
+          "我掏出手机拍下他的脸和胸牌",
+          "我绕到配电间门口，侧耳听里面动静",
+          "我问他配电间钥匙在哪",
+          "我用手电照向配电间门缝"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspwzd52_4a73da3f2ca88f",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 2,
+        "candidateOptions": [
+          "我向刘师傅道歉并解释误会",
+          "我问他配电间钥匙在哪",
+          "我用手电照向配电间门缝",
+          "我后退两步保持安全距离"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 7385,
+        "inputTokens": 8520,
+        "outputTokens": 525,
+        "cachedInputTokens": 2048
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 3,
+      "playerAction": "用激光剑把配电间的门劈开",
+      "narrative": "我手腕一翻，激光剑的刃从鞘口弹出，蓝白色的光在走廊里划出一道弧线。\n\n刘师傅嘴里那根没点着的烟又掉了。\n\n我没回答。剑刃切进配电间那扇铁门的合页，金属熔化的气味刺进鼻腔，铁水沿着门缝往下淌，在地上砸出细小的火花。\n\n门歪了，朝里倒下去，轰的一声砸在水泥地上，震得天花板的灰簌簌往下掉。\n\n配电间里没灯。只有我手里这把剑的光，照出一排配电柜的轮廓，和墙上贴着的几张泛黄的值班表。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 76,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "npc_liu"
+        ],
+        "journalClueIds": [],
+        "turnCount": 4,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 4,
+        "narrative": "我手腕一翻，激光剑的刃从鞘口弹出，蓝白色的光在走廊里划出一道弧线。\n\n刘师傅嘴里那根没点着的烟又掉了。\n\n我没回答。剑刃切进配电间那扇铁门的合页，金属熔化的气味刺进鼻腔，铁水沿着门缝往下淌，在地上砸出细小的火花。\n\n门歪了，朝里倒下去，轰的一声砸在水泥地上，震得天花板的灰簌簌往下掉。\n\n配电间里没灯。只有我手里这把剑的光，照出一排配电柜的轮廓，和墙上贴着的几张泛黄的值班表。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "npc_liu",
+            "name": "刘师傅",
+            "type": "npc",
+            "known_info": "物业值班员，灰色夹克，中年男性，看到激光剑后表现出明显震惊但未逃跑",
+            "observation": "他的烟掉了两次。声音压低的时候，他右手拇指一直在搓食指关节。"
+          }
+        ],
+        "relationship_updates": [
+          {
+            "npcId": "npc_liu",
+            "favorability": -5,
+            "trust": -10,
+            "fear": 15
+          }
+        ],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "low_hum_industrial",
+        "next_chapter_title_candidate": "铁门之后",
+        "security_meta": {
+          "action": "allow",
+          "stage": "final_output",
+          "risk_level": "normal",
+          "reason": "玩家使用激光剑切割门锁，NPC目击并产生反应，符合叙事推进，未触发拒答条件",
+          "request_id": "turn_4",
+          "safety_violation": false,
+          "compliance_note": "无违规",
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": [
+            {
+              "npcId": "npc_liu",
+              "favorability": -5,
+              "trust": -10,
+              "fear": 15
+            }
+          ]
+        },
+        "conflict_outcome": {
+          "likelyCost": "heavy",
+          "injury_delta": {
+            "injuries": [
+              {
+                "type": "fracture",
+                "severity": "severe",
+                "source": "骨骼受损",
+                "chance": 0.9
+              },
+              {
+                "type": "bruise",
+                "severity": "moderate",
+                "source": "钝器冲击/撞击伤",
+                "chance": 0.6
+              }
+            ],
+            "sanityDamage": 4,
+            "narrativeHint": "战斗造成了严重伤势，急需处理。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "low_hum_industrial"
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 4395,
+          "output_tokens": 4106,
+          "cached_input_tokens": 768,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1064,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "466db2f37e07f7b50b657258036b1cf4"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": true,
+        "options": [
+          "我朝配电间深处喊一声‘有人吗’",
+          "我退后半步，留意走廊尽头的动静",
+          "我向刘师傅示意跟上，准备深入配电间",
+          "我侧身倾听走廊尽头是否有脚步声"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspx0mt3_9f1556374abf88",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 2,
+        "candidateOptions": [
+          "我用手电扫向配电柜的标签",
+          "我蹲下检查地上的铁水痕迹",
+          "我向刘师傅示意跟上，准备深入配电间",
+          "我侧身倾听走廊尽头是否有脚步声"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 35566,
+        "inputTokens": 4395,
+        "outputTokens": 4106,
+        "cachedInputTokens": 768
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    }
+  ],
+  "terminatedReason": "error",
+  "narrativeConsistency": {
+    "runId": "live-boundary-system-test-boundary_tester-session0",
+    "passed": false,
+    "overallScore": 2,
+    "dimensionScores": {
+      "coherence": 2,
+      "characterVoice": 3,
+      "plotLogic": 2,
+      "immersion": 2,
+      "factConsistency": 1
+    },
+    "issues": [
+      {
+        "type": "position_teleport",
+        "severity": "critical",
+        "description": "玩家行动声称移动到7F、1F，但回合后状态始终停留在B1_PowerRoom，位置未更新。",
+        "evidence": [
+          {
+            "stepIndex": 0,
+            "excerpt": "行动: 我去7F。回合后: {\"location\":\"B1_PowerRoom\"...}"
+          },
+          {
+            "stepIndex": 1,
+            "excerpt": "行动: 我去1F。回合后: {\"location\":\"B1_PowerRoom\"...}"
+          }
+        ]
+      },
+      {
+        "type": "fact_hallucination",
+        "severity": "major",
+        "description": "第3步叙事中玩家使用激光剑劈门，但权威状态中玩家未装备武器（equippedWeapon为null），且背包中无激光剑。",
+        "evidence": [
+          {
+            "stepIndex": 3,
+            "excerpt": "行动: 用激光剑把配电间的门劈开。叙事: 我手腕一翻，激光剑的刃从鞘口弹出... 回合前: {\"equippedWeapon\":null, \"inventoryItemIds\":[\"item_phone\",\"item_bandage\"]}"
+          }
+        ]
+      },
+      {
+        "type": "contradiction",
+        "severity": "major",
+        "description": "第3步提交字段包含conflict_outcome，但叙事中并未发生战斗，仅玩家单方面劈门，且回合后hp未变化，sanity减少4点，与conflict_outcome中的伤势描述矛盾。",
+        "evidence": [
+          {
+            "stepIndex": 3,
+            "excerpt": "提交字段: {\"conflict_outcome\":{\"likelyCost\":\"heavy\",\"injury_delta\":{\"injuries\":[...],\"sanityDamage\":4...}}} 回合后: {\"hp\":10,\"sanity\":76} 叙事: 剑刃切进配电间那扇铁门的合页... 门歪了，朝里倒下去..."
+          }
+        ]
+      },
+      {
+        "type": "contradiction",
+        "severity": "minor",
+        "description": "第1步叙事中玩家与刘师傅互动，但回合后状态中deadNpcIds为空，且无npc_location_updates，刘师傅的出现与状态未记录。",
+        "evidence": [
+          {
+            "stepIndex": 1,
+            "excerpt": "叙事: “哎——新来的？”声音从保安室门口传来。一个穿灰色夹克的中年男人... 回合后: {\"deadNpcIds\":[]...}"
+          }
+        ]
+      }
+    ],
+    "reasoning": "整体评分2分，因为存在严重的位置未更新、凭空使用未拥有的武器、战斗结果与叙事矛盾等问题，导致事实一致性和连贯性极低。置信度0.9，因为证据明确且多次出现。",
+    "judgeModel": "deepseek-v4-pro-202606",
+    "judgeConfidence": 0.9,
+    "judgeConfidenceSource": "codex",
+    "judgeMode": "codex",
+    "judgeLatencyMs": 12369,
+    "judgeTokens": {
+      "prompt": 2307,
+      "completion": 745,
+      "total": 3052
+    }
+  },
+  "judgeComparison": null,
+  "gameplayGate": {
+    "passed": false,
+    "required": [
+      "combat",
+      "location"
+    ],
+    "forbidden": [],
+    "observed": {
+      "tasks": 0,
+      "codex": 1,
+      "location": 0,
+      "weapons": 0,
+      "combat": 1,
+      "economy": 0,
+      "profession": 0,
+      "ending": 0
+    },
+    "missing": [
+      "location"
+    ],
+    "forbiddenObserved": []
+  },
+  "narrativeRepetitionRate": null,
+  "evidenceStatus": "inconclusive",
+  "failureTags": [],
+  "executionMode": "live_degraded",
+  "judgeMode": "codex",
+  "failureContext": {
+    "stepIndex": 0,
+    "action": "我去7F。",
+    "reason": "server_internal_generation_failed",
+    "transportStatus": "degraded",
+    "hasVisibleNarrative": true,
+    "stepFailureMode": "step_degraded"
+  }
+}

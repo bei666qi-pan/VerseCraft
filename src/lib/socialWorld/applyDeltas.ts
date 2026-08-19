@@ -34,6 +34,7 @@ import type {
   NpcAgentPatch,
   NpcRelationDelta as DirectorNpcRelationDelta,
 } from "@/lib/worldEngine/contracts";
+import type { PoolClient } from "pg";
 
 export type SocialGmIssue = {
   code: string;
@@ -72,6 +73,7 @@ export type ApplySocialGmDeltasArgs = {
   cooldownTurns?: number;
   maxPendingEventsPerSession?: number;
   persistence?: SocialWorldPersistence;
+  client?: PoolClient;
 };
 
 const EMPTY_WRITE_RESULT: SocialWorldWriteResult = Object.freeze({ inserted: 0, updated: 0, skipped: 0 });
@@ -512,6 +514,7 @@ export async function applySocialGmDeltas(args: ApplySocialGmDeltasArgs): Promis
 
   const eventWrite = await persistence.insertSocialEvents(sessionId, acceptedEvents, dedupKey, {
     userId: args.userId ?? null,
+    client: args.client,
   });
   if (eventWrite.inserted <= 0) {
     return {
@@ -541,6 +544,7 @@ export async function applySocialGmDeltas(args: ApplySocialGmDeltasArgs): Promis
   }
   const relationWrite = await persistence.upsertNpcRelationEdges(sessionId, [...changedRelations.values()], {
     userId: args.userId ?? null,
+    client: args.client,
   });
 
   const stateById = new Map(states.map((state) => [state.npcId, state]));
@@ -554,6 +558,7 @@ export async function applySocialGmDeltas(args: ApplySocialGmDeltasArgs): Promis
   }
   const agentWrite = await persistence.upsertNpcAgentStates(sessionId, [...changedStates.values()], {
     userId: args.userId ?? null,
+    client: args.client,
   });
 
   const memorySpineEntries = acceptedEventsWithDirector
@@ -561,6 +566,7 @@ export async function applySocialGmDeltas(args: ApplySocialGmDeltasArgs): Promis
     .filter((entry): entry is MemorySpineEntry => Boolean(entry));
   const memoryWrite = await (persistence.upsertMemorySpineEntries?.(sessionId, memorySpineEntries, {
     userId: args.userId ?? null,
+    client: args.client,
   }) ?? Promise.resolve({ ...EMPTY_WRITE_RESULT }));
 
   return {

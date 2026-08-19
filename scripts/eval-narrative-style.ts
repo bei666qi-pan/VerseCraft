@@ -6,8 +6,12 @@
  * 输出格式与迁移前兼容
  */
 
+import { config as loadEnv } from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
+
+loadEnv({ path: [".env.local", ".env"] });
+
 import {
   evaluateNarrativeStyleCase,
   summarizeNarrativeStyleEval,
@@ -190,7 +194,7 @@ async function judgeSingleCase(
 
   for (let j = 0; j < numJudges; j++) {
     const positionScheme = j === 0 ? "original" : j === 1 ? "reversed" : "random";
-    const prompt = buildJudgePrompt({ rubric, target, positionScheme, chainOfThought: true });
+    const prompt = buildJudgePrompt({ rubric, target, positionScheme, chainOfThought: false });
 
     try {
       const response = await callDeepSeekCompletion({

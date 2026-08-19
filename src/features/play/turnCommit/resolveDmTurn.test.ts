@@ -86,6 +86,22 @@ test("resolveTurnConsistency: unsupported pick-up followed by backpack possessio
   assert.equal(out.ui_hints?.consistency_flags?.includes("acquire_without_awards_fallback") ?? false, true);
 });
 
+test("resolveTurnConsistency: unsupported object stowed in a pocket cannot become persistent possession", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "我站起来，把毽子塞进口袋，继续朝楼梯间走。",
+    is_death: false,
+    consumes_time: true,
+    options: [],
+    awarded_items: [],
+    awarded_warehouse_items: [],
+  });
+  assert.equal(out.narrative, "你注意到附近有一件尚未确认归属的物品，暂时没有把它记入行囊。");
+  assert.deepEqual(out.awarded_items, []);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("acquire_without_awards_fallback") ?? false, true);
+});
+
 test("resolveTurnConsistency: conflict degrade can be disabled without changing award state", () => {
   const previous = process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE;
   process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE = "0";
@@ -252,6 +268,18 @@ test("resolveTurnConsistency: conflict injury sanity mirrors authoritative sanit
   assert.equal(out.conflict_outcome?.injury_delta?.sanityDamage, 3);
   assert.deepEqual(out.conflict_outcome?.injury_delta?.injuries, []);
   assert.match(out.conflict_outcome?.injury_delta?.narrativeHint ?? "", /理智-3.*未造成身体伤势/);
+});
+
+test("resolveTurnConsistency: narrative combat language never creates conflict or sanity state", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "我挥剑砍中目标，鲜血飞溅，精神几乎崩溃。",
+    is_death: false,
+  });
+  assert.equal(out.conflict_outcome, null);
+  assert.equal(out.sanity_damage, 0);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("conflict_outcome_fallback_from_narrative") ?? false, false);
 });
 
 test("resolveTurnConsistency: time_cost normalizes to known kind", () => {

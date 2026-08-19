@@ -5,8 +5,6 @@ import { db, pool } from "@/db";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { addAppDays, appDateLabel, appEndOfDayUtc, appStartOfDayUtc } from "@/lib/admin/appTimezone";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
-import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
-import { normalizeAiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { getAdminMetricDefinition } from "@/lib/admin/metricDefinitions";
 import { buildWebTrafficDailyMetric } from "@/lib/admin/webTrafficOverview";
 import { WEB_TRAFFIC_SOURCE_VALUES, WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN } from "@/lib/analytics/webTraffic";
@@ -21,7 +19,7 @@ import { buildAdminUserDetailSignals } from "@/lib/admin/userDetailSignals";
 import { getFeedbackInsights, getFunnelMetrics, getOverviewMetrics, getRealtimeMetrics, getRetentionMetrics } from "@/lib/admin/service";
 import { getAdminLoginRateLimitHealth } from "@/lib/admin/loginRateLimit";
 import { computeAdminCapacityEstimate } from "@/lib/admin/capacityEstimate";
-import { anyAiProviderConfigured } from "@/lib/ai/config/env";
+import { getManagedAiSnapshot } from "@/lib/ai/managed/state";
 import { envRaw } from "@/lib/config/envRaw";
 import { getChatQueueConfig } from "@/lib/chatQueue/config";
 import { shouldQueueChatRequest } from "@/lib/chatQueue/service";
@@ -573,8 +571,7 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
       ORDER BY "tokens" DESC
       LIMIT 10
     `).catch(() => ({ rows: [] })),
-    // 按逻辑角色（chat_request_finished payload.model 存的就是 main/control/enhance/reasoner）
-    // 拆分成本——之前 costModel.ts 里已有 USD 单价估算，但从未接入后台展示。
+    // 按逻辑角色保留历史 Token 聚合；费用统一改由 ai_usage_events 的人民币单价快照计算。
     db.execute(sql`
       SELECT
         COALESCE(payload->>'model', 'unknown') AS "role",
@@ -613,18 +610,16 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
   ]);
   const costByRole = rowsOf(byRoleRaw).map((r) => {
     const roleRaw = String(r.role ?? "unknown");
-    const role = normalizeAiLogicalRole(roleRaw) ?? "main";
     const promptTokens = n(r.promptTokens);
     const completionTokens = n(r.completionTokens);
     const totalTokensForRole = n(r.totalTokens);
-    const estimatedUsd = estimateUsdForUsage(role, { promptTokens, completionTokens, totalTokens: totalTokensForRole });
     return {
       role: roleRaw,
       requests: n(r.requests),
       promptTokens,
       completionTokens,
       totalTokens: totalTokensForRole,
-      estimatedUsd: Math.round(estimatedUsd * 10000) / 10000,
+      estimatedUsd: null,
     };
   });
   const enqueueRow = rowsOf(enqueueRaw)[0] ?? {};
@@ -660,9 +655,9 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
         actions: n(r.actions),
         tokens: n(r.tokens),
       })),
-      /** 按逻辑角色(main/control/enhance/reasoner)拆分的请求数/token/预估USD成本。 */
+      /** 兼容旧消费者：Token 仍保留，美元费用不再虚构。 */
       byRole: costByRole,
-      estimatedTotalUsd: Math.round(costByRole.reduce((sum, r) => sum + r.estimatedUsd, 0) * 10000) / 10000,
+      estimatedTotalUsd: null,
     },
     /** 此前写入但从未被后台消费的两个事件，这里补上最小可用的聚合视图。 */
     turnLaneDistribution: rowsOf(laneRaw).map((r) => ({ lane: String(r.lane ?? "unknown"), count: n(r.count) })),
@@ -814,11 +809,12 @@ export async function getSystemHealth() {
     updatedAt: new Date().toISOString(),
     meta: { redisConfigured: redisHealth.redisConfigured, fallbackBuckets: redisHealth.fallbackBuckets },
   };
-  const aiGatewayOk = anyAiProviderConfigured();
+  const managedAi = getManagedAiSnapshot();
+  const aiGatewayOk = managedAi.ready && managedAi.byPurpose.story.length > 0;
   checks.aiGateway = {
     ok: aiGatewayOk,
     degraded: !aiGatewayOk,
-    reason: aiGatewayOk ? null : "ai_gateway_keys_missing",
+    reason: aiGatewayOk ? null : managedAi.health,
     updatedAt: new Date().toISOString(),
   };
   let metaQueryFailed = false;

@@ -5,7 +5,6 @@
 import type { StateStorage } from "zustand/middleware";
 import { get, set, del } from "idb-keyval";
 import { envNumber } from "@/lib/config/envRaw";
-import { trackGameplayEvent } from "@/app/actions/telemetry";
 
 const GET_ITEM_TIMEOUT_MS = envNumber("VERSECRAFT_RESILIENT_STORAGE_GET_TIMEOUT", 3000);
 const SET_ITEM_TIMEOUT_MS = envNumber("VERSECRAFT_RESILIENT_STORAGE_SET_TIMEOUT", 5000);
@@ -87,18 +86,25 @@ export function notifyStorageDegraded(opts: {
   } catch {
     /* ignore */
   }
-  void trackGameplayEvent({
-    eventName: "storage_degraded",
-    sessionId: "system",
-    page: null,
-    source: "resilient_storage",
-    payload: {
-      message: opts.message ?? null,
-      source: "resilient_storage",
-      failedTier: opts.failedTier,
-      fallbackTier: opts.fallbackTier,
-    },
-  }).catch(() => {});
+  // Keep the client storage module free of a static server-action dependency.
+  // Next.js rewrites this dynamic import at build time, while plain Node unit
+  // tests can import the store without evaluating auth/database modules.
+  void import("@/app/actions/telemetry")
+    .then(({ trackGameplayEvent }) =>
+      trackGameplayEvent({
+        eventName: "storage_degraded",
+        sessionId: "system",
+        page: null,
+        source: "resilient_storage",
+        payload: {
+          message: opts.message ?? null,
+          source: "resilient_storage",
+          failedTier: opts.failedTier,
+          fallbackTier: opts.fallbackTier,
+        },
+      })
+    )
+    .catch(() => {});
 }
 
 export function resolveStorageFallbackValue(

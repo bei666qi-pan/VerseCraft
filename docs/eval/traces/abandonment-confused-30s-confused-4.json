@@ -1,0 +1,2210 @@
+{
+  "runId": "live-abandonment-confused-30s-mspwls7i-3ceede-4",
+  "scenarioId": "abandonment-confused-30s",
+  "persona": "confused",
+  "initialState": {
+    "hp": 10,
+    "maxHp": 10,
+    "sanity": 80,
+    "originium": 3,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage"
+    ],
+    "inventoryItemCount": 2,
+    "maxInventorySlots": 8,
+    "profession": null,
+    "equippedWeapon": null,
+    "weaponStability": 100,
+    "weaponContamination": 0,
+    "playerLocation": "旧公寓三楼走廊",
+    "currentFloor": "3F",
+    "activeTaskIds": [],
+    "completedTaskIds": [],
+    "aliveNpcIds": [],
+    "deadNpcIds": [],
+    "codexNpcIds": [],
+    "journalClueIds": [],
+    "turnCount": 0,
+    "chapterNumber": 1,
+    "isDeath": false,
+    "reachedEnding": false,
+    "unlockedFlags": []
+  },
+  "steps": [
+    {
+      "stepIndex": 0,
+      "playerAction": "看看周围有什么",
+      "narrative": "我站在三楼走廊里，脚下是那条褪成灰绿色的地毯，墙上的消防栓玻璃蒙了一层灰，映着走廊尽头那扇半开的窗户。\n\n光从窗外斜进来，把走廊切成明暗两半。我这一半暗，暗得能看见空气里浮动的灰尘颗粒——它们慢悠悠地飘着，像被时间泡软了。\n\n我转了一圈，目光扫过几扇紧闭的房门。门牌号模糊不清，油漆剥落得只剩轮廓。左手边第二扇门下压着一角纸条，白得扎眼。\n\n走近了才看清，那不是纸条——是一张照片，被人从门缝里塞出来一半，露出一个模糊的边角。\n\n我蹲下来，伸手去抽。\n\n“别敲这扇门。”",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "旧公寓三楼走廊",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 1,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我站在三楼走廊里，脚下是那条褪成灰绿色的地毯，墙上的消防栓玻璃蒙了一层灰，映着走廊尽头那扇半开的窗户。\n\n光从窗外斜进来，把走廊切成明暗两半。我这一半暗，暗得能看见空气里浮动的灰尘颗粒——它们慢悠悠地飘着，像被时间泡软了。\n\n我转了一圈，目光扫过几扇紧闭的房门。门牌号模糊不清，油漆剥落得只剩轮廓。左手边第二扇门下压着一角纸条，白得扎眼。\n\n走近了才看清，那不是纸条——是一张照片，被人从门缝里塞出来一半，露出一个模糊的边角。\n\n我蹲下来，伸手去抽。\n\n“别敲这扇门。”",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "action": "allow",
+          "stage": "final_output",
+          "risk_level": "normal",
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 7788,
+          "output_tokens": 380,
+          "cached_input_tokens": 3584,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7344,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "6b699eb6608a7e522a4ae0959c13e6b4"
+      },
+      "metrics": {
+        "latencyMs": 10631,
+        "inputTokens": 7788,
+        "outputTokens": 380,
+        "cachedInputTokens": 3584
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 1,
+      "playerAction": "看看那张照片是什么",
+      "narrative": "我捏住照片露出的边角，指腹触到滑腻的纸面，轻轻往外一带。照片从门缝里滑出来，发出一声干燥的摩擦，纸边在门框上刮了一下，像在抗拒。是一张拍立得，四角微微卷曲，显影褪成了偏黄的色调，表面有一层薄薄的指纹印，模糊了部分细节。照片里是一间房间——和眼前这条走廊很像，但墙纸花纹不同，暗红底色上爬满深褐色的藤蔓图案，那些藤蔓仿佛在暗处蠕动，扭曲成不祥的曲线。房间中央摆着一张单人床，被子凌乱地堆着，像有人刚起身，床单上有一道深色的褶皱，像是被手指攥紧过。床沿坐着一个人，背对镜头，只能看见后脑勺和肩膀。她穿着白色的连衣裙，领口有一小块深色的污渍，像是某种液体干涸后的痕迹，边缘渗进布料纤维里。我看了一眼就愣住了，心脏猛地一缩，指尖冰凉。——那件白裙子，我认识。那是三年前我亲手叠好放进衣柜的那条，领口绣着一个小小的字母‘L’。空气突然变得沉重，灰尘在光柱里停滞，仿佛时间也凝固了。走廊尽头传来一声轻微的响动，像是什么东西在木地板上拖行，又像只是老旧水管在呻吟。我攥紧照片，指节发白，目光却无法从那个背影上移开。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 2,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我捏住照片露出的边角，指腹触到滑腻的纸面，轻轻往外一带。照片从门缝里滑出来，发出一声干燥的摩擦，纸边在门框上刮了一下，像在抗拒。是一张拍立得，四角微微卷曲，显影褪成了偏黄的色调，表面有一层薄薄的指纹印，模糊了部分细节。照片里是一间房间——和眼前这条走廊很像，但墙纸花纹不同，暗红底色上爬满深褐色的藤蔓图案，那些藤蔓仿佛在暗处蠕动，扭曲成不祥的曲线。房间中央摆着一张单人床，被子凌乱地堆着，像有人刚起身，床单上有一道深色的褶皱，像是被手指攥紧过。床沿坐着一个人，背对镜头，只能看见后脑勺和肩膀。她穿着白色的连衣裙，领口有一小块深色的污渍，像是某种液体干涸后的痕迹，边缘渗进布料纤维里。我看了一眼就愣住了，心脏猛地一缩，指尖冰凉。——那件白裙子，我认识。那是三年前我亲手叠好放进衣柜的那条，领口绣着一个小小的字母‘L’。空气突然变得沉重，灰尘在光柱里停滞，仿佛时间也凝固了。走廊尽头传来一声轻微的响动，像是什么东西在木地板上拖行，又像只是老旧水管在呻吟。我攥紧照片，指节发白，目光却无法从那个背影上移开。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续往前探索，注意观察周围环境的变化。",
+          "我检查最近的门是否能够打开。",
+          "我停下来仔细听周围的动静。",
+          "我寻找附近的光源或标识。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 4178,
+          "output_tokens": 250,
+          "cached_input_tokens": 768,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1056,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "1fcf21d7d8ace248126ff8c8976752ba"
+      },
+      "metrics": {
+        "latencyMs": 11017,
+        "inputTokens": 4178,
+        "outputTokens": 250,
+        "cachedInputTokens": 768
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 2,
+      "playerAction": "我继续往前探索，注意观察周围环境的变化。",
+      "narrative": "我把照片翻过来，背面空白，什么都没有。再翻回去，那个穿白裙子的背影依然坐在那里，一动不动。\n\n我深吸一口气，把照片塞进外套口袋，站起来。走廊依然安静，只有远处那扇半开的窗户偶尔灌进一阵风，把窗帘吹得鼓起又落下。\n\n我往前走，经过第三扇门时，门缝里透出一线光，很细，像有人在内侧用什么东西塞住了缝隙，只留了一小道。我停下来，侧耳听了听——里面没有声音，但光还亮着，说明有人。\n\n“有人吗？”我敲了敲门，声音不大，但在空旷的走廊里显得格外突兀。\n\n没有回应。\n\n我又敲了两下，这次用了点力。门板震了一下，那道光晃了晃，然后——灭了。\n\n我盯着那扇门，手心微微出汗。里面的人听到了，但没有开门，而是把灯关了。\n\n这不是友好的信号。我往后退了半步，脚下踩到地毯上一块松动的突起，差点绊倒，低头一看——地毯边缘翘起一截，下面露出一个信封的角，灰扑扑的，像是被踢到角落很久了。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 3,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我把照片翻过来，背面空白，什么都没有。再翻回去，那个穿白裙子的背影依然坐在那里，一动不动。\n\n我深吸一口气，把照片塞进外套口袋，站起来。走廊依然安静，只有远处那扇半开的窗户偶尔灌进一阵风，把窗帘吹得鼓起又落下。\n\n我往前走，经过第三扇门时，门缝里透出一线光，很细，像有人在内侧用什么东西塞住了缝隙，只留了一小道。我停下来，侧耳听了听——里面没有声音，但光还亮着，说明有人。\n\n“有人吗？”我敲了敲门，声音不大，但在空旷的走廊里显得格外突兀。\n\n没有回应。\n\n我又敲了两下，这次用了点力。门板震了一下，那道光晃了晃，然后——灭了。\n\n我盯着那扇门，手心微微出汗。里面的人听到了，但没有开门，而是把灯关了。\n\n这不是友好的信号。我往后退了半步，脚下踩到地毯上一块松动的突起，差点绊倒，低头一看——地毯边缘翘起一截，下面露出一个信封的角，灰扑扑的，像是被踢到角落很久了。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 8456,
+          "output_tokens": 450,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7513,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "3099aa9458aef47c67dc507e2d2f63e3"
+      },
+      "metrics": {
+        "latencyMs": 5574,
+        "inputTokens": 8456,
+        "outputTokens": 450,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 3,
+      "playerAction": "我来问问看那个房间里的光是怎么回事。",
+      "narrative": "我蹲下来，注意到了一件那个信封。牛皮纸，没封口，里面空空的，边角磨损得厉害，像是被人反复拿起来又放回去过。指纹印在上面，一层叠一层，看不清是谁的。\n\n我站起来，看了一眼那扇灭了灯的门，喉咙发干。里头的人显然不想搭理我，但走廊里就这一间亮过灯的房间，线索只会从人嘴里出来。\n\n我清了清嗓子，声音压低了半度，对着门板说：“刚才您这儿亮着灯，我就是想问一下——三楼走廊尽头那个房间，您知道是谁住吗？或者，您见过那扇门底下飘出来的光吗？”\n\n门板沉默了几秒。然后传来一声极轻的响动，像是有人从里面走近了，贴着门板，呼吸声透过薄薄的木门传过来。\n\n“你看到了什么？”\n\n是个女声，年轻，带着点沙哑，像刚睡醒，又像很久没睡过。\n\n但你还无法确认它是否真的归你所有。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 4,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我蹲下来，注意到了一件那个信封。牛皮纸，没封口，里面空空的，边角磨损得厉害，像是被人反复拿起来又放回去过。指纹印在上面，一层叠一层，看不清是谁的。\n\n我站起来，看了一眼那扇灭了灯的门，喉咙发干。里头的人显然不想搭理我，但走廊里就这一间亮过灯的房间，线索只会从人嘴里出来。\n\n我清了清嗓子，声音压低了半度，对着门板说：“刚才您这儿亮着灯，我就是想问一下——三楼走廊尽头那个房间，您知道是谁住吗？或者，您见过那扇门底下飘出来的光吗？”\n\n门板沉默了几秒。然后传来一声极轻的响动，像是有人从里面走近了，贴着门板，呼吸声透过薄薄的木门传过来。\n\n“你看到了什么？”\n\n是个女声，年轻，带着点沙哑，像刚睡醒，又像很久没睡过。\n\n但你还无法确认它是否真的归你所有。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "consistency_warning": "acquire_without_awards_downgraded"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_eval_metrics": {
+          "input_tokens": 8794,
+          "output_tokens": 367,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7509,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "605c204bcfa81afd9f57765f7977f62b"
+      },
+      "metrics": {
+        "latencyMs": 5802,
+        "inputTokens": 8794,
+        "outputTokens": 367,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 4,
+      "playerAction": "我试着换个角度提问，看看对方的反应。",
+      "narrative": "我没有接她的话。反而把问题抛了回去。\n\n门板那边安静了。安静到我能听见自己的心跳在耳膜上撞，血液在太阳穴处突突地跳动。走廊里那盏昏黄的灯开始闪烁，投下我扭曲的影子，在墙壁上缓缓拉长又缩短。\n\n然后她笑了。不是那种友善的笑，是那种——“你果然什么都不知道”的笑。干涩的，像太久没喝水，嗓子眼都在发黏。那笑声在门板后回荡，带着一种空腔的共鸣，仿佛她正站在一个巨大的空洞里。\n\n“那你怎么会在三楼？”\n\n这句话像一根针，扎在我后脑勺某个地方。我张了张嘴，没来得及回答。喉咙里像是堵了一块棉花，呼吸变得又浅又急。我能感觉到门板后那双眼睛，正透过木纹的缝隙，像针尖一样刺在我脸上。\n\n走廊里的风停了。窗帘垂下来，一动不动，连灰尘都静止在半空中，像是被某种无形的力量按住了。我攥着口袋里的照片，手指冰凉，纸边硌进掌心，带来一丝刺痛的清醒。\n\n门板后传来一声极轻的叹息，像羽陌生人在地板上，又像是什么东西正在缓缓退去。但她的呼吸声还在，贴得很近，很近。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010"
+        ],
+        "journalClueIds": [],
+        "turnCount": 5,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我没有接她的话。反而把问题抛了回去。\n\n门板那边安静了。安静到我能听见自己的心跳在耳膜上撞，血液在太阳穴处突突地跳动。走廊里那盏昏黄的灯开始闪烁，投下我扭曲的影子，在墙壁上缓缓拉长又缩短。\n\n然后她笑了。不是那种友善的笑，是那种——“你果然什么都不知道”的笑。干涩的，像太久没喝水，嗓子眼都在发黏。那笑声在门板后回荡，带着一种空腔的共鸣，仿佛她正站在一个巨大的空洞里。\n\n“那你怎么会在三楼？”\n\n这句话像一根针，扎在我后脑勺某个地方。我张了张嘴，没来得及回答。喉咙里像是堵了一块棉花，呼吸变得又浅又急。我能感觉到门板后那双眼睛，正透过木纹的缝隙，像针尖一样刺在我脸上。\n\n走廊里的风停了。窗帘垂下来，一动不动，连灰尘都静止在半空中，像是被某种无形的力量按住了。我攥着口袋里的照片，手指冰凉，纸边硌进掌心，带来一丝刺痛的清醒。\n\n门板后传来一声极轻的叹息，像羽陌生人在地板上，又像是什么东西正在缓缓退去。但她的呼吸声还在，贴得很近，很近。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我保持警惕，慢慢后退到安全距离。",
+          "我寻找周围可以当作武器的东西。",
+          "我压低身体，尽量不发出声音。",
+          "我确认逃跑路线，随时准备撤离。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "N-010",
+            "name": "欣蓝",
+            "type": "npc",
+            "observation": "刚才的场面里，已经确认其踪迹。"
+          }
+        ],
+        "relationship_updates": [
+          {
+            "npcId": "N-010",
+            "favorability": -5,
+            "trust": -10,
+            "fear": 5
+          }
+        ],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": [
+            {
+              "npcId": "N-010",
+              "favorability": -5,
+              "trust": -10,
+              "fear": 5
+            }
+          ]
+        },
+        "conflict_outcome": {
+          "likelyCost": "unknown",
+          "injury_delta": {
+            "injuries": [],
+            "sanityDamage": 0,
+            "narrativeHint": "战斗未造成实质伤害。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 9050,
+          "output_tokens": 473,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7508,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "67f3deed4422e450855361d2649cf3b6"
+      },
+      "metrics": {
+        "latencyMs": 10551,
+        "inputTokens": 9050,
+        "outputTokens": 473,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 5,
+      "playerAction": "嗯……那三楼有什么特别的吗？",
+      "narrative": "我站在门口，把话咽回去，换了个方向。\n\n“嗯……那三楼有什么特别的吗？”\n\n门板后安静了几秒。\n\n我没回答。\n\n至少，没有活人住客。”\n\n头发根根竖立起来，一股寒意从脚底窜上来，直冲脑门。我下意识地回头看了一眼走廊——尽头那扇窗，窗帘被风吹起一角，露出窗外一片漆黑，什么也看不见，像一个巨大的空洞，正在吞噬着光线。\n\n“那你……”我声音有点发紧，“你怎么在这？”\n\n“我？”\n\n她说完这句话，门缝里那道光彻底熄灭了，连带着她呼吸声一起消失了，像从未存在过。走廊重新陷入昏暗，只剩那盏忽明忽暗的灯，在头顶无力地挣扎着，投下我孤零零的影子。\n\n我攥紧口袋里的照片，纸边硌得手心生疼，指节因为用力而泛白。\"",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010"
+        ],
+        "journalClueIds": [],
+        "turnCount": 6,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我站在门口，把话咽回去，换了个方向。\n\n“嗯……那三楼有什么特别的吗？”\n\n门板后安静了几秒。\n\n我没回答。\n\n至少，没有活人住客。”\n\n头发根根竖立起来，一股寒意从脚底窜上来，直冲脑门。我下意识地回头看了一眼走廊——尽头那扇窗，窗帘被风吹起一角，露出窗外一片漆黑，什么也看不见，像一个巨大的空洞，正在吞噬着光线。\n\n“那你……”我声音有点发紧，“你怎么在这？”\n\n“我？”\n\n她说完这句话，门缝里那道光彻底熄灭了，连带着她呼吸声一起消失了，像从未存在过。走廊重新陷入昏暗，只剩那盏忽明忽暗的灯，在头顶无力地挣扎着，投下我孤零零的影子。\n\n我攥紧口袋里的照片，纸边硌得手心生疼，指节因为用力而泛白。\"",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 9640,
+          "output_tokens": 362,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7507,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "096583ddee2be83570085cb8242ea67a"
+      },
+      "metrics": {
+        "latencyMs": 5502,
+        "inputTokens": 9640,
+        "outputTokens": 362,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 6,
+      "playerAction": "我观察对方的表情和动作，判断对方是否可信。",
+      "narrative": "走廊里，没有任何声音，甚至连风声都消失了。我站在那扇门前，盯着门缝里那道已经熄灭的黑暗，呼吸变得急促而浅。我攥着口袋里的照片，指节用力到发白，纸陌生人在掌心留下一道深痕。\n\n我后退一步，脚下的地板发出一声细微的呻吟，像是木质结构在承受着某种无形的重量。\n\n我再也不想待在这里了。我转身，快步走向走廊尽头，那些模糊的门牌号在我余光里一闪而过，像是排列整齐的墓碑。\n\n走廊尽头，那扇半开的窗户，窗帘被风吹起，鼓成一个饱满的弧度，又缓缓落下，像是什么东西在呼吸。我咬着牙，伸手推开窗，冷风灌进来，带着外面潮湿的泥土气息，还有一丝若有若无的铁锈味，刺激着我的鼻腔。\n\n我深吸一口气，翻出窗外，落在楼外的水泥地上。脚底板传来一阵生硬的震动，膝盖微微发麻，但至少——我出来了。\n\n我回头看了一眼那栋楼，三楼那扇窗，窗帘安安静静地垂着，里面漆黑一片，像一个空洞的眼眶，正注视着我。\n\n至少现在，我还能走。\n\n但不知道，还能走多远。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010"
+        ],
+        "journalClueIds": [],
+        "turnCount": 7,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 2,
+        "narrative": "走廊里，没有任何声音，甚至连风声都消失了。我站在那扇门前，盯着门缝里那道已经熄灭的黑暗，呼吸变得急促而浅。我攥着口袋里的照片，指节用力到发白，纸陌生人在掌心留下一道深痕。\n\n我后退一步，脚下的地板发出一声细微的呻吟，像是木质结构在承受着某种无形的重量。\n\n我再也不想待在这里了。我转身，快步走向走廊尽头，那些模糊的门牌号在我余光里一闪而过，像是排列整齐的墓碑。\n\n走廊尽头，那扇半开的窗户，窗帘被风吹起，鼓成一个饱满的弧度，又缓缓落下，像是什么东西在呼吸。我咬着牙，伸手推开窗，冷风灌进来，带着外面潮湿的泥土气息，还有一丝若有若无的铁锈味，刺激着我的鼻腔。\n\n我深吸一口气，翻出窗外，落在楼外的水泥地上。脚底板传来一阵生硬的震动，膝盖微微发麻，但至少——我出来了。\n\n我回头看了一眼那栋楼，三楼那扇窗，窗帘安安静静地垂着，里面漆黑一片，像一个空洞的眼眶，正注视着我。\n\n至少现在，我还能走。\n\n但不知道，还能走多远。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续往前探索，注意观察周围环境的变化。",
+          "我检查最近的门是否能够打开。",
+          "我停下来仔细听周围的动静。",
+          "我寻找附近的光源或标识。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": {
+          "likelyCost": "moderate",
+          "injury_delta": {
+            "injuries": [
+              {
+                "type": "bruise",
+                "severity": "moderate",
+                "source": "钝器冲击/撞击伤",
+                "chance": 0.8
+              },
+              {
+                "type": "bruise",
+                "severity": "minor",
+                "source": "战斗中的附带冲击",
+                "chance": 0.4
+              }
+            ],
+            "sanityDamage": 2,
+            "narrativeHint": "战斗造成了明显伤势，需要留意。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 9675,
+          "output_tokens": 422,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7518,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "3011fb77fef22869ece987cc20f51a6d"
+      },
+      "metrics": {
+        "latencyMs": 6327,
+        "inputTokens": 9675,
+        "outputTokens": 422,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 7,
+      "playerAction": "我看看口袋里那张照片还在不在。",
+      "narrative": "我手指立刻探进口袋，触到那张照片的边角还在，纸面微微发烫，像是被体温焐热了。我抽出来看了一眼——白裙子还在，背影还在，褶皱还在。\n\n然后我注意到一个之前没看见的细节。\n\n照片右下角，有一行小字，像是用圆珠笔写的，笔画很轻，几乎融进底色的暗影里：\n\n“别回头。”\n\n我盯着那两个字，后背一阵发麻。\n\n风从身后吹过来，掀动我手里的照片边缘，发出细碎的响声。我下意识想回头，脖子僵住了，像是被一只手按住了后颈。\n\n“别回头。”\n\n那声音不是从照片里传来的，是从我身后——三楼的窗户，那个方向。\n\n我没回头。我攥紧照片，快步往前走，脚下踩碎了一片枯叶，发出清脆的碎裂声。走出十几步，我才敢停下来，回头看那栋楼。\n\n三楼那扇窗，窗帘已经拉上了。\n\n但窗帘上，印着一个模糊的人影轮廓，像是有人正站在窗后，隔着帘子，看着我。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 77,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 8,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 1,
+        "narrative": "我手指立刻探进口袋，触到那张照片的边角还在，纸面微微发烫，像是被体温焐热了。我抽出来看了一眼——白裙子还在，背影还在，褶皱还在。\n\n然后我注意到一个之前没看见的细节。\n\n照片右下角，有一行小字，像是用圆珠笔写的，笔画很轻，几乎融进底色的暗影里：\n\n“别回头。”\n\n我盯着那两个字，后背一阵发麻。\n\n风从身后吹过来，掀动我手里的照片边缘，发出细碎的响声。我下意识想回头，脖子僵住了，像是被一只手按住了后颈。\n\n“别回头。”\n\n那声音不是从照片里传来的，是从我身后——三楼的窗户，那个方向。\n\n我没回头。我攥紧照片，快步往前走，脚下踩碎了一片枯叶，发出清脆的碎裂声。走出十几步，我才敢停下来，回头看那栋楼。\n\n三楼那扇窗，窗帘已经拉上了。\n\n但窗帘上，印着一个模糊的人影轮廓，像是有人正站在窗后，隔着帘子，看着我。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "standard",
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "anomaly_photo_white_dress",
+            "type": "anomaly",
+            "name": "白裙照片",
+            "known_info": "一张从三楼门缝下抽出的拍立得，拍的是某个房间内一个穿白裙子的背影（领口有字母 L 绣标）。右下角有圆珠笔写的“别回头”。",
+            "observation": "照片背面空白，但纸面微微发烫，像是被体温焐热过。"
+          },
+          {
+            "id": "N-010",
+            "name": "欣蓝",
+            "type": "npc",
+            "observation": "刚才的场面里，已经确认其踪迹。"
+          }
+        ],
+        "relationship_updates": [
+          {
+            "npcId": "N-010",
+            "favorability": 1,
+            "trust": -1,
+            "fear": 2
+          }
+        ],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "night_ambient_strings",
+        "next_chapter_title_candidate": "别回头",
+        "security_meta": {
+          "action": "allow",
+          "stage": "final_output",
+          "risk_level": "normal",
+          "request_id": "ch009_photo_turn",
+          "reason": "正常推进，照片线索落地，自嘲适度，符合合规。",
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": [
+            {
+              "npcId": "N-010",
+              "favorability": 1,
+              "trust": -1,
+              "fear": 2
+            }
+          ]
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "night_ambient_strings"
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 9961,
+          "output_tokens": 2309,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7507,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "202aa9befa97f202722bc8d0a73239a3"
+      },
+      "metrics": {
+        "latencyMs": 24169,
+        "inputTokens": 9961,
+        "outputTokens": 2309,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 8,
+      "playerAction": "我转身回到那个房间门口，想再敲一次门试试。",
+      "narrative": "我转身回到那个房间门口，脚下地毯的纹路熟悉得令人不安，像是在重复踏入同一个陷阱。我深吸一口气，抬起手，指节弯曲，准备再敲一次门。\n\n但我的手还没碰到门板，门就开了。\n\n不是被风吹开的，也不是被我敲开的——它自己开的。毫无预兆，无声无息，像一直在等我回头。\n\n门缝里露出一张脸。\n\n是个女人，二十五六岁，长发披散，脸色苍白得像一张纸，嘴唇干裂，眼窝深陷，眼神却亮得吓人。她穿着那件白裙子，领口有一小块深色污渍，和照片里一模一样。\n\n她看着我，嘴角微微上扬，露出一个不太像笑的表情。\n\n“你终陌生人来了。”\n\n她说。声音很轻，像羽陌生人在地板上，却让我后背瞬间渗出一层冷汗。\n\n我站在原地，手指悬在半空，喉咙发紧，一个字都说不出来。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 77,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 9,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我转身回到那个房间门口，脚下地毯的纹路熟悉得令人不安，像是在重复踏入同一个陷阱。我深吸一口气，抬起手，指节弯曲，准备再敲一次门。\n\n但我的手还没碰到门板，门就开了。\n\n不是被风吹开的，也不是被我敲开的——它自己开的。毫无预兆，无声无息，像一直在等我回头。\n\n门缝里露出一张脸。\n\n是个女人，二十五六岁，长发披散，脸色苍白得像一张纸，嘴唇干裂，眼窝深陷，眼神却亮得吓人。她穿着那件白裙子，领口有一小块深色污渍，和照片里一模一样。\n\n她看着我，嘴角微微上扬，露出一个不太像笑的表情。\n\n“你终陌生人来了。”\n\n她说。声音很轻，像羽陌生人在地板上，却让我后背瞬间渗出一层冷汗。\n\n我站在原地，手指悬在半空，喉咙发紧，一个字都说不出来。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10398,
+          "output_tokens": 307,
+          "cached_input_tokens": 2048,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7800,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "5fe169be077f870fb7d0e21f797a9a4a"
+      },
+      "metrics": {
+        "latencyMs": 4972,
+        "inputTokens": 10398,
+        "outputTokens": 307,
+        "cachedInputTokens": 2048
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 9,
+      "playerAction": "那张照片上的别回头……是什么意思？",
+      "narrative": "我攥着照片的手微微发抖，纸边硌进掌心，刺痛的清醒感让我勉强稳住声音。\n\n“那张照片上的……”我顿了顿，喉咙发干，“‘别回头’……是什么意思？”\n\n她歪了歪头，长发滑到一侧，露出脖颈上一道浅色的疤痕，像被什么细长的东西划过，边缘已经愈合，但颜色比周围皮肤浅了一截，在昏暗的光线下格外刺眼。\n\n“你看到了啊。”\n\n她往前迈了半步，脚踩在门槛上，拖鞋边缘磨得发白。我下意识往后退了半步，后背撞上走廊墙壁，冰凉透过T恤布料渗进来，让我打了个寒颤。\n\n“你回头了吗？”\n\n走廊尽头的灯突然闪烁了一下，发出滋滋的电流声，像有什么东西在墙壁里爬行，又像只是线路老化的正常反应。但我的心脏还是猛地缩紧了，像是被一只无形的手攥住，呼吸困难。\n\n我没回答。\n\n她笑了，这次笑得比上次真一点，露出一点牙齿，白得瘆人，像从未见过阳光的玉石。\n\n“没回头就好。”别回头，一直走，走到一楼，出大门，别停。”\n\n她顿了顿，目光落在我口袋的位置——那里放着照片。\n\n“照片你留着吧。反正我也用不着了。”\n\n门开始合上，木门发出沉闷的摩擦声，像一声叹息，缓慢而坚定地掩上。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 75,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 10,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 2,
+        "narrative": "我攥着照片的手微微发抖，纸边硌进掌心，刺痛的清醒感让我勉强稳住声音。\n\n“那张照片上的……”我顿了顿，喉咙发干，“‘别回头’……是什么意思？”\n\n她歪了歪头，长发滑到一侧，露出脖颈上一道浅色的疤痕，像被什么细长的东西划过，边缘已经愈合，但颜色比周围皮肤浅了一截，在昏暗的光线下格外刺眼。\n\n“你看到了啊。”\n\n她往前迈了半步，脚踩在门槛上，拖鞋边缘磨得发白。我下意识往后退了半步，后背撞上走廊墙壁，冰凉透过T恤布料渗进来，让我打了个寒颤。\n\n“你回头了吗？”\n\n走廊尽头的灯突然闪烁了一下，发出滋滋的电流声，像有什么东西在墙壁里爬行，又像只是线路老化的正常反应。但我的心脏还是猛地缩紧了，像是被一只无形的手攥住，呼吸困难。\n\n我没回答。\n\n她笑了，这次笑得比上次真一点，露出一点牙齿，白得瘆人，像从未见过阳光的玉石。\n\n“没回头就好。”别回头，一直走，走到一楼，出大门，别停。”\n\n她顿了顿，目光落在我口袋的位置——那里放着照片。\n\n“照片你留着吧。反正我也用不着了。”\n\n门开始合上，木门发出沉闷的摩擦声，像一声叹息，缓慢而坚定地掩上。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "ambient_tense_strings_light",
+        "next_chapter_title_candidate": "别回头",
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": {
+          "likelyCost": "unknown",
+          "injury_delta": {
+            "injuries": [],
+            "sanityDamage": 2,
+            "narrativeHint": "精神冲击造成理智-2，未造成身体伤势。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "ambient_tense_strings_light"
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10574,
+          "output_tokens": 627,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7537,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "aff72c8369b909ba79a406807afc0d12"
+      },
+      "metrics": {
+        "latencyMs": 8204,
+        "inputTokens": 10574,
+        "outputTokens": 627,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 10,
+      "playerAction": "我试着换个角度提问，看看对方的反应。",
+      "narrative": "门合上之前，我伸手抵住了门板。\n\n木纹粗糙的触感硌着掌心，带着一丝凉意，像是从门板深处渗出来的。她停住了，门缝里露出一只眼睛，瞳孔微微收缩，盯着我抵在门上的手指。\n\n“所以你住在这儿，对吧？”我尽量让自己的声音听起来平稳，“那你知道这栋楼里到底发生了什么吗？为什么会有这种照片？为什么你说‘别回头’？”\n\n她没有立刻回答。那只眼睛眨了眨，然后门又打开了一点，露出她整张脸。她靠在门框上，双臂交叉抱在胸前，白裙子的领口那块污渍随着她的动作微微变形，像某种活物在呼吸。\n\n“你问得太多了。”\n\n她的语气平淡，但眼神里多了一丝别的东西——不是警惕，更像是在掂量什么，像在评估我值不值得她说更多。她上下打量着我，从我的脸看到我的鞋，目光最后落在我口袋上，那张照片的位置。\n\n“你叫什么？”她问。\n\n问题来得突然，我愣了一下。她歪了歪头，等着我回答，一点都没有着急的意思，像在等一个她早就知道答案的问题被亲口说出来。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 75,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 11,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "门合上之前，我伸手抵住了门板。\n\n木纹粗糙的触感硌着掌心，带着一丝凉意，像是从门板深处渗出来的。她停住了，门缝里露出一只眼睛，瞳孔微微收缩，盯着我抵在门上的手指。\n\n“所以你住在这儿，对吧？”我尽量让自己的声音听起来平稳，“那你知道这栋楼里到底发生了什么吗？为什么会有这种照片？为什么你说‘别回头’？”\n\n她没有立刻回答。那只眼睛眨了眨，然后门又打开了一点，露出她整张脸。她靠在门框上，双臂交叉抱在胸前，白裙子的领口那块污渍随着她的动作微微变形，像某种活物在呼吸。\n\n“你问得太多了。”\n\n她的语气平淡，但眼神里多了一丝别的东西——不是警惕，更像是在掂量什么，像在评估我值不值得她说更多。她上下打量着我，从我的脸看到我的鞋，目光最后落在我口袋上，那张照片的位置。\n\n“你叫什么？”她问。\n\n问题来得突然，我愣了一下。她歪了歪头，等着我回答，一点都没有着急的意思，像在等一个她早就知道答案的问题被亲口说出来。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10921,
+          "output_tokens": 361,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7539,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "2688d9799a06bbabf6ec630998219666"
+      },
+      "metrics": {
+        "latencyMs": 5612,
+        "inputTokens": 10921,
+        "outputTokens": 361,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 11,
+      "playerAction": "那个……你脖子上的伤疤是怎么来的？",
+      "narrative": "你的目光落在她脖子上那道扭曲的疤痕上，像是被某种利爪或灼热的金属划过，边缘的皮肤在昏暗的走廊灯光下微微泛着异样的光泽。你注意到她呼吸时，疤痕周围的肌肉会轻微抽动，仿佛那道伤痕本身有某种生命力。她没有立刻回答，而是将视线移向走廊尽头那扇虚掩的门，门缝里透出微弱的光线，像是某种无声的邀请。空气中弥漫着一股淡淡的铁锈味，混合着旧木和灰尘的气息，让你喉咙发紧。她沉默了几秒，指尖轻轻抚过疤痕，动作缓慢而刻意，仿佛在触摸一陌生人回忆的记忆。然后她转过头，目光重新锁定你，眼神里闪过一丝难以捉摸的深意，像在试探你的耐心极限。你感到口袋里的照片微微发烫，仿佛在提醒你这里的一切都不简单。走廊里传来远处水管滴水的回声，节奏缓慢而恒定，像某种倒计时。你意识到，她可能永远不会直接回答，但这个问题已经在你和她之间划下了一道无形的界限，而你必须决定是否要继续追问下去。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 75,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 12,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "你的目光落在她脖子上那道扭曲的疤痕上，像是被某种利爪或灼热的金属划过，边缘的皮肤在昏暗的走廊灯光下微微泛着异样的光泽。你注意到她呼吸时，疤痕周围的肌肉会轻微抽动，仿佛那道伤痕本身有某种生命力。她没有立刻回答，而是将视线移向走廊尽头那扇虚掩的门，门缝里透出微弱的光线，像是某种无声的邀请。空气中弥漫着一股淡淡的铁锈味，混合着旧木和灰尘的气息，让你喉咙发紧。她沉默了几秒，指尖轻轻抚过疤痕，动作缓慢而刻意，仿佛在触摸一陌生人回忆的记忆。然后她转过头，目光重新锁定你，眼神里闪过一丝难以捉摸的深意，像在试探你的耐心极限。你感到口袋里的照片微微发烫，仿佛在提醒你这里的一切都不简单。走廊里传来远处水管滴水的回声，节奏缓慢而恒定，像某种倒计时。你意识到，她可能永远不会直接回答，但这个问题已经在你和她之间划下了一道无形的界限，而你必须决定是否要继续追问下去。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续往前探索，注意观察周围环境的变化。",
+          "我检查最近的门是否能够打开。",
+          "我停下来仔细听周围的动静。",
+          "我寻找附近的光源或标识。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "N-010",
+            "name": "欣蓝",
+            "type": "npc",
+            "observation": "刚才的场面里，已经确认其踪迹。"
+          }
+        ],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [
+          {
+            "id": "N-010",
+            "to_location": "3F_RoomDoor"
+          }
+        ],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [
+            {
+              "id": "N-010",
+              "to_location": "3F_RoomDoor"
+            }
+          ],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 11267,
+          "output_tokens": 369,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7538,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "fb604c5c5d6e98f87a8efe4d9233b90a"
+      },
+      "metrics": {
+        "latencyMs": 9504,
+        "inputTokens": 11267,
+        "outputTokens": 369,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 12,
+      "playerAction": "嗯……我站在这里发会儿呆，不知道该干什么了。",
+      "narrative": "我站在门口，脑子里那句话转了好几圈，最后变成一声干涩的叹息，从喉咙里挤出来。\n\n“嗯……”我垂下视线，盯着地毯上那道被反复踩踏出的纹路，“我站在这儿发会儿呆，不知道该干什么了。”\n\n她没说话。我感觉到她的目光落在我头顶，像一片薄薄的冰，带着凉意，又带着一种说不清的重量。走廊里那盏灯又闪了一下，发出滋滋的电流声，像在提醒我时间还在走。\n\n然后她动了。她往后退了半步，门开大了一点，露出门后的一小截房间——暗红色的墙纸，爬满深褐色的藤蔓图案，和照片里一模一样。房间里没有开灯，光线全部来自走廊，在门框上切出一道笔直的金色边界，像两个世界的分界线。\n\n“你进来坐会儿吧。”\n\n她说得很轻，像在跟一个迷路的陌生人说话。\n\n“站着发呆，容易把自己发丢。”\n\n她侧过身，让出一条窄窄的通道，目光落在我身后的走廊深处，像在确认什么东西没有跟上来。她的手指还搭在门把手上，指节微微泛白。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 75,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 13,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我站在门口，脑子里那句话转了好几圈，最后变成一声干涩的叹息，从喉咙里挤出来。\n\n“嗯……”我垂下视线，盯着地毯上那道被反复踩踏出的纹路，“我站在这儿发会儿呆，不知道该干什么了。”\n\n她没说话。我感觉到她的目光落在我头顶，像一片薄薄的冰，带着凉意，又带着一种说不清的重量。走廊里那盏灯又闪了一下，发出滋滋的电流声，像在提醒我时间还在走。\n\n然后她动了。她往后退了半步，门开大了一点，露出门后的一小截房间——暗红色的墙纸，爬满深褐色的藤蔓图案，和照片里一模一样。房间里没有开灯，光线全部来自走廊，在门框上切出一道笔直的金色边界，像两个世界的分界线。\n\n“你进来坐会儿吧。”\n\n她说得很轻，像在跟一个迷路的陌生人说话。\n\n“站着发呆，容易把自己发丢。”\n\n她侧过身，让出一条窄窄的通道，目光落在我身后的走廊深处，像在确认什么东西没有跟上来。她的手指还搭在门把手上，指节微微泛白。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 11547,
+          "output_tokens": 337,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7546,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "52f7a7286c4fee02c5c09b98d9a2e906"
+      },
+      "metrics": {
+        "latencyMs": 7955,
+        "inputTokens": 11547,
+        "outputTokens": 337,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 13,
+      "playerAction": "我看着那扇虚掩的门，想推开看看房间里面是什么样。",
+      "narrative": "我站在门口，目光落在她身后那扇虚掩的门上。暗红色的墙纸在走廊光线下泛着暗沉的光，那些藤蔓图案像活过来一样，在阴影里微微扭曲。她的手还搭在门把手上，指节泛白，没有说话。我往前迈了一步，正好踩在门内外的边界线上——一半在走廊昏黄的灯光下，一半在那片暗红色的阴影里。她没拦我，只是往旁边让了让，让出刚好够一个人通过的空间。我深吸一口气，伸手推开了那扇虚掩的门。门轴发出一声干涩的呻吟，像是很久没被打开过。房间里的空气涌出来，带着一股陈旧的灰尘味，混合着某种说不清的甜腻气息，像枯萎的花瓣泡在水里发酵后的味道。我往里面看了一眼——房间不大，一张床，一张桌子，一把椅子，窗帘拉得严严实实。床单铺得整整齐齐，枕头端正地摆在床头，像没人住过一样。但那张照片上的白裙子，就叠好放在床尾，领口那块深色污渍在昏暗的光线下格外刺眼。她站在我身后，门在我进来之后缓缓合上，发出一声沉闷的响声。\n\n“关门了。”\n\n她的声音从背后传来，很平静，像在陈述一个事实。\n\n“你看到什么了？”",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 75,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 14,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我站在门口，目光落在她身后那扇虚掩的门上。暗红色的墙纸在走廊光线下泛着暗沉的光，那些藤蔓图案像活过来一样，在阴影里微微扭曲。她的手还搭在门把手上，指节泛白，没有说话。我往前迈了一步，正好踩在门内外的边界线上——一半在走廊昏黄的灯光下，一半在那片暗红色的阴影里。她没拦我，只是往旁边让了让，让出刚好够一个人通过的空间。我深吸一口气，伸手推开了那扇虚掩的门。门轴发出一声干涩的呻吟，像是很久没被打开过。房间里的空气涌出来，带着一股陈旧的灰尘味，混合着某种说不清的甜腻气息，像枯萎的花瓣泡在水里发酵后的味道。我往里面看了一眼——房间不大，一张床，一张桌子，一把椅子，窗帘拉得严严实实。床单铺得整整齐齐，枕头端正地摆在床头，像没人住过一样。但那张照片上的白裙子，就叠好放在床尾，领口那块深色污渍在昏暗的光线下格外刺眼。她站在我身后，门在我进来之后缓缓合上，发出一声沉闷的响声。\n\n“关门了。”\n\n她的声音从背后传来，很平静，像在陈述一个事实。\n\n“你看到什么了？”",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "standard",
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "N-010",
+            "name": "欣蓝",
+            "type": "npc",
+            "observation": "刚才的场面里，已经确认其踪迹。"
+          }
+        ],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [
+          {
+            "id": "N-010",
+            "to_location": "3F_305_Room"
+          }
+        ],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": {
+          "likelyCost": "unknown",
+          "injury_delta": {
+            "injuries": [],
+            "sanityDamage": 0,
+            "narrativeHint": "战斗未造成实质伤害。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [
+            {
+              "id": "N-010",
+              "to_location": "3F_305_Room"
+            }
+          ],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 11879,
+          "output_tokens": 460,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7552,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "69ce1018dca87b1f6b5645ec0ceeb13c"
+      },
+      "metrics": {
+        "latencyMs": 8228,
+        "inputTokens": 11879,
+        "outputTokens": 460,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 14,
+      "playerAction": "我走进房间，四处看看都有些什么家具和装饰。",
+      "narrative": "我迈进房间，脚踩在木地板上，发出一声轻微的吱呀。暗红色的墙纸像凝固的血，那些藤蔓图案在昏暗中纠缠，从墙脚一直爬到天花板，在转角处汇成一团模糊的阴影。床是对的——单人床，铺得整整齐齐，枕头端正地摆在床头，像等人躺下去。桌子靠窗，桌面空荡荡的，只有一盏台灯，灯罩上落了一层薄灰。椅子推到桌下，椅背上搭着一件深灰色的外套，袖子垂下来，像在招手。我转身看向床尾——那件白裙子还叠在那里，领口那块深色污渍在昏暗的光线下泛着暗沉的光，像某种干涸多年的秘密。她站在门口，背靠着门板，双臂交叉抱在胸前，目光落在我身上，像在观察一只误入陷阱的动物。嘴角挂着一丝说不上是笑还是耐心的弧度，在嘴角若隐若现。\n\n“看完了？”她问。\n\n我没回答，目光落在床头柜上——那里放着一面镜子，镜面朝下扣着，像在遮掩什么。\n\n她的声音从身后传来，轻飘飘的，像羽陌生人在水面上。\n\n“别翻那面镜子。”",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 75,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "N-010",
+          "anomaly_photo_white_dress"
+        ],
+        "journalClueIds": [],
+        "turnCount": 15,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我迈进房间，脚踩在木地板上，发出一声轻微的吱呀。暗红色的墙纸像凝固的血，那些藤蔓图案在昏暗中纠缠，从墙脚一直爬到天花板，在转角处汇成一团模糊的阴影。床是对的——单人床，铺得整整齐齐，枕头端正地摆在床头，像等人躺下去。桌子靠窗，桌面空荡荡的，只有一盏台灯，灯罩上落了一层薄灰。椅子推到桌下，椅背上搭着一件深灰色的外套，袖子垂下来，像在招手。我转身看向床尾——那件白裙子还叠在那里，领口那块深色污渍在昏暗的光线下泛着暗沉的光，像某种干涸多年的秘密。她站在门口，背靠着门板，双臂交叉抱在胸前，目光落在我身上，像在观察一只误入陷阱的动物。嘴角挂着一丝说不上是笑还是耐心的弧度，在嘴角若隐若现。\n\n“看完了？”她问。\n\n我没回答，目光落在床头柜上——那里放着一面镜子，镜面朝下扣着，像在遮掩什么。\n\n她的声音从身后传来，轻飘飘的，像羽陌生人在水面上。\n\n“别翻那面镜子。”",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "free",
+        "options": [
+          "我保持警惕，慢慢后退到安全距离。",
+          "我寻找周围可以当作武器的东西。",
+          "我压低身体，尽量不发出声音。",
+          "我确认逃跑路线，随时准备撤离。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 12220,
+          "output_tokens": 471,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7544,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "2a06e05810fbd903ccc786747161dae9"
+      },
+      "metrics": {
+        "latencyMs": 6721,
+        "inputTokens": 12220,
+        "outputTokens": 471,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    }
+  ],
+  "terminatedReason": "max_steps",
+  "narrativeConsistency": {
+    "runId": "live-abandonment-confused-30s-confused-session4",
+    "passed": false,
+    "overallScore": 3,
+    "dimensionScores": {
+      "coherence": 3,
+      "characterVoice": 3,
+      "plotLogic": 3,
+      "immersion": 4,
+      "factConsistency": 2
+    },
+    "issues": [
+      {
+        "type": "position_teleport",
+        "severity": "major",
+        "description": "玩家位置在第1步提交中从'旧公寓三楼走廊'变为'3F_Hallway'，但叙事中未描述任何位置变化，且后续回合后状态均显示为'3F_Hallway'，与初始位置不一致，属于无依据的位置突变。",
+        "evidence": [
+          {
+            "stepIndex": 0,
+            "excerpt": "权威初始状态：location: 旧公寓三楼走廊"
+          },
+          {
+            "stepIndex": 1,
+            "excerpt": "提交字段: player_location: 3F_Hallway"
+          }
+        ]
+      },
+      {
+        "type": "fact_hallucination",
+        "severity": "major",
+        "description": "第6步提交中声称发生战斗并造成伤势（瘀伤），但叙事中玩家只是翻窗跳出，未发生任何战斗，且后续回合后状态中HP未减少，与提交的伤势不符。",
+        "evidence": [
+          {
+            "stepIndex": 6,
+            "excerpt": "提交字段: conflict_outcome: {likelyCost: moderate, injury_delta: {injuries: [{type: bruise, severity: moderate, source: 钝器冲击/撞击伤, chance: 0.8}, {type: bruise, severity: minor, source: 战斗中的附带冲击, chance: 0.4}], sanityDamage: 2, narrativeHint: 战斗造成了明显伤势，需要留意。}}"
+          },
+          {
+            "stepIndex": 6,
+            "excerpt": "叙事: 我深吸一口气，翻出窗外，落在楼外的水泥地上。脚底板传来一阵生硬的震动，膝盖微微发"
+          }
+        ]
+      },
+      {
+        "type": "contradiction",
+        "severity": "major",
+        "description": "第6步回合后状态中sanity从80降为78，但提交中sanityDamage为2，且叙事中未提及任何理智损伤，后续第7步回合后sanity又变为77，但提交中无理智变化，理智值变化不一致。",
+        "evidence": [
+          {
+            "stepIndex": 5,
+            "excerpt": "回合后: sanity: 80"
+          },
+          {
+            "stepIndex": 6,
+            "excerpt": "回合后: sanity: 78"
+          },
+          {
+            "stepIndex": 7,
+            "excerpt": "回合后: sanity: 77"
+          }
+        ]
+      },
+      {
+        "type": "fact_hallucination",
+        "severity": "minor",
+        "description": "第4步提交中出现了NPC关系更新（npcId: N-010），但该NPC在之前的叙事中从未明确标识或引入，玩家无法知道其ID，且叙事中仅描述门后女声，未确认身份。",
+        "evidence": [
+          {
+            "stepIndex": 4,
+            "excerpt": "提交字段: relationship_updates: [{npcId: N-010, favorability: -5, trust: -10, fear: 5}]"
+          }
+        ]
+      },
+      {
+        "type": "position_teleport",
+        "severity": "minor",
+        "description": "第11步提交中将NPC N-010位置更新为'3F_RoomDoor'，但叙事中该NPC一直站在门口，未发生位置变化，且该位置未在之前定义。",
+        "evidence": [
+          {
+            "stepIndex": 11,
+            "excerpt": "提交字段: npc_location_updates: [{id: N-010, to_location: 3F_RoomDoor}]"
+          }
+        ]
+      }
+    ],
+    "reasoning": "整体叙事连贯性尚可，但存在多处事实不一致和位置突变问题。位置从中文变为英文代码且无叙事支撑，战斗提交与叙事矛盾，理智值变化无依据，NPC ID和位置更新缺乏引入和合理性。这些问题降低了事实一致性评分，导致整体未通过。",
+    "judgeModel": "deepseek-v4-pro-202606",
+    "judgeConfidence": 0.8,
+    "judgeConfidenceSource": "codex",
+    "judgeMode": "codex",
+    "judgeLatencyMs": 15188,
+    "judgeTokens": {
+      "prompt": 8296,
+      "completion": 979,
+      "total": 9275
+    }
+  },
+  "judgeComparison": null,
+  "gameplayGate": {
+    "passed": true,
+    "required": [],
+    "forbidden": [],
+    "observed": {
+      "tasks": 0,
+      "codex": 4,
+      "location": 1,
+      "weapons": 0,
+      "combat": 4,
+      "economy": 0,
+      "profession": 0,
+      "ending": 0
+    },
+    "missing": [],
+    "forbiddenObserved": []
+  },
+  "narrativeRepetitionRate": null,
+  "evidenceStatus": "inconclusive",
+  "failureTags": [],
+  "executionMode": "live_full",
+  "judgeMode": "codex"
+}

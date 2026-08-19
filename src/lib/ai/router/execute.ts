@@ -13,17 +13,18 @@ import { isModelCircuitOpen, recordModelFailure, recordModelSuccess } from "@/li
 import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { getProviderFactory } from "@/lib/ai/providers";
 import type { NormalizedCompletionRequest } from "@/lib/ai/providers/types";
+import { responsesToChatCompletionsTransform } from "@/lib/ai/stream/responsesLike";
+import { completionEndpoint } from "@/lib/ai/managed/urlSafety";
 import { resilientFetch, forceHttp1ForGateway } from "@/lib/ai/resilience/fetchWithRetry";
 import { extractNonStreamContent } from "@/lib/ai/stream/openaiLike";
+import { extractResponsesNonStreamContent, nonStreamResponsesToChatCompletionsStream } from "@/lib/ai/stream/responsesLike";
 import {
   assertModelAllowedForTask,
   assertToolUseAllowedForTask,
   getTaskBinding,
   resolveFallbackPolicy,
-  resolveOrderedRoleChain,
   type TaskBinding,
 } from "@/lib/ai/tasks/taskPolicy";
-import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
 import {
   executeMockChatCompletion,
   executeMockPlayerChatStream,
@@ -47,8 +48,19 @@ import type {
 import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString, repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
-import { buildPlayerDmJsonSchemaRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
+import { buildPlayerDmJsonSchemaRequest, buildPlayerDmJsonToolRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
 import type { AiCostRecord } from "@/lib/ai/telemetry/log";
+import { getManagedAiSnapshot, getManagedBindingsForTask } from "@/lib/ai/managed/state";
+import type { ManagedAiBinding } from "@/lib/ai/managed/types";
+import { buildManagedUsageRecord, enqueueManagedUsage } from "@/lib/ai/managed/usage";
+
+async function ensureManagedAiSnapshot(): Promise<void> {
+  if (getManagedAiSnapshot().ready) return;
+  // The runtime owns DB/Redis-backed server state. Keep it out of the module
+  // graph for deterministic mock/unit paths and load it only for live routing.
+  const runtime = await import("@/lib/ai/managed/runtime");
+  await runtime.ensureManagedAiSnapshot();
+}
 
 /**
  * Lazy-load Langfuse generation instrumentation.
@@ -83,7 +95,7 @@ function hasMockScenarioMarker(messages: ChatMessage[]): boolean {
   return false;
 }
 
-const PROVIDER_ID = "oneapi" as const satisfies AiProviderId;
+const PROVIDER_ID = "openai_compatible" as const satisfies AiProviderId;
 
 function isOfflineTask(task: TaskType): boolean {
   return (
@@ -108,21 +120,6 @@ const PLAYER_GAMEPLAY_TASKS = new Set<TaskType>([
   "GAMEPLAY_LOCALIZATION",
   "DM_AGENT",
 ]);
-
-function resolveGatewayModelForTask(
-  env: ReturnType<typeof resolveAiEnv>,
-  task: TaskType,
-  role: AiLogicalRole
-): string {
-  if (PLAYER_GAMEPLAY_TASKS.has(task) && env.playerGameplayModel) {
-    return env.playerGameplayModel;
-  }
-  return env.modelsByRole[role];
-}
-
-function hasDirectPlayerSplit(env: ReturnType<typeof resolveAiEnv>): boolean {
-  return Boolean(env.playerGameplayModel);
-}
 
 function mergeExtraBody(
   base: Record<string, unknown> | undefined,
@@ -216,10 +213,6 @@ const ONLINE_FAIL_FAST_JSON_TASKS = new Set<TaskType>([
   "NARRATIVE_EXPANSION",
 ]);
 
-function gatewayEndpoint(env: ReturnType<typeof resolveAiEnv>): { url: string; key: string } {
-  return { url: env.gatewayBaseUrl, key: env.gatewayApiKey };
-}
-
 function buildPlayerStreamBody(
   gatewayModel: string,
   messages: ChatMessage[],
@@ -228,7 +221,9 @@ function buildPlayerStreamBody(
   streamIncludeUsage: boolean,
   requestJsonObject: boolean,
   extraBody?: Record<string, unknown>,
-  responseFormatJsonSchema?: NormalizedCompletionRequest["responseFormatJsonSchema"]
+  responseFormatJsonSchema?: NormalizedCompletionRequest["responseFormatJsonSchema"],
+  tools?: NormalizedCompletionRequest["tools"],
+  toolChoice?: NormalizedCompletionRequest["toolChoice"]
 ): NormalizedCompletionRequest {
   const stream = binding.stream && enableStream;
   return {
@@ -240,6 +235,7 @@ function buildPlayerStreamBody(
     streamIncludeUsage: stream && streamIncludeUsage,
     ...(extraBody && Object.keys(extraBody).length > 0 ? { extraBody } : {}),
     ...(responseFormatJsonSchema ? { responseFormatJsonSchema } : {}),
+    ...(tools && tools.length > 0 ? { tools, toolChoice: toolChoice ?? "auto" } : {}),
   };
 }
 
@@ -277,6 +273,7 @@ export type PlayerChatStreamSuccess = {
   gatewayModel: string;
   operationMode: OperationMode;
   httpAttempts: AiRoutingAttempt[];
+  managedBinding?: ManagedAiBinding;
 };
 
 export type PlayerChatStreamFailure = {
@@ -314,6 +311,7 @@ export async function executePlayerChatStream(params: {
   if (env.gatewayProvider === "mock" || isMockAiProviderEnabled() || hasMockScenarioMarker(params.messages)) {
     return executeMockPlayerChatStream({ messages: params.messages, ctx: params.ctx });
   }
+  await ensureManagedAiSnapshot();
   const mode = resolveOperationMode();
   const taskBinding = getTaskBinding("PLAYER_CHAT");
   const policy = resolveFallbackPolicy("PLAYER_CHAT", env, mode);
@@ -324,17 +322,17 @@ export async function executePlayerChatStream(params: {
   const isFastLane = riskLane === "fast";
   const maxRetriesBase = env.playerChatMaxRetries;
   const skip = new Set(params.skipRoles ?? []);
-  const fullChain = resolveOrderedRoleChain("PLAYER_CHAT", env, mode);
-  const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
+  const managedBindings = getManagedBindingsForTask("PLAYER_CHAT");
+  const intendedLogicalRole = managedBindings[0]?.logicalRole ?? ("writer" as AiLogicalRole);
   const attempts: AiRoutingAttempt[] = [];
   const failureCounts = new Map<string, number>();
   const incFailure = (kind: string) => failureCounts.set(kind, (failureCounts.get(kind) ?? 0) + 1);
 
-  if (policy.chain.length === 0) {
+  if (managedBindings.length === 0) {
     return {
       ok: false,
       code: "NO_CREDENTIALS",
-      message: "未配置可用的 AI 网关或主模型（需要 AI_GATEWAY_BASE_URL、AI_GATEWAY_API_KEY、AI_MODEL_MAIN）。",
+      message: "后台尚未配置可用的故事生成 AI 服务。",
       intendedLogicalRole,
       operationMode: mode,
       httpAttempts: attempts,
@@ -342,24 +340,33 @@ export async function executePlayerChatStream(params: {
   }
 
   let lastHttpStatus: number | undefined;
-  const { url, key } = gatewayEndpoint(env);
-
   // Phase-3: avoid repeating provider-wide failures in the same turn.
   // - rate limit: switching models won't help; fail fast
   // - auth: switching models won't help; fail fast
   let sawRateLimit = false;
 
-  for (const role of policy.chain) {
+  const failedServices = new Set<string>();
+  for (const managedBinding of managedBindings) {
+    const role = managedBinding.logicalRole;
+    const providerId: AiProviderId =
+      managedBinding.transport === "ark_multimodal"
+        ? "ark_multimodal"
+        : managedBinding.transport === "openai_responses"
+          ? "openai_responses"
+          : PROVIDER_ID;
+    const url = completionEndpoint(managedBinding.baseUrl, managedBinding.transport);
+    const key = managedBinding.apiKey;
+    if (failedServices.has(managedBinding.serviceId)) continue;
     if (skip.has(role)) continue;
 
     assertModelAllowedForTask("PLAYER_CHAT", role);
-    const gatewayModel = resolveGatewayModelForTask(env, "PLAYER_CHAT", role);
+    const gatewayModel = managedBinding.modelName;
     if (!gatewayModel) continue;
 
-    if (policy.tripCircuitOnFailure && (isCircuitOpen(PROVIDER_ID) || isModelCircuitOpen(role))) {
+    if (policy.tripCircuitOnFailure && (isCircuitOpen(providerId, Date.now(), managedBinding.serviceId) || isModelCircuitOpen(role, Date.now(), managedBinding.modelId))) {
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         failureKind: "CIRCUIT_SKIP",
@@ -369,7 +376,7 @@ export async function executePlayerChatStream(params: {
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "circuit_skip",
@@ -378,7 +385,7 @@ export async function executePlayerChatStream(params: {
       recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "circuit_skip",
@@ -390,7 +397,7 @@ export async function executePlayerChatStream(params: {
     if (!key) {
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         failureKind: "UNKNOWN",
@@ -400,7 +407,7 @@ export async function executePlayerChatStream(params: {
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "fallback",
@@ -409,7 +416,7 @@ export async function executePlayerChatStream(params: {
       recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "fallback",
@@ -418,28 +425,69 @@ export async function executePlayerChatStream(params: {
       continue;
     }
 
-    const factory = getProviderFactory();
+    const factory = getProviderFactory(managedBinding.transport);
     const bodyT0 = Date.now();
-    const playerChatExtraBody = hasDirectPlayerSplit(env)
-      ? env.playerChatExtraBody
-      : env.playerChatExtraBody && Object.keys(env.playerChatExtraBody).length > 0
-        ? { ...(env.gatewayExtraBody ?? {}), ...env.playerChatExtraBody }
-        : env.gatewayExtraBody;
-    // T2（2026-07）：仅在非 fast-lane 且显式开启 AI_GATEWAY_JSON_SCHEMA_ENABLED 时
+    // PLAYER_CHAT has its own transport policy. Do not inherit background
+    // reasoning fields (for example reasoning_effort=max) into the realtime
+    // Writer request merely because both routes share a managed service.
+    const playerChatExtraBody = env.playerChatExtraBody ?? env.gatewayExtraBody;
+    // 仅在非 fast-lane 且显式开启 AI_PLAYER_CHAT_JSON_SCHEMA_ENABLED 时
     // 附带 responseFormatJsonSchema。fast lane 保持原有轻量 json_object/relax 行为，
     // 避免给延迟敏感路径新增 schema 预处理开销（见 openai 文档：新 schema 首次请求
     // 有预处理延迟）。
     const useJsonSchemaForThisTurn =
       env.aiGatewayJsonSchemaEnabled && !(isFastLane && env.playerChatFastLaneRelaxResponseFormat);
+    // The current Responses-API endpoints (Volcengine Ark agent-plan
+    // deepseek-v4-flash) emit non-DM-JSON narrative deltas under
+    // `streaming + thinking:disabled + json_object format`. Force
+    // non-stream on this transport so we always get a parseable DM JSON
+    // payload; the streaming chat route then consumes the virtual stream
+    // synthesised by `nonStreamResponsesToChatCompletionsStream`.
+    //
+    // We also force the full DM JSON schema whenever the transport is
+    // Responses-API: that endpoint does not support the Chat Completions
+    // `response_format: {type:"json_object"}` flag and silently ignores
+    // the equivalent `text.format: {type:"json_object"}` for long structured
+    // prompts. The downstream `openaiResponses` factory will downgrade to
+    // a minimal schema if `buildPlayerDmJsonSchemaRequest()` is undefined,
+    // but the full DM JSON schema gives the provider-level constraint
+    // decoder enough surface area to keep the model on the contract.
+    const isResponsesTransport = managedBinding.transport === "openai_responses";
+    const forceJsonSchemaForResponses = isResponsesTransport;
+    const effectiveUseJsonSchema = useJsonSchemaForThisTurn || forceJsonSchemaForResponses;
+    const effectiveEnableStream = isResponsesTransport ? false : env.enableStream;
+    // The Responses-API endpoint on the Volcengine Ark agent-plan
+    // (deepseek-v4-flash) does not honour `text.format: {type:
+    // "json_schema", ...}` for the long player-chat prompt. The only
+    // reliable way to force a parseable DM JSON payload is to wrap the
+    // same schema in a single function tool with `tool_choice` pinning
+    // that tool — see `buildPlayerDmJsonToolRequest`.
+    const toolRequest = isResponsesTransport ? buildPlayerDmJsonToolRequest() : null;
     const body = buildPlayerStreamBody(
       gatewayModel,
       params.messages,
       taskBinding,
-      env.enableStream,
+      effectiveEnableStream,
       env.playerChatStreamIncludeUsage,
-      !(isFastLane && env.playerChatFastLaneRelaxResponseFormat) && taskBinding.responseFormatJsonObject,
+      // When the transport is Responses-API we want a single, explicit
+      // json_schema request; passing `responseFormatJsonObject=true` here
+      // would make the factory fall back to its minimal schema instead of
+      // the full DM JSON schema.
+      effectiveUseJsonSchema
+        ? false
+        : !(isFastLane && env.playerChatFastLaneRelaxResponseFormat) && taskBinding.responseFormatJsonObject,
       playerChatExtraBody,
-      useJsonSchemaForThisTurn ? buildPlayerDmJsonSchemaRequest() : undefined
+      // Function-call mode and json_schema mode are mutually exclusive on
+      // the Responses-API transport — the provider only engages one
+      // constraint decoder at a time. Prefer function-call because it is
+      // empirically the only reliable way to extract DM JSON.
+      toolRequest
+        ? undefined
+        : effectiveUseJsonSchema
+          ? buildPlayerDmJsonSchemaRequest()
+          : undefined,
+      toolRequest?.tools,
+      toolRequest?.toolChoice
     );
     const bodyBuildMs = Math.max(0, Date.now() - bodyT0);
     const initT0 = Date.now();
@@ -450,7 +498,7 @@ export async function executePlayerChatStream(params: {
     logAiTelemetry({
       requestId: params.ctx.requestId,
       task: params.ctx.task,
-      providerId: PROVIDER_ID,
+      providerId,
       logicalRole: role,
       gatewayModel,
       phase: "start",
@@ -464,7 +512,7 @@ export async function executePlayerChatStream(params: {
     recordGeneration({
       requestId: params.ctx.requestId,
       task: params.ctx.task,
-      providerId: PROVIDER_ID,
+      providerId,
       logicalRole: role,
       gatewayModel,
       phase: "start",
@@ -500,22 +548,66 @@ export async function executePlayerChatStream(params: {
             : 0
         : maxRetriesBase;
 
-      const res = await resilientFetch(url, init, {
+      let res = await resilientFetch(url, init, {
         timeoutMs,
         maxRetries,
         parentSignal: params.signal,
         transport: forceHttp1ForGateway() && url.startsWith("https:") ? "http1" : "default",
+        validateManagedUrl: managedBinding.transport !== "mock",
+        allowLocalhost: process.env.NODE_ENV !== "production",
         onRetry: () => {
           retryCount += 1;
         },
       });
       lastHttpStatus = res.status;
 
+      // When the managed binding is using the OpenAI Responses API transport,
+      // translate the upstream response into the Chat Completions streaming
+      // format the rest of the pipeline expects.
+      //
+      // Some endpoints (notably the current Volcengine Ark agent-plan
+      // deepseek-v4-flash) emit non-DM-JSON narrative deltas under
+      // `streaming + thinking:disabled + json_object format` and only produce
+      // a usable DM JSON payload in non-stream mode. The openaiResponses
+      // factory therefore always sends `stream: false`; here we read the JSON
+      // body and synthesise a virtual Chat Completions stream so the rest of
+      // the player-chat pipeline (TTFT, validator, commit, options regen) is
+      // unchanged.
+      if (
+        res.ok &&
+        managedBinding.transport === "openai_responses"
+      ) {
+        try {
+          const raw = (await res.clone().json()) as unknown;
+          const id =
+            raw && typeof raw === "object" && typeof (raw as { id?: unknown }).id === "string"
+              ? String((raw as { id?: unknown }).id)
+              : undefined;
+          res = new Response(
+            nonStreamResponsesToChatCompletionsStream(raw, {
+              model: gatewayModel,
+              streamId: id,
+            }),
+            res,
+          );
+        } catch {
+          if (!res.body) {
+            res = new Response(
+              responsesToChatCompletionsTransform(
+                new ReadableStream<Uint8Array>({ start(c) { c.close(); } }),
+                { model: gatewayModel },
+              ),
+              res,
+            );
+          }
+        }
+      }
+
       if (res.ok && res.body) {
-        recordModelSuccess(role, PROVIDER_ID);
+        recordModelSuccess(role, providerId, { serviceId: managedBinding.serviceId, modelId: managedBinding.modelId });
         attempts.push({
           logicalRole: role,
-          providerId: PROVIDER_ID,
+          providerId,
           gatewayModel,
           phase: "http",
           latencyMs: Date.now() - t0,
@@ -523,7 +615,7 @@ export async function executePlayerChatStream(params: {
         logAiTelemetry({
           requestId: params.ctx.requestId,
           task: params.ctx.task,
-          providerId: PROVIDER_ID,
+          providerId,
           logicalRole: role,
           gatewayModel,
           phase: "success",
@@ -540,7 +632,7 @@ export async function executePlayerChatStream(params: {
         recordGeneration({
           requestId: params.ctx.requestId,
           task: params.ctx.task,
-          providerId: PROVIDER_ID,
+          providerId,
           logicalRole: role,
           gatewayModel,
           phase: "success",
@@ -558,21 +650,23 @@ export async function executePlayerChatStream(params: {
           ok: true,
           response: res,
           logicalRole: role,
-          providerId: PROVIDER_ID,
+          providerId,
           intendedLogicalRole,
           gatewayModel,
           operationMode: mode,
           httpAttempts: attempts,
+          managedBinding,
         };
       }
 
       const { kind, severity } = classifyHttpStatus(res.status);
       const errText = await res.text().catch(() => "");
+      if (process.env.VC_DEBUG_HTTP_ERR) console.error("[debug-http-err]", { url, status: res.status, errText: errText.slice(0, 500) });
       incFailure(kind);
       if (kind === "RATE_LIMIT") sawRateLimit = true;
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         failureKind: kind,
@@ -582,12 +676,12 @@ export async function executePlayerChatStream(params: {
         latencyMs: Date.now() - t0,
       });
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(role, PROVIDER_ID, { providerScope: "online", countProvider: true });
+        recordModelFailure(role, providerId, { providerScope: "online", countProvider: true, serviceId: managedBinding.serviceId, modelId: managedBinding.modelId });
       }
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "error",
@@ -606,7 +700,7 @@ export async function executePlayerChatStream(params: {
       recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "error",
@@ -623,37 +717,23 @@ export async function executePlayerChatStream(params: {
         userId: params.ctx.userId,
       });
 
-      // Phase-3: fail fast for auth errors; cycling models won't help.
+      // Auth and rate limiting are service-scoped; skip the service and try a configured fallback.
       if (kind === "HTTP_4XX_AUTH" && env.playerChatFailFastOnAuth) {
-        return {
-          ok: false,
-          code: "NO_CREDENTIALS",
-          message: "上游鉴权失败（401/403）。请检查 AI 网关密钥或上游权限配置。",
-          lastHttpStatus: res.status,
-          intendedLogicalRole,
-          operationMode: mode,
-          httpAttempts: attempts,
-        };
+        failedServices.add(managedBinding.serviceId);
+        continue;
       }
 
       // Phase-3: provider-wide rate limit — stop early to avoid long chain stalls.
       if (kind === "RATE_LIMIT" && env.playerChatFailFastOnRateLimit) {
-        return {
-          ok: false,
-          code: "CHAIN_EXHAUSTED",
-          message: "上游限流（429）。已停止继续切换模型，避免长时间等待，请稍后重试。",
-          lastHttpStatus: res.status,
-          intendedLogicalRole,
-          operationMode: mode,
-          httpAttempts: attempts,
-        };
+        failedServices.add(managedBinding.serviceId);
+        continue;
       }
     } catch (e) {
       const { kind, severity } = classifyFetchThrowable(e);
       incFailure(kind);
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         failureKind: kind,
@@ -673,12 +753,12 @@ export async function executePlayerChatStream(params: {
         };
       }
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(role, PROVIDER_ID, { providerScope: "online", countProvider: true });
+        recordModelFailure(role, providerId, { providerScope: "online", countProvider: true, serviceId: managedBinding.serviceId, modelId: managedBinding.modelId });
       }
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "error",
@@ -695,7 +775,7 @@ export async function executePlayerChatStream(params: {
       recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "error",
@@ -710,18 +790,7 @@ export async function executePlayerChatStream(params: {
         userId: params.ctx.userId,
       });
 
-      // Phase-3: if we already saw rate limit earlier, don't keep cycling on subsequent errors.
-      if (sawRateLimit && env.playerChatFailFastOnRateLimit) {
-        return {
-          ok: false,
-          code: "CHAIN_EXHAUSTED",
-          message: "上游限流后出现连续失败，已停止继续切换模型以避免长等待。",
-          lastHttpStatus,
-          intendedLogicalRole,
-          operationMode: mode,
-          httpAttempts: attempts,
-        };
-      }
+      if (sawRateLimit && env.playerChatFailFastOnRateLimit) failedServices.add(managedBinding.serviceId);
     }
   }
 
@@ -761,6 +830,7 @@ export async function executeChatCompletion(params: {
   if (isMockAiProviderEnabled() || hasMockScenarioMarker(params.messages)) {
     return executeMockChatCompletion({ task: params.task, messages: params.messages, ctx: params.ctx, tools: params.tools, toolChoice: params.toolChoice });
   }
+  await ensureManagedAiSnapshot();
   const env = resolveAiEnv();
   const mode = resolveOperationMode();
   const baseBinding = getTaskBinding(params.task);
@@ -789,11 +859,11 @@ export async function executeChatCompletion(params: {
       : env.maxRetries;
   const expectJsonObject = binding.responseFormatJsonObject;
   const failureScope = isOfflineTask(params.task) ? "offline" : "online";
-  const fullChain = resolveOrderedRoleChain(params.task, env, mode);
-  const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
+  const managedBindings = getManagedBindingsForTask(params.task);
+  const intendedLogicalRole = managedBindings[0]?.logicalRole ?? ("main" as AiLogicalRole);
   const attempts: AiRoutingAttempt[] = [];
 
-  if (policy.chain.length === 0) {
+  if (managedBindings.length === 0) {
     return {
       ok: false,
       code: "NO_CREDENTIALS",
@@ -815,7 +885,6 @@ export async function executeChatCompletion(params: {
   if (params.skipCache !== true && !toolsActive && isCompletionTaskCacheable(params.task)) {
     const cached = await readCompletionCache(params.task, params.messages);
     if (cached) {
-      const est = estimateUsdForUsage(cached.logicalRole, cached.usage);
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
@@ -828,7 +897,6 @@ export async function executeChatCompletion(params: {
         stream: false,
         cacheHit: true,
         fallbackCount: 0,
-        estCostUsd: est,
         userId: params.ctx.userId,
       });
       recordGeneration({
@@ -843,7 +911,6 @@ export async function executeChatCompletion(params: {
         stream: false,
         cacheHit: true,
         fallbackCount: 0,
-        estCostUsd: est,
         userId: params.ctx.userId,
       });
       return {
@@ -868,9 +935,18 @@ export async function executeChatCompletion(params: {
     }
   }
 
-  const { url, key } = gatewayEndpoint(env);
-
-  for (const role of policy.chain) {
+  const failedServices = new Set<string>();
+  for (const managedBinding of managedBindings) {
+    const role = managedBinding.logicalRole;
+    const providerId: AiProviderId =
+      managedBinding.transport === "ark_multimodal"
+        ? "ark_multimodal"
+        : managedBinding.transport === "openai_responses"
+          ? "openai_responses"
+          : PROVIDER_ID;
+    const url = completionEndpoint(managedBinding.baseUrl, managedBinding.transport);
+    const key = managedBinding.apiKey;
+    if (failedServices.has(managedBinding.serviceId)) continue;
     if (params.signal?.aborted) {
       return {
         ok: false,
@@ -890,13 +966,13 @@ export async function executeChatCompletion(params: {
       };
     }
 
-    const gatewayModel = resolveGatewayModelForTask(env, params.task, role);
+    const gatewayModel = managedBinding.modelName;
     if (!gatewayModel) continue;
 
-    if (policy.tripCircuitOnFailure && (isCircuitOpen(PROVIDER_ID) || isModelCircuitOpen(role))) {
+    if (policy.tripCircuitOnFailure && (isCircuitOpen(providerId, Date.now(), managedBinding.serviceId) || isModelCircuitOpen(role, Date.now(), managedBinding.modelId))) {
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         failureKind: "CIRCUIT_SKIP",
@@ -909,7 +985,7 @@ export async function executeChatCompletion(params: {
     if (!key) {
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         failureKind: "UNKNOWN",
@@ -919,18 +995,16 @@ export async function executeChatCompletion(params: {
       continue;
     }
 
-    const factory = getProviderFactory();
+    const factory = getProviderFactory(managedBinding.transport);
     const forceJsonObjectFromOverride = params.devOverrides?.responseFormatJsonObject === true;
     const requestJsonObject =
       expectJsonObject &&
       (forceJsonObjectFromOverride ||
         !(env.onlineShortJsonRelaxResponseFormat && ONLINE_SHORT_JSON_TASKS.has(params.task)));
-    const directTaskExtraBody = hasDirectPlayerSplit(env)
-      ? mergeExtraBody(
-          PLAYER_GAMEPLAY_TASKS.has(params.task) ? env.playerChatExtraBody : env.gatewayExtraBody,
-          params.extraBody
-        )
-      : params.extraBody;
+    const directTaskExtraBody = mergeExtraBody(
+      PLAYER_GAMEPLAY_TASKS.has(params.task) ? env.playerChatExtraBody : env.gatewayExtraBody,
+      params.extraBody
+    );
     const strictJsonTransportExtraBody =
       ONLINE_SHORT_JSON_TASKS.has(params.task) && env.onlineShortJsonDisableThinking
         ? { ...(directTaskExtraBody ?? {}), enable_thinking: false, thinking: { type: "disabled" } }
@@ -950,7 +1024,7 @@ export async function executeChatCompletion(params: {
     logAiTelemetry({
       requestId: params.ctx.requestId,
       task: params.ctx.task,
-      providerId: PROVIDER_ID,
+      providerId,
       logicalRole: role,
       gatewayModel,
       phase: "start",
@@ -961,7 +1035,7 @@ export async function executeChatCompletion(params: {
     recordGeneration({
       requestId: params.ctx.requestId,
       task: params.ctx.task,
-      providerId: PROVIDER_ID,
+      providerId,
       logicalRole: role,
       gatewayModel,
       phase: "start",
@@ -976,6 +1050,8 @@ export async function executeChatCompletion(params: {
         maxRetries,
         parentSignal: params.signal,
         transport: forceHttp1ForGateway() && url.startsWith("https:") ? "http1" : "default",
+        validateManagedUrl: managedBinding.transport !== "mock",
+        allowLocalhost: process.env.NODE_ENV !== "production",
         onRetry: () => {
           retryCount += 1;
         },
@@ -986,7 +1062,7 @@ export async function executeChatCompletion(params: {
         const errText = await res.text().catch(() => "");
         attempts.push({
           logicalRole: role,
-          providerId: PROVIDER_ID,
+          providerId,
           gatewayModel,
           phase: "http",
           failureKind: kind,
@@ -1001,16 +1077,24 @@ export async function executeChatCompletion(params: {
             failureScope,
             env.offlineAffectsProviderCircuit
           );
-          recordModelFailure(role, PROVIDER_ID, {
+          recordModelFailure(role, providerId, {
             providerScope: failureScope,
             countProvider,
+            serviceId: managedBinding.serviceId,
+            modelId: managedBinding.modelId,
           });
         }
+        enqueueManagedUsage(buildManagedUsageRecord({ requestId: params.ctx.requestId, task: params.task, binding: managedBinding,
+          phase: `attempt_${attempts.length}`, latencyMs: Date.now() - t0, outcome: "error", errorCategory: kind }));
+        if (kind === "HTTP_4XX_AUTH" || kind === "RATE_LIMIT") failedServices.add(managedBinding.serviceId);
         continue;
       }
 
       const raw = (await res.json()) as unknown;
-      const { content, usage, toolCalls } = extractNonStreamContent(raw);
+      const { content, usage, toolCalls } =
+        managedBinding.transport === "openai_responses"
+          ? extractResponsesNonStreamContent(raw)
+          : extractNonStreamContent(raw);
       const trimmed = (content ?? "").trim();
       const hasToolCalls = toolsActive && toolCalls.length > 0;
 
@@ -1018,7 +1102,7 @@ export async function executeChatCompletion(params: {
       if (!trimmed && !hasToolCalls) {
         attempts.push({
           logicalRole: role,
-          providerId: PROVIDER_ID,
+          providerId,
           gatewayModel,
           phase: "http",
           failureKind: "EMPTY_CONTENT",
@@ -1026,6 +1110,8 @@ export async function executeChatCompletion(params: {
           message: "empty_message_content",
           latencyMs: Date.now() - t0,
         });
+        enqueueManagedUsage(buildManagedUsageRecord({ requestId: params.ctx.requestId, task: params.task, binding: managedBinding,
+          phase: `attempt_${attempts.length}`, latencyMs: Date.now() - t0, outcome: "error", errorCategory: "EMPTY_CONTENT" }));
         continue;
       }
 
@@ -1046,7 +1132,7 @@ export async function executeChatCompletion(params: {
       if (expectJsonObject && !hasToolCalls && !isValidJsonObjectString(processed)) {
         attempts.push({
           logicalRole: role,
-          providerId: PROVIDER_ID,
+          providerId,
           gatewayModel,
           phase: "http",
           failureKind: "JSON_PARSE",
@@ -1054,13 +1140,15 @@ export async function executeChatCompletion(params: {
           message: "invalid_json_object",
           latencyMs: Date.now() - t0,
         });
+        enqueueManagedUsage(buildManagedUsageRecord({ requestId: params.ctx.requestId, task: params.task, binding: managedBinding,
+          phase: `attempt_${attempts.length}`, latencyMs: Date.now() - t0, outcome: "error", errorCategory: "JSON_PARSE" }));
         continue;
       }
 
-      recordModelSuccess(role, PROVIDER_ID, { providerScope: failureScope });
+      recordModelSuccess(role, providerId, { providerScope: failureScope, serviceId: managedBinding.serviceId, modelId: managedBinding.modelId });
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         latencyMs: Date.now() - t0,
@@ -1077,11 +1165,21 @@ export async function executeChatCompletion(params: {
         finalStatus: "success",
       };
 
-      const estOk = estimateUsdForUsage(role, usage);
+      enqueueManagedUsage(buildManagedUsageRecord({
+        requestId: params.ctx.requestId,
+        task: params.task,
+        binding: managedBinding,
+        phase: "complete",
+        usage,
+        inputText: params.messages.map((message) => message.content).join("\n"),
+        outputText: processed,
+        latencyMs: Date.now() - t0,
+        outcome: "success",
+      }));
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "success",
@@ -1094,14 +1192,13 @@ export async function executeChatCompletion(params: {
         retryCount,
         failureScope,
         jsonSanitized,
-        estCostUsd: estOk,
         userId: params.ctx.userId,
         ...(hasToolCalls ? { toolCallCount: toolCalls.length } : {}),
       });
       recordGeneration({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         gatewayModel,
         phase: "success",
@@ -1114,7 +1211,6 @@ export async function executeChatCompletion(params: {
         retryCount,
         failureScope,
         jsonSanitized,
-        estCostUsd: estOk,
         userId: params.ctx.userId,
         ...(hasToolCalls ? { toolCallCount: toolCalls.length } : {}),
       });
@@ -1128,7 +1224,7 @@ export async function executeChatCompletion(params: {
             content: processed,
             logicalRole: role,
             gatewayModel,
-            providerId: PROVIDER_ID,
+            providerId,
             usage,
           },
           ttl
@@ -1137,7 +1233,7 @@ export async function executeChatCompletion(params: {
 
       return {
         ok: true,
-        providerId: PROVIDER_ID,
+        providerId,
         logicalRole: role,
         content: processed,
         usage,
@@ -1149,7 +1245,7 @@ export async function executeChatCompletion(params: {
       const { kind, severity } = classifyFetchThrowable(e);
       attempts.push({
         logicalRole: role,
-        providerId: PROVIDER_ID,
+        providerId,
         gatewayModel,
         phase: "http",
         failureKind: kind,
@@ -1163,11 +1259,15 @@ export async function executeChatCompletion(params: {
           failureScope,
           env.offlineAffectsProviderCircuit
         );
-        recordModelFailure(role, PROVIDER_ID, {
+        recordModelFailure(role, providerId, {
           providerScope: failureScope,
           countProvider,
+          serviceId: managedBinding.serviceId,
+          modelId: managedBinding.modelId,
         });
       }
+      enqueueManagedUsage(buildManagedUsageRecord({ requestId: params.ctx.requestId, task: params.task, binding: managedBinding,
+        phase: `attempt_${attempts.length}`, latencyMs: Date.now() - t0, outcome: "error", errorCategory: kind }));
       if (kind === "ABORTED" || params.signal?.aborted) {
         return {
           ok: false,

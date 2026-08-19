@@ -1,116 +1,48 @@
-# VerseCraft 统一大模型基础设施（`src/lib/ai`）
+# VerseCraft AI 基础设施
 
-**运维与切模型**：请先阅读 [`docs/ai-gateway.md`](ai-gateway.md)（网关架构、环境变量、本地/Coolify、故障排查）。
+运维入口以 [`docs/ai-gateway.md`](ai-gateway.md) 为准。真实 AI 服务、模型、Key、人民币单价和用途候选统一在 `/saiduhsa` → “AI 管理”维护；生产不从环境变量恢复真实服务。
 
-## 目录
+## 目录职责
 
 | 路径 | 职责 |
 |------|------|
-| `logicalTasks.ts` | **玩法 / 业务推荐入口**：`generateMainReply`、`parsePlayerIntent`、`enhanceScene`、`runOfflineReasonerTask` 等（内部固定 `TaskType`） |
-| `config/env.ts` | 服务端入口（`server-only`），再导出 `envCore` |
-| `config/envCore.ts` | 网关 URL/Key、`AI_MODEL_*` 解析（无 `server-only`，供单测） |
-| `models/logicalRoles.ts` | 逻辑角色 `main` / `control` / `enhance` / `reasoner` |
-| `models/registry.ts` | 再导出 logicalRoles（兼容旧 import 路径） |
-| `gateway/openaiCompatible.ts` | one-api 用 OpenAI Chat Completions 请求体 |
-| `tasks/taskPolicy.ts` | **任务分工总表**（角色链 + 禁止表） |
-| `playRealtime/*` | 玩家实时链路：控制面预检 + 规则快照 + 可选增强 |
-| `tasks/routing.ts` | 兼容 re-export（新代码请用 `taskPolicy`） |
-| `router/execute.ts` | 超时 + 重试 + 熔断 + 埋点 + 流式/非流式执行 |
-| `providers/index.ts` | 单一网关工厂（`oneapi`） |
-| `stream/sanitize.ts` | 剥离 `reasoning_content` 等，仅 `role`+`content` 上行 |
-| `stream/openaiLike.ts` | OpenAI 形态 SSE / JSON 解析归一 |
-| `resilience/fetchWithRetry.ts` | 可重试 `fetch` |
-| `fallback/circuitBreaker.ts` | 按 provider（`oneapi`）进程内熔断 |
-| `fallback/modelCircuit.ts` | 按 **逻辑角色** 进程内熔断 |
-| `degrade/mode.ts` | 服务端入口；`modeCore.ts` 为无 `server-only` 实现 |
-| `errors/classify.ts` | 标准化失败类型 |
-| `debug/routingRing.ts` | 近期路由报告环形缓冲 |
-| `telemetry/log.ts` | 结构化 `ai.telemetry` 日志 |
-| `service.ts` | 再导出 `logicalTasks` + 路由层 `execute*` + 配置/工具（兼容旧 import） |
+| `logicalTasks.ts` | 业务语义入口，不绑定厂商和模型名 |
+| `tasks/taskPolicy.ts` | TaskType、逻辑角色、安全禁止表和预算 |
+| `managed/runtime.ts` | PostgreSQL 配置预热、不可变快照、Redis 失效与五秒轮询 |
+| `managed/crypto.ts` | API Key AES-256-GCM 加密与 fail-closed |
+| `managed/usage.ts` | Token、调用时人民币单价快照和异步队列 |
+| `router/execute.ts` | 按用途候选执行、超时、重试、服务/模型熔断和用量记录 |
+| `embeddings/embedText.ts` | OpenAI 兼容及火山多模态向量候选 |
+| `gateway/openaiCompatible.ts` | OpenAI Chat Completions 请求体适配 |
+| `stream/openaiLike.ts` | SSE / JSON 响应归一 |
 
-**Fallback / 熔断 / 降级** 见 **`docs/ai-fallback.md`**（语义仍适用，变量名已改为网关与角色）。  
-**成本、门控、缓存** 见 **`docs/ai-governance.md`**。
+## 配置与请求路径
 
-## 核心入口
+1. 管理员添加服务及模型，系统先做受限真实测试。
+2. 全部测试成功后，在一个事务中保存配置并提高 `ai_config_state.version`。
+3. 运行实例收到 Redis 失效通知；Redis 不可用时五秒轮询版本。
+4. 新请求固定读取启动时的不可变快照，并按运营用途的主用/备用顺序尝试。
+5. 成功、失败及向量调用进入本地用量流水；不保存 prompt、玩家输入或 narrative。
 
-- **玩法与业务（首选）**：[`logicalTasks.ts`](../src/lib/ai/logicalTasks.ts) — `generateMainReply`、`parsePlayerIntent`、`enhanceScene`、`runOfflineReasonerTask`、`compressSessionMemory`；规则/战斗预留 `resolveRuleOutcome`、`narrateCombat`。
-- **路由内核（测试 / 高级场景）**：`executePlayerChatStream`（仅 `PLAYER_CHAT`）、`executeChatCompletion({ task })`（**禁止**对 `PLAYER_CHAT` 调用）。
-- **环境**：`resolveAiEnv`、`anyAiProviderConfigured`、`resolveGatewayPrimaryBinding`（需网关 URL + Key + `AI_MODEL_MAIN`）
-- **调试**：`explainTaskRouting(task)`、`exportTaskModelMatrixMarkdown()`
+## 运营用途与内部兼容角色
 
-## 逻辑角色（业务与路由唯一标识）
+| 运营用途 | 典型任务 | 内部角色 |
+|----------|----------|----------|
+| 玩家故事生成 | `PLAYER_CHAT`、`DM_AGENT`、战斗叙事、本地化 | `writer` |
+| 规则判断 | 控制预检、意图、安全预检、规则裁决 | `control` |
+| 文字润色 | 场景增强、叙事扩写、NPC 情绪润色 | `enhance` |
+| 后台推演 | 世界构建、剧情模拟、记忆压缩、离线评测 | `reasoner` |
+| 知识检索 | 世界知识向量化和检索 | `reasoner`（兼容字段） |
 
-真实上游模型名只在 **环境变量** `AI_MODEL_MAIN` 等或 **one-api 控制台** 配置；代码中不出现厂商型号字符串。
+`PLAYER_CHAT` 继续禁止 `reasoner` / `enhance`。逻辑角色只是安全、telemetry 与旧消费者的兼容字段；真实 URL、Key 和模型名只来自受管快照。
 
-| 角色 | 典型任务 | 环境变量 |
-|------|----------|----------|
-| `main` | 玩家主叙事、规则裁决、战斗叙述、记忆压缩默认 | `AI_MODEL_MAIN` |
-| `control` | 控制面预检、意图、安全预筛 | `AI_MODEL_CONTROL` |
-| `enhance` | 场景增强、情绪润色（过渡兼容角色） | `AI_MODEL_ENHANCE`（生产推荐 `vc-enhance`） |
-| `reasoner` | 离线世界构建、剧情推演、管理洞察 | `AI_MODEL_REASONER` |
+## 降级与测试
 
-## 任务 → 角色映射（源码：`tasks/taskPolicy.ts`）
+- 未完成预热、缺少加密主密钥、解密失败或无故事模型时，`/api/chat` 保持 `200 + SSE`、`keys_missing` status 和权威 final 帧。
+- `AI_PROVIDER=mock` 是唯一环境驱动的 AI 路由，仅用于测试、benchmark 和 eval。
+- 业务禁止直接读取 AI secret 或散落模型 ID；新增调用经 `logicalTasks` 或 router/embedding 受管入口。
+- 验证命令：`pnpm test:e2e:contract`、`pnpm benchmark:chat:mock`，以及后台 AI 管理 E2E。
 
-> `full` 模式下 `PLAYER_CHAT` 会并入 `AI_PLAYER_ROLE_CHAIN`（或兼容解析 `AI_PLAYER_MODEL_CHAIN`）。
+## 后台任务
 
-| Task | PrimaryRole | FallbackRoles | Stream | json_mode（请求体） |
-|------|-------------|---------------|--------|---------------------|
-| PLAYER_CHAT | main | *(env 链)* | true | true |
-| PLAYER_CONTROL_PREFLIGHT | control | main | false | true |
-| INTENT_PARSE | control | main | false | true |
-| SAFETY_PREFILTER | control | main | false | true |
-| RULE_RESOLUTION | main | control | false | true |
-| COMBAT_NARRATION | main | control | false | true |
-| SCENE_ENHANCEMENT | enhance | main | false | false |
-| NPC_EMOTION_POLISH | enhance | main, control | false | false |
-| WORLDBUILD_OFFLINE | reasoner | main, control | false | true |
-| STORYLINE_SIMULATION | reasoner | main | false | true |
-| DEV_ASSIST | reasoner | main, control | false | true |
-| MEMORY_COMPRESSION | main | reasoner, control | false | true |
-
-### 禁止路由（角色 × 任务）
-
-| Task | Forbidden roles |
-|------|-------------------|
-| PLAYER_CHAT | reasoner, enhance |
-| 控制面 / 在线裁决类 | reasoner, enhance |
-| SCENE_ENHANCEMENT / NPC_EMOTION_POLISH | reasoner |
-| 离线推演类 | enhance |
-| MEMORY_COMPRESSION | enhance |
-
-## 环境变量摘要
-
-- **网关**：`AI_GATEWAY_PROVIDER`（默认 `oneapi`）、`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`
-- **角色 → 上游模型名**：`AI_MODEL_MAIN`、`AI_MODEL_CONTROL`、`AI_MODEL_ENHANCE`、`AI_MODEL_REASONER`
-- **生产推荐映射**：`AI_MODEL_MAIN=vc-main`、`AI_MODEL_CONTROL=vc-control`、`AI_MODEL_ENHANCE=vc-enhance`、`AI_MODEL_REASONER=vc-reasoner`
-- **增强触发开关**：`AI_ENABLE_NARRATIVE_ENHANCEMENT`（默认开启；仅控制“是否触发 post-stream 可选增强”，不删除逻辑角色与任务矩阵；失败/超时按预算跳过）
-- **玩家链**：`AI_PLAYER_ROLE_CHAIN`；兼容旧 `AI_PLAYER_MODEL_CHAIN`（旧 id 映射为角色）
-- **覆盖链首**：`AI_MEMORY_PRIMARY_ROLE` / 旧 `AI_MEMORY_MODEL`；`AI_DEV_ASSIST_PRIMARY_ROLE` / 旧 `AI_ADMIN_MODEL`
-- **行为**：`AI_ENABLE_STREAM`、`AI_LOG_LEVEL`、`AI_REQUEST_TIMEOUT_MS`、`AI_MAX_RETRIES`、熔断与 `AI_OPERATION_MODE`
-
-## 迁移与约束
-
-- 业务禁止直接 `fetch` 大模型；须通过 `executePlayerChatStream` / `executeChatCompletion`。
-- 新增任务：扩展 `TaskType` → `TASK_POLICY` + `TASK_ROLE_FORBIDDEN`。
-- 换模型：优先改 **one-api**；必须改应用时只动 **环境变量**（或极少数集中配置），不动业务文件。
-
-## Phase 3：World Engine 后台化（离线 reasoner）
-
-- `reasoner` 仅用于离线任务：`WORLDBUILD_OFFLINE` / `STORYLINE_SIMULATION`，不进入 `PLAYER_CHAT` 主链路。
-- `/api/chat` 在终帧后仅异步入队 `WORLD_ENGINE_TICK`，不等待 reasoner 返回。
-- worker（`scripts/vc-worker.ts`）消费 `WORLD_ENGINE_TICK`，调用 `runOfflineReasonerTask({ kind: "worldbuild" })`。
-- reasoner 输出必须为严格 JSON，结构包括：
-  - `npc_next_actions[]`
-  - `world_events_to_schedule[]`
-  - `story_branch_seeds[]`
-  - `consistency_warnings[]`
-  - `player_private_hooks[]`
-- 结果落库：
-  - `world_engine_runs`（运行记录、状态、去重键）
-  - `world_engine_event_queue`（可查询事件队列）
-  - `world_engine_agenda_snapshots`（会话 agenda 快照）
-- Redis 仅用于去重锁/热缓存协调；长期事实源为 PostgreSQL。
-- 成功写入后递增 `vc_world_meta.world_revision`，供在线 retrieval 对齐后台增量版本。
-# World Director 补充
-
-后台导演闭环的详细设计见 [`docs/reasoner-world-director.md`](reasoner-world-director.md)。关键边界：`PLAYER_CHAT` 仍禁止路由到 `reasoner`；`/api/chat` 只做短超时、fail-open 的 due agenda 读取；reasoner 只在 worker/离线任务中生成 `director_plan_v1`，经 validator/可选 critic 后写入 agenda。
+`reasoner` 只用于离线任务和 worker。`/api/chat` 终帧后只异步入队 world tick，不等待后台推演返回；Redis 是协调层，长期事实源仍为 PostgreSQL。

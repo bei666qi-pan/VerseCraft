@@ -4,7 +4,7 @@ import { buildMockCompletionScenario, buildMockStreamScenario } from "@/lib/ai/m
 import { createMockOpenAiStreamResponse } from "@/lib/ai/mock/mockStream";
 import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse } from "@/lib/ai/types";
-import type { AIRequestContext, ChatMessage, TaskType } from "@/lib/ai/types/core";
+import type { AIRequestContext, ChatMessage, TaskType, ToolChoiceOption } from "@/lib/ai/types/core";
 import type { PlayerChatStreamResult } from "@/lib/ai/router/execute";
 
 const MOCK_PROVIDER_ID = "mock" as const;
@@ -71,7 +71,7 @@ export async function executeMockChatCompletion(params: {
   /** Function tools provided by the caller (DM Agent 等). */
   tools?: ReadonlyArray<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
   /** Tool choice strategy. */
-  toolChoice?: "auto" | "none" | "required";
+  toolChoice?: ToolChoiceOption;
 }): Promise<AIResponse> {
   const t0 = Date.now();
 

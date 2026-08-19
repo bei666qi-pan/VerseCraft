@@ -178,6 +178,28 @@ test("buildTurnDeltaDigest: codex updates", () => {
   assert.strictEqual(codex.label, "电工老刘");
 });
 
+test("buildTurnDeltaDigest: formats structured relationship updates without object coercion", () => {
+  const result = buildTurnDeltaDigest({
+    sanity_damage: 0,
+    consumes_time: false,
+    currency_change: 0,
+    consumed_items: [],
+    awarded_items: [],
+    awarded_warehouse_items: [],
+    codex_updates: [],
+    relationship_updates: [{ npcId: "QS_NPC_LIU_SANNIANG", relation: "信任", delta: 2 }],
+    new_tasks: [],
+    task_updates: [],
+    foreshadow_ops: [],
+  });
+  const relation = result.items.find((item) => item.kind === "relation");
+  assert.deepEqual(relation, {
+    kind: "relation",
+    label: "QS_NPC_LIU_SANNIANG · 信任 · +2",
+  });
+  assert.doesNotMatch(JSON.stringify(result), /\[object Object\]/);
+});
+
 test("buildTurnDeltaDigest: task with title", () => {
   const result = buildTurnDeltaDigest({
     sanity_damage: 0,

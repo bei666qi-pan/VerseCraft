@@ -19,7 +19,7 @@
 | DEV_ASSIST | reasoner | medium | 3072 | 否 | 管理分析；可缓存 |
 | MEMORY_COMPRESSION | main | medium | 1792 | 否 | **不缓存**（状态演进） |
 
-`reasoner` 角色仅出现在离线类任务；在线路径由 `TASK_ROLE_FORBIDDEN` 硬禁止。上游具体模型由 `AI_MODEL_*` + one-api 决定。
+`reasoner` 角色仅出现在离线类任务；在线路径由 `TASK_ROLE_FORBIDDEN` 硬禁止。上游具体模型由后台用途候选顺序决定。
 
 **玩家 DM 终帧**：`src/app/api/chat/route.ts` 在主流式成功结束且 JSON 可解析时，经 `normalizePlayerDmJson` 补齐缺省数组/数值后发送 `__VERSECRAFT_FINAL__:`，与客户端 `sseFrame` 折叠逻辑一致；便于模型省略默认可补字段以降低 output token。
 
@@ -80,7 +80,7 @@ Redis 可用时走 `SETEX`/`GET`；否则进程内 Map（容量有界）。
 | `fallbackCount` | 模型 fallback 次数 |
 | `usage` | 上游 token 结构（telemetry）；可含 **`cachedPromptTokens`** |
 | `totalTokens` | 汇总（observability） |
-| `estCostUsd` | **启发式**美元估算（telemetry success） |
+| 费用 | 不在 telemetry 中做硬编码估价；人民币预估来自本地用量流水中的调用时单价快照 |
 | `userIdHash` | `sha256(userId)` 前 12 位，**非明文** |
 | `message` | 仅截断的诊断/错误片段，**不含用户剧情全文** |
 

@@ -70,7 +70,15 @@ export function mergeScopeFilterSql(input: RuntimeLoreRequest): { sql: string; p
     i += 2;
   }
   if (clauses.length === 0) clauses.push(`(c.visibility_scope = 'global')`);
-  return { sql: clauses.join(" OR "), params };
+  const visibility = `(${clauses.join(" OR ")})`;
+  const worldId = input.worldId ?? "dark_moon_prologue";
+  params.push(worldId);
+  const worldParam = `$${params.length}`;
+  if (input.mapId) {
+    params.push(input.mapId);
+    return { sql: `${visibility} AND c.world_id = ${worldParam} AND (c.map_id IS NULL OR c.map_id = $${params.length})`, params };
+  }
+  return { sql: `${visibility} AND c.world_id = ${worldParam}`, params };
 }
 
 export async function retrieveWorldKnowledge(args: {
@@ -159,7 +167,7 @@ export async function retrieveWorldKnowledge(args: {
           FROM world_knowledge_chunks c
           JOIN world_entities e ON e.id = c.entity_id
           WHERE (${scopeFilter.sql})
-            AND c.content_tsv @@ plainto_tsquery('simple', $${scopeFilter.params.length + 1})
+            AND c.content_tsv @@ websearch_to_tsquery('simple', $${scopeFilter.params.length + 1})
           ORDER BY rank DESC, c.importance DESC
           LIMIT $${scopeFilter.params.length + 2}
         `,

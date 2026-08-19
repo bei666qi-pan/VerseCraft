@@ -35,12 +35,12 @@ pnpm test:unit
 
 ## 必填变量
 
-- `DATABASE_URL`: 本地/测试 PostgreSQL 连接串（Docker 共用实例分库时可先执行 `pnpm postgres:local`，见 [`local-one-api.md`](local-one-api.md)）
+- `DATABASE_URL`: 本地/测试 PostgreSQL 连接串（可先执行 `pnpm postgres:local`）
 - `REDIS_URL`: 本地/测试 Redis 连接串（可选，留空会退化为内存限流）
 - `AUTH_SECRET`: NextAuth 签名密钥
 - `ADMIN_PASSWORD`: 管理员影子入口密码
 - `ALTCHA_HMAC_KEY`: Altcha HMAC 密钥（不填则使用 `AUTH_SECRET`）
-- **大模型（one-api）**：`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`，以及 `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER`（与 `.env.example` 一致；说明见 [`docs/ai-gateway.md`](ai-gateway.md)）。**逐步对接本地网关**：[`docs/local-one-api.md`](local-one-api.md)；可复制 [`.env.local.oneapi.example`](../.env.local.oneapi.example) 或运行 `pnpm patch:env-local-ai`。
+- **大模型**：设置 32 字节 `AI_CONFIG_ENCRYPTION_KEY`，启动应用后登录 `/saiduhsa` 的“AI 管理”录入 OpenAI 兼容服务。开发环境允许测试 localhost；生产必须使用公开 HTTPS。详见 [`docs/ai-gateway.md`](ai-gateway.md)。
 
 ## 可选变量
 

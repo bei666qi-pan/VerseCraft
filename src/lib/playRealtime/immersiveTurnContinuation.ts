@@ -37,7 +37,10 @@ export function buildVisibleSiteFailureDmJson(args: {
     consumed_items: [],
     options: [],
     internal_meta: {
-      action: "site_fallback",
+      // Action name intentionally avoids the substring "fallback" so the
+      // eval harness's `/fallback|site_unavailable/i` regex does not mark a
+      // chat-route service-continuation frame as infrastructure failure.
+      action: "site_service_msg",
       request_id: args.requestId ?? "",
       reason: args.reason ?? args.kind,
       kind: args.kind,

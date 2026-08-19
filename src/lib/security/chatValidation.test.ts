@@ -106,3 +106,63 @@ test("moderationTextForPrivateStoryChat：options_regen_only 使用固定短句�
 test("moderationTextForPrivateStoryChat：normal 沿用 latestUserInput", () => {
   assert.equal(moderationTextForPrivateStoryChat("normal", "玩家输入"), "玩家输入");
 });
+
+test("validateChatRequest: legacy client state is explicitly scoped to Dark Moon", () => {
+  const result = validateChatRequest({
+    messages: [{ role: "user", content: "查看四周" }],
+    clientState: {
+      v: 1,
+      turnIndex: 0,
+      playerLocation: "B1_SafeZone",
+      originium: 0,
+      inventoryItemIds: [],
+      warehouseItemIds: [],
+      equippedWeapon: null,
+      weaponBag: [],
+      currentProfession: null,
+      worldFlags: [],
+    },
+  });
+  assert.ok(result.ok);
+  assert.equal(result.clientState?.worldId, "dark_moon_prologue");
+  assert.equal(result.clientState?.mapId, "dark_moon_apartment");
+});
+
+test("validateChatRequest: rejects cross-world map before generation", () => {
+  const result = validateChatRequest({
+    messages: [{ role: "user", content: "前往坊市" }],
+    clientState: {
+      v: 1,
+      worldId: "xingni_taichu",
+      mapId: "dark_moon_apartment",
+      turnIndex: 0,
+      playerLocation: "QS_GUOYAN_INN",
+    },
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.error, /地图不属于当前世界/);
+});
+
+test("validateChatRequest: bounds Xingni world state digest", () => {
+  const result = validateChatRequest({
+    messages: [{ role: "user", content: "吐纳修炼" }],
+    clientState: {
+      v: 1,
+      worldId: "xingni_taichu",
+      mapId: "xingni_qingshi_county",
+      turnIndex: 2,
+      playerLocation: "QS_SPIRIT_SPRING_CAVE",
+      worldStateDigest: {
+        kind: "xingni_taichu",
+        cultivation: { realm: "炼气2层", progress: 9999, qiSeaDamaged: true },
+        spiritRoot: "玄水",
+        spiritStones: 12,
+        credentials: ["combat", "invented"],
+        unlockedMapIds: ["xingni_qingshi_county"],
+      },
+    },
+  });
+  assert.ok(result.ok);
+  assert.equal(result.clientState?.worldStateDigest?.cultivation.progress, 100);
+  assert.deepEqual(result.clientState?.worldStateDigest?.credentials, ["combat"]);
+});

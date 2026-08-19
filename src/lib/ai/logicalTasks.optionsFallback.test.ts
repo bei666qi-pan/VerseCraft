@@ -1,6 +1,6 @@
 // These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
 // transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
-process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
+process.env.AI_UPSTREAM_FORCE_HTTP1 = "0";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,11 +8,13 @@ import test from "node:test";
 import { resetProviderCircuitsForTests } from "@/lib/ai/fallback/circuitBreaker";
 import { resetModelCircuitsForTests } from "@/lib/ai/fallback/modelCircuit";
 import {
+  generateDecisionOptionsOnlyFallback,
   generateOptionsOnlyFallback,
   guardOptionsQualityToFour,
   isNonNarrativeOptionLike,
   parseOptionsArrayFromAiJson,
 } from "./logicalTasks";
+import { installManagedAiTestSnapshotFromEnv } from "@/lib/ai/managed/testFixtures";
 
 function patchEnv(updates: Record<string, string | undefined>): () => void {
   const prev: Record<string, string | undefined> = {};
@@ -22,7 +24,9 @@ function patchEnv(updates: Record<string, string | undefined>): () => void {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  const restoreSnapshot = installManagedAiTestSnapshotFromEnv();
   return () => {
+    restoreSnapshot();
     for (const k of Object.keys(updates)) {
       const o = prev[k];
       if (o === undefined) delete process.env[k];
@@ -170,4 +174,83 @@ test("options regen product paths must not import or call local template padding
     }
   }
   assert.deepEqual(offenders, []);
+});
+
+test("generateOptionsOnlyFallback returns at its hard budget when provider fetch ignores abort", async (t) => {
+  const restore = patchEnv({
+    AI_GATEWAY_BASE_URL: "https://gw.options-timeout.test",
+    AI_GATEWAY_API_KEY: "k",
+    AI_MODEL_MAIN: "model-main",
+    AI_MODEL_CONTROL: "model-control",
+    AI_MODEL_ENHANCE: "model-enhance",
+    AI_MODEL_REASONER: "model-reasoner",
+    AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK: "1",
+    AI_ONLINE_SHORT_JSON_MAX_RETRIES: "0",
+    AI_MAX_RETRIES: "0",
+    AI_CIRCUIT_FAILURE_THRESHOLD: "99",
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const startedAt = Date.now();
+  const result = await generateOptionsOnlyFallback({
+    narrative: "走廊尽头传来一声轻响。",
+    latestUserInput: "继续观察",
+    playerContext: "位置：三楼走廊。",
+    ctx: { requestId: "options-hard-budget", userId: null, sessionId: "s", path: "/api/chat" },
+    budgetMs: 420,
+  });
+  const wallMs = Date.now() - startedAt;
+
+  assert.equal(result.ok, false);
+  assert.match(result.ok ? "" : result.reason, /TIMEOUT/i);
+  assert.ok(wallMs < 1_000, `options fallback exceeded hard wall-clock budget: ${wallMs}ms`);
+});
+
+test("generateDecisionOptionsOnlyFallback returns at its shared hard budget when provider ignores abort", async (t) => {
+  const restore = patchEnv({
+    AI_GATEWAY_BASE_URL: "https://gw.decision-options-timeout.test",
+    AI_GATEWAY_API_KEY: "k",
+    AI_MODEL_MAIN: "model-main",
+    AI_MODEL_CONTROL: "model-control",
+    AI_MODEL_ENHANCE: "model-enhance",
+    AI_MODEL_REASONER: "model-reasoner",
+    AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK: "1",
+    AI_ONLINE_SHORT_JSON_MAX_RETRIES: "0",
+    AI_MAX_RETRIES: "0",
+    AI_CIRCUIT_FAILURE_THRESHOLD: "99",
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const startedAt = Date.now();
+  const result = await generateDecisionOptionsOnlyFallback({
+    narrative: "门后的脚步声忽然停住。",
+    latestUserInput: "我必须现在决定。",
+    playerContext: "位置：三楼走廊。",
+    ctx: { requestId: "decision-options-hard-budget", userId: null, sessionId: "s", path: "/api/chat" },
+    budgetMs: 420,
+  });
+  const wallMs = Date.now() - startedAt;
+
+  assert.equal(result.ok, false);
+  assert.match(result.ok ? "" : result.reason, /TIMEOUT/i);
+  assert.ok(wallMs < 1_500, `decision-options fallback exceeded hard wall-clock budget: ${wallMs}ms`);
 });

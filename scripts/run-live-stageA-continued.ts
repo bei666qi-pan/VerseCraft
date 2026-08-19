@@ -70,7 +70,7 @@ async function runOneSystem(system: SystemGroup): Promise<void> {
     runNarrativeJudge: false,
     softlockThreshold: 40,
     stepTimeoutMs: 180000, // 180s：one-api 冷启动可能需 2min+
-    traceOutputDir: `.runtime-data/playthrough/live-${system.name}`,
+    traceOutputDir: `.runtime-data/eval/playthrough/live-${system.name}`,
     enableFailureClustering: true,
     stepDelayMs: 5000,  // 固定 5s 步间延迟
   };
@@ -140,7 +140,7 @@ async function main() {
   console.log("✅ Stage A（续）完成");
   console.log(`    武器系统: ✅ 5/5`);
   console.log(`    职业/转职 + 战斗: 见上方输出`);
-  console.log(`    Trace: .runtime-data/playthrough/live-*`);
+  console.log(`    Trace: .runtime-data/eval/playthrough/live-*`);
   console.log(`${"═".repeat(60)}`);
 }
 

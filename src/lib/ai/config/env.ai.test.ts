@@ -30,8 +30,8 @@ const KIMI_INJECTED_VARS = [
   // Gateway provider override (injected by Kimi/Codex as openai_compatible)
   "AI_GATEWAY_PROVIDER",
   // Extra body injections that override thinking/reasoning defaults
-  "AI_GATEWAY_MERGE_EXTRA_BODY",
-  "AI_GATEWAY_EXTRA_BODY_JSON",
+  "AI_UPSTREAM_MERGE_EXTRA_BODY",
+  "AI_UPSTREAM_EXTRA_BODY_JSON",
   "AI_PLAYER_CHAT_MERGE_EXTRA_BODY",
   "AI_PLAYER_CHAT_EXTRA_BODY_JSON",
   "AI_PLAYER_CHAT_DISABLE_THINKING",
@@ -149,144 +149,28 @@ test("anyAiProviderConfigured is false when gateway or main model missing", () =
   );
 });
 
-test("anyAiProviderConfigured is true when gateway URL, key, and AI_MODEL_MAIN set", () => {
+test("legacy gateway URL, key, model and Kimi variables cannot enable production routing", () => {
   withEnv(
     {
       AI_GATEWAY_BASE_URL: "https://x.com",
       AI_GATEWAY_API_KEY: "k",
       AI_MODEL_MAIN: "m",
-    },
-    () => {
-      assert.equal(anyAiProviderConfigured(), true);
-    }
-  );
-});
-
-test("resolveAiEnv normalizes AI_GATEWAY_BASE_URL to /v1/chat/completions", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      AI_GATEWAY_BASE_URL: "https://oneapi.example.com/",
-    },
-    () => {
-      assert.equal(
-        resolveAiEnv().gatewayBaseUrl,
-        "https://oneapi.example.com/v1/chat/completions"
-      );
-    }
-  );
-});
-
-test("resolveAiEnv keeps full chat completions URL when already suffixed", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      AI_GATEWAY_BASE_URL: "https://oneapi.example.com/v1/chat/completions",
-    },
-    () => {
-      assert.equal(
-        resolveAiEnv().gatewayBaseUrl,
-        "https://oneapi.example.com/v1/chat/completions"
-      );
-    }
-  );
-});
-
-test("resolveAiEnv gives the kimi-ds direct binding priority over project gateway env", () => {
-  withEnv(
-    {
-      ...gatewayBase,
       VC_AI_DIRECT_BASE_URL: "https://direct-gateway.example/v1",
       VC_AI_DIRECT_API_KEY: "direct-key",
       VC_AI_DIRECT_MODEL: "deepseek-v4-flash",
-      AI_PLAYER_CHAT_DISABLE_THINKING: "1",
-      AI_ONLINE_SHORT_JSON_DISABLE_THINKING: "1",
-    },
-    () => {
-      const env = resolveAiEnv();
-      assert.equal(env.gatewayProvider, "openai_compatible");
-      assert.equal(env.gatewayBaseUrl, "https://direct-gateway.example/v1/chat/completions");
-      assert.equal(env.gatewayApiKey, "direct-key");
-      assert.deepEqual(env.modelsByRole, {
-        main: "deepseek-v4-flash",
-        control: "deepseek-v4-flash",
-        enhance: "deepseek-v4-flash",
-        reasoner: "deepseek-v4-flash",
-        writer: "deepseek-v4-flash",
-      });
-      assert.deepEqual(env.playerChatExtraBody, {
-        enable_thinking: false,
-        thinking: { type: "disabled" },
-      });
-      assert.equal(env.onlineShortJsonDisableThinking, true);
-    }
-  );
-});
-
-test("resolveAiEnv scopes Flash to gameplay while all logical roles stay on Pro", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      VC_AI_DIRECT_BASE_URL: "https://direct-gateway.example/v1",
-      VC_AI_DIRECT_API_KEY: "direct-key",
-      VC_AI_DIRECT_MODEL: undefined,
-      VC_AI_DIRECT_PLAYER_MODEL: "deepseek-v4-flash",
-      VC_AI_DIRECT_MODEL_MAIN: "deepseek-v4-pro-202606",
-      VC_AI_DIRECT_MODEL_CONTROL: "deepseek-v4-pro-202606",
-      VC_AI_DIRECT_MODEL_ENHANCE: "deepseek-v4-pro-202606",
-      VC_AI_DIRECT_MODEL_REASONER: "deepseek-v4-pro-202606",
-    },
-    () => {
-      assert.equal(resolveAiEnv().playerGameplayModel, "deepseek-v4-flash");
-      assert.deepEqual(resolveAiEnv().modelsByRole, {
-        main: "deepseek-v4-pro-202606",
-        control: "deepseek-v4-pro-202606",
-        enhance: "deepseek-v4-pro-202606",
-        reasoner: "deepseek-v4-pro-202606",
-        writer: "deepseek-v4-pro-202606",
-      });
-    }
-  );
-});
-
-test("resolveAiEnv inherits an existing kimi-ds OpenAI binding without affecting ordinary Kimi", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      VC_AI_DIRECT_BASE_URL: undefined,
-      VC_AI_DIRECT_API_KEY: undefined,
-      VC_AI_DIRECT_MODEL: undefined,
       KIMI_MODEL_PROVIDER_TYPE: "openai",
       KIMI_MODEL_BASE_URL: "https://kimi-openai.example/v1",
-      KIMI_MODEL_API_KEY: "kimi-openai-key",
-      KIMI_MODEL_NAME: "kimi-openai-model",
+      KIMI_MODEL_API_KEY: "kimi-key",
+      KIMI_MODEL_NAME: "kimi-model",
     },
     () => {
       const env = resolveAiEnv();
       assert.equal(env.gatewayProvider, "openai_compatible");
-      assert.equal(env.gatewayBaseUrl, "https://kimi-openai.example/v1/chat/completions");
-      assert.equal(env.gatewayApiKey, "kimi-openai-key");
-      assert.equal(env.modelsByRole.main, "kimi-openai-model");
-    }
-  );
-
-  withEnv(
-    {
-      ...gatewayBase,
-      VC_AI_DIRECT_BASE_URL: undefined,
-      VC_AI_DIRECT_API_KEY: undefined,
-      VC_AI_DIRECT_MODEL: undefined,
-      KIMI_MODEL_PROVIDER_TYPE: "kimi",
-      KIMI_MODEL_BASE_URL: "https://ordinary-kimi.example/v1",
-      KIMI_MODEL_API_KEY: "ordinary-kimi-key",
-      KIMI_MODEL_NAME: "ordinary-kimi-model",
-    },
-    () => {
-      const env = resolveAiEnv();
-      assert.equal(env.gatewayProvider, "oneapi");
-      assert.equal(env.gatewayBaseUrl, "https://oneapi.example.com/v1/chat/completions");
-      assert.equal(env.gatewayApiKey, "sk-gateway");
-      assert.equal(env.modelsByRole.main, "upstream-main");
+      assert.equal(env.gatewayBaseUrl, "");
+      assert.equal(env.gatewayApiKey, "");
+      assert.equal(env.playerGameplayModel, "");
+      assert.ok(Object.values(env.modelsByRole).every((model) => model === ""));
+      assert.equal(anyAiProviderConfigured(), false);
     }
   );
 });
@@ -317,7 +201,7 @@ test("resolveAiEnv maps AI_MEMORY_MODEL legacy id to memoryPrimaryRole", () => {
   );
 });
 
-test("resolveAiEnv defaults enhance and reasoner to dedicated vc deployments when unset", () => {
+test("resolveAiEnv does not synthesize legacy role models in real mode", () => {
   withEnv(
     {
       AI_GATEWAY_BASE_URL: "https://oneapi.example.com",
@@ -329,8 +213,8 @@ test("resolveAiEnv defaults enhance and reasoner to dedicated vc deployments whe
     },
     () => {
       const e = resolveAiEnv();
-      assert.equal(e.modelsByRole.enhance, "vc-enhance");
-      assert.equal(e.modelsByRole.reasoner, "vc-reasoner");
+      assert.equal(e.modelsByRole.enhance, "");
+      assert.equal(e.modelsByRole.reasoner, "");
     }
   );
 });
@@ -488,15 +372,15 @@ test("resolveAiEnv can roll player chat upstream timeouts back", () => {
   );
 });
 
-test("resolveAiEnv disables player chat thinking by default and keeps gateway extra body task-scoped", () => {
+test("resolveAiEnv disables player chat thinking by default and keeps upstream extra body task-scoped", () => {
   withEnv(
     {
       ...gatewayBase,
       AI_PLAYER_CHAT_DISABLE_THINKING: undefined,
       AI_PLAYER_CHAT_MERGE_EXTRA_BODY: undefined,
       AI_PLAYER_CHAT_EXTRA_BODY_JSON: undefined,
-      AI_GATEWAY_MERGE_EXTRA_BODY: undefined,
-      AI_GATEWAY_EXTRA_BODY_JSON: undefined,
+      AI_UPSTREAM_MERGE_EXTRA_BODY: undefined,
+      AI_UPSTREAM_EXTRA_BODY_JSON: undefined,
     },
     () => {
       const e = resolveAiEnv();
@@ -516,8 +400,8 @@ test("resolveAiEnv allows player chat thinking extra body rollback and explicit 
       AI_PLAYER_CHAT_DISABLE_THINKING: "0",
       AI_PLAYER_CHAT_MERGE_EXTRA_BODY: "1",
       AI_PLAYER_CHAT_EXTRA_BODY_JSON: '{"enable_thinking":false}',
-      AI_GATEWAY_MERGE_EXTRA_BODY: undefined,
-      AI_GATEWAY_EXTRA_BODY_JSON: undefined,
+      AI_UPSTREAM_MERGE_EXTRA_BODY: undefined,
+      AI_UPSTREAM_EXTRA_BODY_JSON: undefined,
     },
     () => {
       const e = resolveAiEnv();

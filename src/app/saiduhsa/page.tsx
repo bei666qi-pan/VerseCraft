@@ -1,5 +1,5 @@
 import { AdminShadowGate } from "@/components/admin/AdminShadowGate";
-import AdminDashboardV2 from "@/components/admin/AdminDashboardV2";
+import AdminConsole from "@/components/admin/AdminConsole";
 import { ensureRuntimeSchema } from "@/db/ensureSchema";
 import { requireAdminSession } from "@/lib/admin/authGuard";
 import { unwrapPageDynamicOnServer, type AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
@@ -21,13 +21,5 @@ export default async function ShadowAdminPage(props: AppPageDynamicProps) {
     console.warn("[saiduhsa] ensureRuntimeSchema best-effort failed", e);
   }
 
-  return (
-    <AdminDashboardV2
-      rows={[]}
-      onlineCount={0}
-      totalUsers={0}
-      totalTokens={0}
-      chartData={[]}
-    />
-  );
+  return <AdminConsole />;
 }

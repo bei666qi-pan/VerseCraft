@@ -16,6 +16,31 @@ test("codex auto capture recognizes registered NPC and anomaly mentions", () => 
   assert.ok(mentions.some((entry) => entry.id === "A-002" && entry.type === "anomaly"));
 });
 
+test("codex auto capture recognizes registered Xingni NPC mentions without Dark Moon aliases", () => {
+  const mentions = extractCodexMentionsFromNarrative("沈清禾收起药匣，石魁正在南城门核对悬赏册。", {
+    worldId: "xingni_taichu",
+  });
+
+  assert.deepEqual(mentions, [
+    { id: "XQ-N002", name: "沈清禾", type: "npc" },
+    { id: "XQ-N007", name: "石魁", type: "npc" },
+  ]);
+});
+
+test("codex auto capture rejects Dark Moon NPCs and anomalies in Xingni scope", () => {
+  const mentions = extractCodexMentionsFromNarrative(
+    "电工老刘说无头猎犬正在追赶沈清禾。",
+    { worldId: "xingni_taichu" },
+  );
+
+  assert.deepEqual(mentions, [{ id: "XQ-N002", name: "沈清禾", type: "npc" }]);
+});
+
+test("codex auto capture rejects Xingni NPCs in the legacy Dark Moon scope", () => {
+  const mentions = extractCodexMentionsFromNarrative("沈清禾看见电工老刘走入配电间。");
+  assert.deepEqual(mentions, [{ id: "N-008", name: "电工老刘", type: "npc" }]);
+});
+
 test("codex auto capture recognizes direct registry ids", () => {
   const mentions = extractCodexMentionsFromNarrative("你在墙角看到了 A-008 的残影，以及 N-010 留下的纸条。");
 
@@ -44,6 +69,26 @@ test("codex auto capture promotes registered NPC location updates when codex upd
   });
 
   assert.deepEqual(mentions, [{ id: "N-008", name: "电工老刘", type: "npc" }]);
+});
+
+test("codex auto capture promotes registered Xingni NPC location updates", () => {
+  const mentions = extractCodexMentionsFromDmRecord({
+    narrative: "升仙台的阵纹亮了起来。",
+    codex_updates: [],
+    npc_location_updates: [{ id: "XQ-N004", to_location: "QS_ASCENSION_TERRACE" }],
+  }, { worldId: "xingni_taichu" });
+
+  assert.deepEqual(mentions, [{ id: "XQ-N004", name: "许闻舟", type: "npc" }]);
+});
+
+test("codex auto capture rejects cross-world structured updates", () => {
+  const mentions = extractCodexMentionsFromDmRecord({
+    narrative: "青石县今日无事。",
+    codex_updates: [{ id: "N-008", type: "npc" }],
+    npc_location_updates: [{ id: "XQ-N004", to_location: "QS_ASCENSION_TERRACE" }],
+  }, { worldId: "xingni_taichu" });
+
+  assert.deepEqual(mentions, [{ id: "XQ-N004", name: "许闻舟", type: "npc" }]);
 });
 
 test("mergeAutoCapturedCodexUpdates appends only missing registered entries", () => {

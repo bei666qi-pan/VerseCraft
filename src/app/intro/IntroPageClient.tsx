@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ChevronLeft, ChevronRight, FileText, Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { trackGameplayEvent } from "@/app/actions/telemetry";
+import { useGameStore } from "@/store/useGameStore";
 import { VerseCraftLogoMark } from "@/components/VerseCraftLogo";
 import {
   INTRO_BRAND,
@@ -19,7 +21,7 @@ function joinClass(...classes: Array<string | false | null | undefined>) {
 }
 
 function BrandMark() {
-  return <VerseCraftLogoMark className="h-9 w-9" priority sizes="36px" />;
+  return <VerseCraftLogoMark className="h-8 w-8" priority sizes="32px" />;
 }
 
 function SectionRule() {
@@ -99,6 +101,14 @@ function WorldCard({
         <EmptyWorldCard isActive={isActive} />
       )}
 
+      {slide.worldId === "xingni_taichu" ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#071a1c]/95 via-[#102c2d]/65 to-transparent px-6 pb-6 pt-24 text-[#fff8e7]" aria-hidden>
+          <p className="text-[11px] font-semibold tracking-[.28em] text-[#f5dca3]">TAICHU REALM</p>
+          <h3 className="mt-2 vc-reading-serif text-[30px] font-semibold tracking-[.1em]">星逆·太初</h3>
+          <p className="mt-2 text-[13px] tracking-[.08em] text-[#fff8e7]/84">当前开放 · 青石县</p>
+        </div>
+      ) : null}
+
       {slide.available && onIntro ? (
         <button
           type="button"
@@ -152,11 +162,12 @@ function IntroModal({
   );
 }
 
-export function IntroPageClient() {
+export function IntroPageClient({ xingniEnabled = true }: { xingniEnabled?: boolean }) {
   const router = useRouter();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isIntroOpen, setIsIntroOpen] = useState(false);
   const [isNavPending, startNavTransition] = useTransition();
+  const guestId = useGameStore((state) => state.guestId ?? "guest_intro");
 
   // 提前预取 /create 的 RSC payload 与 JS chunk：
   // CTA 点击后不再现场拉包，消除「进入公寓」的高延迟跳转
@@ -165,9 +176,14 @@ export function IntroPageClient() {
   }, [router]);
 
   const activeSlide = INTRO_WORLD_SLIDES[activeIndex];
+  const activeAvailable = activeSlide.available && (activeSlide.worldId !== "xingni_taichu" || xingniEnabled);
   const previousSlide = INTRO_WORLD_SLIDES[(activeIndex - 1 + INTRO_WORLD_SLIDES.length) % INTRO_WORLD_SLIDES.length];
   const nextSlide = INTRO_WORLD_SLIDES[(activeIndex + 1) % INTRO_WORLD_SLIDES.length];
-  const activeCtaLabel = activeSlide.available ? INTRO_CTA : INTRO_DISABLED_CTA;
+  const activeCtaLabel = activeAvailable
+    ? (activeSlide.ctaLabel ?? INTRO_CTA)
+    : activeSlide.worldId === "xingni_taichu"
+      ? "暂不可进入"
+      : INTRO_DISABLED_CTA;
 
   const dots = useMemo(() => INTRO_WORLD_SLIDES.map((slide) => slide.id), []);
 
@@ -177,10 +193,18 @@ export function IntroPageClient() {
   };
 
   const handleCta = () => {
-    if (!activeSlide.available || isNavPending) return;
+    if (!activeAvailable || isNavPending) return;
+    const worldId = activeSlide.worldId ?? "dark_moon_prologue";
+    void trackGameplayEvent({
+      eventName: "world_selected",
+      sessionId: guestId,
+      page: "/intro",
+      source: "world_selector",
+      payload: { worldId, mapId: worldId === "xingni_taichu" ? "xingni_qingshi_county" : "dark_moon_apartment" },
+    }).catch(() => {});
     // useTransition 跟踪导航挂起态：点击即刻有视觉反馈，杜绝“点了没反应”
     startNavTransition(() => {
-      router.push("/create");
+      router.push(`/create?world=${worldId}`);
     });
   };
 
@@ -205,11 +229,11 @@ export function IntroPageClient() {
             type="button"
             data-testid="intro-back-home"
             onClick={() => router.push("/")}
-            className="inline-flex items-center gap-3 text-left text-vc-ink transition active:scale-[0.98]"
+            className="inline-flex items-center gap-2.5 text-left text-vc-ink transition active:scale-[0.98]"
             aria-label="返回首页"
           >
             <BrandMark />
-            <span className="vc-reading-serif text-[26px] font-semibold leading-none min-[430px]:text-[32px]">
+            <span className="vc-reading-serif text-[25px] font-semibold leading-none min-[430px]:text-[30px]">
               {INTRO_BRAND}
             </span>
           </button>
@@ -244,7 +268,10 @@ export function IntroPageClient() {
             <div className="absolute left-1/2 top-0 h-full w-[82%] translate-x-[64%] overflow-hidden rounded-[1.65rem] shadow-[0_1rem_2rem_rgba(21,39,36,0.22)]">
               <WorldCard slide={nextSlide} isActive={false} isSide />
             </div>
-            <div key={activeSlide.id} className="absolute left-1/2 top-0 h-full w-[82%] -translate-x-1/2 animate-fade-in">
+            <div
+              key={activeSlide.id}
+              className="absolute left-1/2 top-0 h-full w-[82%] -translate-x-1/2"
+            >
               <WorldCard
                 slide={activeSlide}
                 isActive
@@ -298,12 +325,12 @@ export function IntroPageClient() {
             type="button"
             data-testid="intro-start-create"
             onClick={handleCta}
-            disabled={!activeSlide.available}
+            disabled={!activeAvailable}
             data-pending={isNavPending ? "true" : undefined}
             className={joinClass(
               "group relative mt-[clamp(1rem,2.9svh,2rem)] flex h-[clamp(3.75rem,7.4svh,4.55rem)] w-[82%] max-w-[22.5rem] items-center justify-center overflow-hidden rounded-full border text-center vc-reading-serif text-[clamp(1.65rem,7.4vw,2.2rem)] font-semibold leading-none tracking-[0.18em] transition-all duration-200",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-vc-paper",
-              activeSlide.available
+              activeAvailable
                 ? joinClass(
                     "border-white/80 bg-[linear-gradient(180deg,#1a4741,#163f3a_38%,#08222a)] text-[#efe7df]",
                     "shadow-[0_0.65rem_1.15rem_rgba(26,40,37,0.20),inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-8px_16px_rgba(4,18,22,0.55)]",
@@ -313,11 +340,11 @@ export function IntroPageClient() {
                   )
                 : "border-[#d6cec3] bg-[#e4ded4] text-[#9c9489] shadow-[0_0.65rem_1.15rem_rgba(26,40,37,0.1)]"
             )}
-            aria-disabled={!activeSlide.available}
+            aria-disabled={!activeAvailable}
             aria-busy={isNavPending || undefined}
           >
             {/* 悬停微光扫过 */}
-            {activeSlide.available ? (
+            {activeAvailable ? (
               <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-full" aria-hidden>
                 <span className="absolute inset-y-0 left-[-55%] w-[42%] -skew-x-[18deg] bg-gradient-to-r from-transparent via-white/12 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-[340%]" />
               </span>

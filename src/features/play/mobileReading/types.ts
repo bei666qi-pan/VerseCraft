@@ -10,6 +10,7 @@ import type {
   ReadingPreferences,
 } from "./readingPreferences";
 import type { GameLanguage } from "@/lib/i18n/language";
+import type { WorldId } from "@/lib/worlds/types";
 import type {
   MobileCodexDynamicNpcStates,
   MobileCodexMainThreatByFloor,
@@ -118,6 +119,7 @@ export type MobileCharacterPanelProps = {
 };
 
 export type MobileCodexPanelProps = {
+  worldId: WorldId;
   codex: Record<string, CodexEntry>;
   dynamicNpcStates?: MobileCodexDynamicNpcStates;
   mainThreatByFloor?: MobileCodexMainThreatByFloor;
@@ -158,12 +160,13 @@ export type MobileSettingsPanelProps = {
 };
 
 export type MobileBottomNavProps = {
-  activeItem: "character" | "story" | "codex" | "settings" | "tasks";
+  activeItem: "character" | "story" | "codex" | "settings" | "tasks" | "map";
   onOpenCharacter?: () => void;
   onFocusStory: () => void;
   onOpenCodex: () => void;
   onOpenSettings: () => void;
   onOpenTasks?: () => void;
+  onOpenMap?: () => void;
   /** 图鉴是否存在未读的新发现，驱动"图鉴"导航项的角标提示 */
   hasUnreadCodex?: boolean;
   /** 任务是否存在未查看的更新，驱动"任务"导航项的角标提示 */

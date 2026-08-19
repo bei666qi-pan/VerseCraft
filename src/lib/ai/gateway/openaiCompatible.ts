@@ -7,7 +7,7 @@ import {
 import type { AiProviderId, ChatMessage } from "@/lib/ai/types/core";
 
 /**
- * OpenAI-compatible chat completions payload for one-api and similar gateways.
+ * OpenAI-compatible chat completions payload.
  */
 /** Keys we never allow extraBody to set or overwrite. */
 const GATEWAY_BODY_RESERVED = new Set([
@@ -35,7 +35,7 @@ function toWireMessage(m: ChatMessage): Record<string, unknown> {
 }
 
 export const openaiCompatibleGateway: ProviderRequestFactory = {
-  id: "oneapi" as const satisfies AiProviderId,
+  id: "openai_compatible" as const satisfies AiProviderId,
   buildInit(apiKey: string, body: NormalizedCompletionRequest): RequestInit {
     const payload: Record<string, unknown> = {
       model: body.modelApiName,
@@ -91,15 +91,10 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
         payload[k] = v;
       }
     }
-    // `codex-ds` injects this marker only for its local Sangfor DeepSeek
-    // binding. The loopback gateway records exact upstream usage, so label
-    // calls made by VerseCraft explicitly instead of guessing from `*-pro`.
-    const meterSource = process.env.VC_AI_DIRECT_SOURCE ? "VerseCraft /api/chat" : undefined;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     };
-    if (meterSource) headers["x-deepseek-meter-source"] = meterSource;
 
     return {
       method: "POST",

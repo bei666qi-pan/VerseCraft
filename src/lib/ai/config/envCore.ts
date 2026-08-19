@@ -28,8 +28,8 @@ function resolveExtraBodyJson(envName: string): Record<string, unknown> | undefi
 }
 
 function resolveGatewayExtraBody(): Record<string, unknown> | undefined {
-  if (!envBoolean("AI_GATEWAY_MERGE_EXTRA_BODY", false)) return undefined;
-  return resolveExtraBodyJson("AI_GATEWAY_EXTRA_BODY_JSON");
+  if (!envBoolean("AI_UPSTREAM_MERGE_EXTRA_BODY", false)) return undefined;
+  return resolveExtraBodyJson("AI_UPSTREAM_EXTRA_BODY_JSON");
 }
 
 function resolvePlayerChatExtraBody(): Record<string, unknown> | undefined {
@@ -47,10 +47,10 @@ function resolvePlayerChatExtraBody(): Record<string, unknown> | undefined {
 }
 
 /**
- * Gateway deployment kind. `oneapi` means an actual one-api deployment;
- * `openai_compatible` is a direct OpenAI-wire-compatible endpoint.
+ * Runtime transport kind. Real URL, Key and model truth comes from the managed
+ * database snapshot; only deterministic mock remains environment-driven.
  */
-export type AiGatewayProviderId = "oneapi" | "openai_compatible" | "mock";
+export type AiGatewayProviderId = "openai_compatible" | "mock";
 
 export interface ResolvedAiEnv {
   gatewayProvider: AiGatewayProviderId;
@@ -59,7 +59,7 @@ export interface ResolvedAiEnv {
   gatewayApiKey: string;
   /** Optional task-scoped model for the realtime player/gameplay lane only. */
   playerGameplayModel: string;
-  /** Upstream model name per logical role (from AI_MODEL_*). Empty if unset. */
+  /** Compatibility role names; real upstream models come from managed bindings. */
   modelsByRole: Record<AiLogicalRole, string>;
   /** Extra ordering for PLAYER_CHAT merges (after policy primaries). */
   playerRoleFallbackChain: AiLogicalRole[];
@@ -147,7 +147,7 @@ export interface ResolvedAiEnv {
   playerChatFailFastOnAuth: boolean;
   playerChatFailFastOnRateLimit: boolean;
   onlineShortJsonRetryHardCap1: boolean;
-  /** Parsed AI_GATEWAY_EXTRA_BODY_JSON when AI_GATEWAY_MERGE_EXTRA_BODY=1. */
+  /** Parsed AI_UPSTREAM_EXTRA_BODY_JSON when AI_UPSTREAM_MERGE_EXTRA_BODY=1. */
   gatewayExtraBody?: Record<string, unknown>;
   /** Parsed AI_PLAYER_CHAT_EXTRA_BODY_JSON when AI_PLAYER_CHAT_MERGE_EXTRA_BODY=1. */
   playerChatExtraBody?: Record<string, unknown>;
@@ -182,79 +182,10 @@ export interface ResolvedAiEnv {
 /** Default player SSE fallback role order when env omits chain. */
 export const DEFAULT_PLAYER_ROLE_CHAIN: AiLogicalRole[] = ["main", "control"];
 
-type KimiOpenAiBinding = {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-};
-
-/**
- * Inherit an OpenAI-compatible binding from a running Kimi session. The
- * provider-type guard keeps ordinary Kimi sessions on VerseCraft's normal
- * gateway configuration, while existing `kimi -ds` sessions can hand their
- * already-in-memory binding to a child Next.js process without a restart.
- */
-function resolveKimiOpenAiBinding(): KimiOpenAiBinding | undefined {
-  if ((envRaw("KIMI_MODEL_PROVIDER_TYPE") ?? "").trim().toLowerCase() !== "openai") {
-    return undefined;
-  }
-  const baseUrl = (envRaw("KIMI_MODEL_BASE_URL") ?? "").trim();
-  const apiKey = (envRaw("KIMI_MODEL_API_KEY") ?? "").trim();
-  const model = (envRaw("KIMI_MODEL_NAME") ?? "").trim();
-  if (!baseUrl || !apiKey || !model) return undefined;
-  return { baseUrl, apiKey, model };
-}
-
-function resolveGatewayChatCompletionsUrl(): string {
-  // Local-only direct-provider override. Its distinct prefix prevents Next's
-  // .env.local loading from replacing an explicitly injected test binding.
-  const raw = (
-    envRaw("VC_AI_DIRECT_BASE_URL") ??
-    resolveKimiOpenAiBinding()?.baseUrl ??
-    envRaw("AI_GATEWAY_BASE_URL") ??
-    ""
-  ).trim();
-  if (!raw) return "";
-  const normalized = raw.replace(/\/+$/, "");
-  if (normalized.toLowerCase().endsWith("/chat/completions")) {
-    return normalized;
-  }
-  if (normalized.toLowerCase().endsWith("/v1")) {
-    return `${normalized}/chat/completions`;
-  }
-  return `${normalized}/v1/chat/completions`;
-}
-
-/**
- * T4（2026-07，世界知识向量检索）：embeddings 端点 URL。
- * 默认复用与 chat completions 相同的网关根地址（`AI_GATEWAY_BASE_URL`），只是把
- * `/v1/chat/completions` 换成 `/v1/embeddings`——这是 one-api 及绝大多数 OpenAI 兼容网关的
- * 标准约定，不需要新增独立的 base url 配置。仅当 embeddings 走独立网关/独立域名时才需要
- * 显式设置 `AI_EMBEDDING_GATEWAY_BASE_URL` 覆盖。
- */
-function resolveGatewayEmbeddingsUrl(): string {
-  const explicit = envRaw("AI_EMBEDDING_GATEWAY_BASE_URL")?.trim();
-  const base = explicit || (envRaw("AI_GATEWAY_BASE_URL")?.trim() ?? "");
-  if (!base) return "";
-  const normalized = base.replace(/\/+$/, "");
-  if (normalized.toLowerCase().endsWith("/embeddings")) return normalized;
-  if (normalized.toLowerCase().endsWith("/chat/completions")) {
-    return normalized.replace(/\/chat\/completions$/i, "/embeddings");
-  }
-  return `${normalized}/v1/embeddings`;
-}
-
 export function resolveAiProviderId(): AiGatewayProviderId {
-  const raw = (envRaw("AI_PROVIDER") ?? envRaw("AI_GATEWAY_PROVIDER") ?? "oneapi").trim().toLowerCase();
+  const raw = (envRaw("AI_PROVIDER") ?? "").trim().toLowerCase();
   if (raw === "mock") return "mock";
-  if (
-    resolveKimiOpenAiBinding() ||
-    envRaw("VC_AI_DIRECT_BASE_URL") ||
-    ["openai", "openai-compatible", "openai_compatible", "direct"].includes(raw)
-  ) {
-    return "openai_compatible";
-  }
-  return "oneapi";
+  return "openai_compatible";
 }
 
 export function isMockAiProviderEnv(): boolean {
@@ -262,43 +193,7 @@ export function isMockAiProviderEnv(): boolean {
 }
 
 function readModelForRole(role: AiLogicalRole): string {
-  const key =
-    role === "main"
-      ? "AI_MODEL_MAIN"
-      : role === "control"
-        ? "AI_MODEL_CONTROL"
-        : role === "enhance"
-          ? "AI_MODEL_ENHANCE"
-          : role === "reasoner"
-            ? "AI_MODEL_REASONER"
-            : role === "writer"
-              ? "AI_MODEL_WRITER"
-              : "AI_MODEL_MAIN";
-  const directRoleOverride = (
-    envRaw(`VC_AI_DIRECT_MODEL_${role.toUpperCase()}`) ?? ""
-  ).trim();
-  const directAllRolesOverride = (envRaw("VC_AI_DIRECT_MODEL") ?? "").trim();
-  const directOverride =
-    directRoleOverride || directAllRolesOverride || (resolveKimiOpenAiBinding()?.model ?? "").trim();
-  let direct = directOverride || (envRaw(key) ?? "").trim();
-  // Writer role: fall back to AI_MODEL_MAIN when AI_MODEL_WRITER is not configured.
-  // Also respects VC_AI_DIRECT_MODEL_MAIN override so writer inherits the main role's direct model.
-  if (role === "writer" && !direct) {
-    const mainKey = "AI_MODEL_MAIN";
-    const mainDirectRoleOverride = (envRaw("VC_AI_DIRECT_MODEL_MAIN") ?? "").trim();
-    const mainDirect = mainDirectRoleOverride || directAllRolesOverride || (envRaw(mainKey) ?? "").trim();
-    direct = mainDirect;
-  }
-  if (isMockAiProviderEnv()) {
-    return direct.length > 0 ? direct : `mock-${role}`;
-  }
-  if (role === "enhance") {
-    return direct.length > 0 ? direct : "vc-enhance";
-  }
-  if (role === "reasoner") {
-    return direct.length > 0 ? direct : "vc-reasoner";
-  }
-  return direct;
+  return isMockAiProviderEnv() ? `mock-${role}` : "";
 }
 
 function resolvePlayerRoleFallbackChain(): AiLogicalRole[] {
@@ -374,15 +269,8 @@ export function resolveAiEnv(): ResolvedAiEnv {
   }
 
   const gatewayProvider = resolveAiProviderId();
-  const gatewayBaseUrl = gatewayProvider === "mock" ? "mock://chat/completions" : resolveGatewayChatCompletionsUrl();
-  const gatewayApiKey = gatewayProvider === "mock"
-    ? "mock-key"
-    : (
-        envRaw("VC_AI_DIRECT_API_KEY") ??
-        resolveKimiOpenAiBinding()?.apiKey ??
-        envRaw("AI_GATEWAY_API_KEY") ??
-        ""
-      ).trim();
+  const gatewayBaseUrl = gatewayProvider === "mock" ? "mock://chat/completions" : "";
+  const gatewayApiKey = gatewayProvider === "mock" ? "mock-key" : "";
 
   const modelsByRole = {} as Record<AiLogicalRole, string>;
   for (const r of AI_LOGICAL_ROLES) {
@@ -394,7 +282,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
     gatewayProvider,
     gatewayBaseUrl,
     gatewayApiKey,
-    playerGameplayModel: (envRaw("VC_AI_DIRECT_PLAYER_MODEL") ?? "").trim(),
+    playerGameplayModel: "",
     modelsByRole,
     playerRoleFallbackChain: resolvePlayerRoleFallbackChain(),
     memoryPrimaryRole: resolveMemoryPrimaryRole(),
@@ -420,7 +308,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
     ),
     playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", false),
     playerChatFastLaneRelaxResponseFormat: envBoolean("AI_PLAYER_CHAT_FASTLANE_RELAX_RESPONSE_FORMAT", false),
-    aiGatewayJsonSchemaEnabled: envBoolean("AI_GATEWAY_JSON_SCHEMA_ENABLED", false),
+    aiGatewayJsonSchemaEnabled: envBoolean("AI_PLAYER_CHAT_JSON_SCHEMA_ENABLED", false),
     playerChatMaxRoleCandidates: Math.max(0, Math.min(6, envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2))),
     playerChatMaxRetries: (() => {
       const override = envNumber("AI_PLAYER_CHAT_MAX_RETRIES", NaN);
@@ -454,9 +342,8 @@ export function resolveAiEnv(): ResolvedAiEnv {
       const resolved = Number.isFinite(override) ? override : 0;
       return Math.max(0, Math.min(3, resolved));
     })(),
-    // DeepSeek and the supported one-api gateways accept json_object. Keep a
-    // named opt-out for legacy providers, but do not make malformed control
-    // output the default behavior for player-facing intent/risk decisions.
+    // Keep a named opt-out for providers without json_object support, but do
+    // not make malformed control output the default for player-facing checks.
     onlineShortJsonRelaxResponseFormat: envBoolean("AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT", false),
     onlineShortJsonDisableThinking: envBoolean("AI_ONLINE_SHORT_JSON_DISABLE_THINKING", true),
     onlineShortJsonDisableMainFallback: envBoolean("AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK", true),
@@ -497,14 +384,10 @@ export function anyAiProviderConfigured(): boolean {
   }
   const e = resolveAiEnv();
   if (e.gatewayProvider === "mock") return true;
-  return (
-    e.gatewayApiKey.length > 0 &&
-    e.gatewayBaseUrl.length > 0 &&
-    e.modelsByRole.main.length > 0
-  );
+  return false;
 }
 
-/** 主对话网关 URL、密钥、主逻辑角色在 one-api 侧的模型 id（opaque 字符串）。 */
+/** Legacy-shaped binding used only by mock/test compatibility consumers. */
 export function resolveGatewayPrimaryBinding(): {
   apiUrl: string;
   apiKey: string;
@@ -528,31 +411,9 @@ export function resolveDeepSeekLegacyConfig(): { apiUrl: string; apiKey: string;
 export type EmbeddingProvider = "openai_compatible" | "ark_multimodal";
 
 /**
- * T4 后续（2026-07）：这个账号上唯一未停用的向量化模型是火山方舟的多模态向量化模型
- * （doubao-embedding-vision / Seed-1.6-Embedding），它走独立的 `POST /api/v3/embeddings/multimodal`
- * 端点、独立请求体（`input` 为 `[{type:"text",text}]` 数组）和独立响应结构，不是标准 OpenAI 兼容
- * `/v1/embeddings`。已用真实凭证探测确认 one-api 网关未实现转发这条非标准路径（网关对该路径直接
- * 返回路由层 404 "Invalid URL"，不是鉴权错误）。
- *
- * 这是本仓库对"所有 AI 调用走 one-api"约定的一次有意识例外，范围严格限定在这一条离线 embedding
- * 路径（`embedText.ts`，只服务 backfill worker，不进 `/api/chat` 首包），需要独立的
- * `ARK_EMBEDDING_API_KEY`（鉴权域不同，不能复用 `AI_GATEWAY_API_KEY`）。默认仍是
- * `openai_compatible`（走 one-api 网关），只有显式设置 `AI_EMBEDDING_PROVIDER=ark_multimodal`
- * 才切到直连火山方舟这条例外路径。
- */
-function resolveEmbeddingProvider(): EmbeddingProvider {
-  const raw = (envRaw("AI_EMBEDDING_PROVIDER") ?? "").trim().toLowerCase();
-  return raw === "ark_multimodal" ? "ark_multimodal" : "openai_compatible";
-}
-
-/**
  * T4（2026-07，世界知识向量检索）：embeddings 绑定。
  *
- * 默认路径（`openai_compatible`）与 `resolveGatewayPrimaryBinding()` 同一套约定——不在业务
- * 代码里写死厂商细节，模型选型通过 `AI_MODEL_EMBEDDING`（opaque 字符串，由 one-api 侧的 channel
- * 配置决定实际打到哪个厂商/模型）解析，鉴权复用 `AI_GATEWAY_API_KEY`。
- *
- * `ark_multimodal` 分支是上面注释里说明的架构例外，直连火山方舟，见 `resolveEmbeddingProvider()`。
+ * 真实绑定由后台 AI 管理快照提供；这里仅保留 mock/test 兼容返回形状。
  *
  * `dimension` 对应 `world_knowledge_chunks.embedding_vector` 的 pgvector 列宽度
  * （见 `src/db/ensureSchema.ts`）。如果实际模型输出维度与此不同，调用方（`embedText.ts`）
@@ -568,23 +429,11 @@ export function resolveEmbeddingBinding(): {
 } {
   const gatewayProvider = resolveAiProviderId();
   const dimension = Math.max(1, envNumber("AI_EMBEDDING_DIMENSION", 1024));
-  const model = (envRaw("AI_MODEL_EMBEDDING") ?? "").trim();
+  const model = gatewayProvider === "mock" ? "mock-embedding" : "";
 
   if (gatewayProvider === "mock") {
     return { apiUrl: "mock://embeddings", apiKey: "mock-key", model, dimension, provider: "openai_compatible", configured: true };
   }
 
-  const provider = resolveEmbeddingProvider();
-  if (provider === "ark_multimodal") {
-    const base = (envRaw("ARK_EMBEDDING_BASE_URL") ?? "https://ark.cn-beijing.volces.com").trim().replace(/\/+$/, "");
-    const apiUrl = base.length > 0 ? `${base}/api/v3/embeddings/multimodal` : "";
-    const apiKey = (envRaw("ARK_EMBEDDING_API_KEY") ?? "").trim();
-    const configured = apiUrl.length > 0 && apiKey.length > 0 && model.length > 0;
-    return { apiUrl, apiKey, model, dimension, provider, configured };
-  }
-
-  const apiUrl = resolveGatewayEmbeddingsUrl();
-  const apiKey = (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
-  const configured = apiUrl.length > 0 && apiKey.length > 0 && model.length > 0;
-  return { apiUrl, apiKey, model, dimension, provider, configured };
+  return { apiUrl: "", apiKey: "", model: "", dimension, provider: "openai_compatible", configured: false };
 }

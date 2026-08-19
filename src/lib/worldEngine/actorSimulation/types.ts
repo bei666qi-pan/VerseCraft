@@ -79,6 +79,8 @@ export interface ActorSimulationInput {
 }
 
 export interface ActorRelationEdge {
+  /** Optional owner used while partitioning a batch context per actor. */
+  sourceNpcId?: string;
   targetNpcId: string;
   relationType: string;
   attitude: "friendly" | "neutral" | "hostile" | "suspicious" | "fearful";
@@ -164,6 +166,7 @@ export type ActorProjectionIssueCode =
   | "must_not_reveal_leaked"     // 不应泄露的事实出现在输出中
   | "dm_only_fact_in_projection" // DM-only 事实泄露
   | "location_impossible"        // 位置不可达
+  | "unregistered_action"       // 行动编码未登记
   | "rumor_as_fact"              // 谣言被写成确定事实
   | "forced_player_action"       // 强制玩家行动
   | "forced_player_failure"      // 强制玩家失败

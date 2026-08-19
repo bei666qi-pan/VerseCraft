@@ -271,6 +271,8 @@ test("authored 1F probe observation, movement, and delivery use zero-model struc
   const moved = buildDeterministicServiceTurn({ latestUserInput: "前往1F_PropertyOffice，必须记录移动结果。", playerContext: "", clientState: base, requestId: "vc_floor_move" }) as Record<string, any>;
   assert.equal(moved.security_meta.deterministic_action_kind, "authored_location_move");
   assert.equal(moved.player_location, "1F_PropertyOffice");
+  assert.match(moved.narrative, /一楼门厅.*一楼物业办公室/);
+  assert.doesNotMatch(moved.narrative, /已登记|位置变化|1F_|N-010|陌生人/);
 
   const delivered = buildDeterministicServiceTurn({ latestUserInput: "提交完成 floor_1f_probe 任务", playerContext: "", clientState: { ...base, playerLocation: "1F_PropertyOffice", journalClueIds: ["clue:floor:1F:public_anomaly_observed"] }, requestId: "vc_floor_delivery" }) as Record<string, any>;
   assert.equal(delivered.security_meta.deterministic_action_kind, "floor_probe_delivery");

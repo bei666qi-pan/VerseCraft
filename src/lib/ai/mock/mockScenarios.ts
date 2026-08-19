@@ -138,6 +138,20 @@ const taskCompleteNarrative = [
   "再把几份复印件归到一起，这条线索的闭环已经足够扎实，可以拿去和走廊那头的人核对了。",
 ].join("");
 
+// Clean mock turns pass through the same formal narrative budget as a live
+// turn. Keep them deterministic while giving the strict 560-character tiers
+// enough material to exercise validation instead of failing by construction.
+const cleanNarrativeBudgetExtension = [
+  "我没有立刻追过去，只把眼前能确认的细节逐项记下。灯影落在墙面上，边缘随着电流轻轻发颤；近处的灰尘被鞋尖带出一道浅痕，说明这条路不久前确实有过移动。可痕迹到了拐角便断了，继续猜测只会把自己带进错误的方向。",
+  "我退回半步，让视线同时罩住来路和前方。空气里混着潮气、旧木料和金属锈蚀的味道，最突兀的那一缕却时有时无。我顺着气味重新调整位置，确认它并不来自身后的安全区域。掌心已经微微出汗，但呼吸还稳，至少现在仍有选择余地。",
+  "再往前需要付出代价：靠近能够看清异常，也可能惊动藏在暗处的东西；停在原地更安全，却会让刚出现的线索消失。我把能利用的遮挡、照明和退路在脑中排好次序，先定下撤回的界线，再决定下一步探查的距离。",
+  "远处又传来一声轻响，这次比刚才更短，也更靠近地面。我屏住呼吸等了几秒，没有贸然把它解释成脚步或呼救。未知仍旧是未知，只有亲眼确认的变化才算事实。眼下最可靠的做法，是沿着已经检查过的边缘推进，并随时保留退回原位的机会。",
+].join("");
+
+function ensureCleanNarrativeBudget(narrative: string, minChars = 620): string {
+  return narrative.length >= minChars ? narrative : `${narrative}${cleanNarrativeBudgetExtension}`;
+}
+
 // ============================================================
 // Dirty narrative strings — deliberately crafted to trigger
 // L3 narrative safety gate violations in mock mode.
@@ -211,32 +225,32 @@ function chooseNarrative(input: MockScenarioInput, scenario?: MockAiScenario): s
   const text = rawUserInput;
   // 检测「灭火器」「停车场」→ combatNarrative（覆盖 combat_high_rules）
   if (text.includes("灭火器") || text.includes("停车场")) {
-    return combatNarrative;
+    return ensureCleanNarrativeBudget(combatNarrative);
   }
   // 检测「钥匙」「挂锁」「锁孔」「防火门」→ itemInteractionNarrative（覆盖 item_interaction）
   if (text.includes("钥匙") || text.includes("挂锁") || text.includes("锁孔") || text.includes("防火门")) {
-    return itemInteractionNarrative;
+    return ensureCleanNarrativeBudget(itemInteractionNarrative);
   }
   // 检测「线索」「时间线」→ clueNarrative（覆盖 long_context）— 必须在 npc 之前，因 playerContext 含"电梯"
   if (text.includes("线索") || text.includes("时间线")) {
-    return clueNarrative;
+    return ensureCleanNarrativeBudget(clueNarrative);
   }
   // 检测「游戏」「剧情」「手电筒」「道具」「物品」
   // → commonNarrative（覆盖 preflight_sensitive、item_interaction）— 必须在 npc 之前
   if (text.includes("游戏") || text.includes("剧情") || text.includes("手电筒") || text.includes("道具") || text.includes("物品")) {
-    return commonNarrative;
+    return ensureCleanNarrativeBudget(commonNarrative);
   }
   // 检测「老李」「电梯」「昨晚」→ npcDialogueNarrative（覆盖 npc_dialogue）
   if (text.includes("老李") || text.includes("电梯") || text.includes("昨晚")) {
-    return npcDialogueNarrative;
+    return ensureCleanNarrativeBudget(npcDialogueNarrative);
   }
   if (text.includes("原石") && text.includes("能量")) {
-    return originiumNarrative;
+    return ensureCleanNarrativeBudget(originiumNarrative);
   }
   if (text.includes("档案") && text.includes("失踪")) {
-    return taskCompleteNarrative;
+    return ensureCleanNarrativeBudget(taskCompleteNarrative);
   }
-  return normalNarrative;
+  return ensureCleanNarrativeBudget(normalNarrative);
 }
 
 export const MOCK_ACTION_OPTIONS = [
@@ -417,6 +431,11 @@ function controlPreflightJson(): string {
 }
 
 function narrativeExpansionJson(input: MockScenarioInput, scenario?: MockAiScenario): string {
+  if (scenario === "malformed_json") {
+    return JSON.stringify({
+      narrative: "我停在原地侧耳倾听。走廊尽头传来一阵细碎声响，随即又安静下来；在看清来源之前，我没有贸然前进。",
+    });
+  }
   // 与主 PLAYER_CHAT 同路由：保证 final hook 的 narrative 覆盖与主叙事一致（no-op），
   // 避免 originium/taskComplete 等专题叙事被默认叙事覆盖。
   return JSON.stringify({ narrative: chooseNarrative(input, scenario) });

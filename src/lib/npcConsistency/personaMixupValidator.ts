@@ -210,6 +210,12 @@ const HIGH_RISK_SIGNATURES: Record<string, { appearance: string[]; speech: strin
     speech: ["现在几号", "日期"],
     role: ["情报提供", "记名字", "6F走廊"],
   },
+  // N-033 7F 老住户老吴：旧军装外套、腰背笔直、守7F三十年不记名册
+  "N-033": {
+    appearance: ["旧军装外套", "腰背笔直", "走廊尽头"],
+    speech: ["守了", "名册"],
+    role: ["7F", "三十年", "情报"],
+  },
   // N-034 7F 点灯阿珍：深色棉布、廊灯、不能全暗
   "N-034": {
     appearance: ["深色棉布", "廊灯", "点亮"],
@@ -240,6 +246,12 @@ const HIGH_RISK_SIGNATURES: Record<string, { appearance: string[]; speech: strin
     speech: ["电梯", "太静", "脚步声"],
     role: ["楼梯", "3F", "不等电梯"],
   },
+  // N-039 4F 王老师：旧中山装、老花镜、401室、与张先生错日共住
+  "N-039": {
+    appearance: ["旧中山装", "老花镜", "401"],
+    speech: ["语文", "错开", "从未照面"],
+    role: ["4F", "401室", "情报"],
+  },
   // N-040 5F 画室学生小林：旧围裙、颜料洗不掉、画了就消失
   "N-040": {
     appearance: ["旧围裙", "颜料", "洗不掉"],
@@ -251,6 +263,12 @@ const HIGH_RISK_SIGNATURES: Record<string, { appearance: string[]; speech: strin
     appearance: ["旧卫衣", "耳机", "窗台"],
     speech: ["楼自己说话", "放别的"],
     role: ["6F", "凌晨"],
+  },
+  // N-042 7F 窗台老人老庄：空茶杯、窗台边坐、只闻不喝
+  "N-042": {
+    appearance: ["空茶杯", "窗台边", "旧中山装"],
+    speech: ["倒茶", "闻茶香"],
+    role: ["7F", "窗台", "情报"],
   },
   // N-043 B1 锅炉工老钱：旧工装、炉火发红、蹲着抽烟、不能停
   "N-043": {

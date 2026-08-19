@@ -16,8 +16,12 @@ function arg(name: string): string | null {
 }
 
 const timeoutMs = Math.max(5_000, Math.min(90_000, Number(arg("--timeout-ms") ?? "60000") || 60_000));
-const outputPath = resolve(arg("--json-out") ?? ".runtime-data/director-live-evidence.json");
+const outputPath = resolve(arg("--json-out") ?? ".runtime-data/eval/director-live/evidence.json");
 const sessionId = arg("--session-id") ?? `director-evidence-${Date.now()}`;
+const worldArg = arg("--world") ?? "dark_moon";
+const scope = worldArg === "xingni"
+  ? { worldId: "xingni_taichu" as const, mapId: "xingni_qingshi_county" as const }
+  : { worldId: "dark_moon_prologue" as const, mapId: "dark_moon_apartment" as const };
 
 async function writeReport(results: DirectorEvidenceResult[], extra: Record<string, unknown> = {}): Promise<void> {
   const report = {
@@ -64,11 +68,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const [{ pool }, { resolveWorldDirectorConfig }, { enqueueWorldEngineTick }, { loadDueDirectorAgenda }, { loadDirectorState }] = await Promise.all([
+  const [{ pool }, { resolveWorldDirectorConfig }, { enqueueWorldEngineTick }, { loadCommittedDirectorHintForWriter }, { loadDirectorState }] = await Promise.all([
     import("../src/db/index"),
     import("../src/lib/worldEngine/config"),
     import("../src/lib/worldEngine/queue"),
-    import("../src/lib/worldEngine/agenda"),
+    import("../src/lib/worldEngine/writerHintConsumer"),
     import("../src/lib/worldEngine/directorState"),
   ]);
   try {
@@ -92,15 +96,25 @@ async function main(): Promise<void> {
   // and turn this live probe into a false failure.
   const probeTurnIndex = 12;
   const enqueue = await enqueueWorldEngineTick({
+    version: 2,
     requestId,
     userId: null,
     sessionId,
-    latestUserInput: "我穿过三楼走廊，反复检查305门缝的米粒并回到灯下。",
+    worldId: scope.worldId,
+    mapId: scope.mapId,
     triggerSignals: ["multi_room_movement", "repeated_investigation_loop", "key_story_node_hit"],
     controlRiskTags: [],
-    dmNarrativePreview: "走廊灯光短暂熄灭又亮起，305门缝的米粒出现新的拖痕。",
-    playerLocation: "3F_走廊",
-    previousPlayerLocation: "3F_304门口",
+    playerLocationBefore: scope.worldId === "xingni_taichu" ? "QS_GUOYAN_INN" : "3F_Room304",
+    playerLocationAfter: scope.worldId === "xingni_taichu" ? "QS_CULTIVATOR_MARKET" : "3F_Hallway",
+    // Xingni probe facts must agree with the authored NPC schedule. Chen Yan
+    // is at the cultivator market during the day; Liu Sanniang is not.
+    presentNpcIds: scope.worldId === "xingni_taichu" ? ["XQ-N006"] : [],
+    deadNpcIds: [],
+    changedTaskIds: [],
+    changedClueIds: [],
+    pacingChapterSignals: { phase: "build_up", tension: 0.45, chapterId: null, chapterIndex: 0, progress: 0.2 },
+    worldStateSummary: { day: 1, timeSlot: "day", danger: "medium", stateCodes: ["repeated_investigation"] },
+    latestTurnSignals: { actionKinds: ["exploration", "movement"], legal: true, death: false, riskTags: [] },
     npcLocationUpdateCount: 1,
     turnIndex: probeTurnIndex,
   });
@@ -111,13 +125,12 @@ async function main(): Promise<void> {
   }
   results.push({ stage: "enqueued", status: "pass", detail: `Queued ${enqueue.dedupKey}.` });
 
-  const jobLookup = await pool.query<{ job_id: string; status: string }>(
-    `SELECT job_id, status
+  const jobLookup = await pool.query<{ job_id: string; status: string; idempotency_key: string }>(
+    `SELECT job_id, status, idempotency_key
      FROM vc_jobs
-     WHERE job_type = 'WORLD_ENGINE_TICK' AND payload->>'dedupKey' = $1
-     ORDER BY job_id DESC
+     WHERE job_type = 'WORLD_ENGINE_TICK' AND job_id = $1 AND idempotency_key = $2
      LIMIT 1`,
-    [enqueue.dedupKey]
+    [enqueue.jobId, enqueue.dedupKey]
   );
   const jobId = Number(jobLookup.rows[0]?.job_id ?? 0);
   if (!jobId) {
@@ -146,35 +159,54 @@ async function main(): Promise<void> {
   }
   results.push({ stage: "worker", status: "pass", detail: `Probe job ${jobId} was claimed and completed by the worker.` });
 
-  const run = await pool.query<{ run_id: string; output_json: Record<string, unknown> }>(
-    "SELECT run_id, output_json FROM world_engine_runs WHERE dedup_key = $1 ORDER BY run_id DESC LIMIT 1",
-    [enqueue.dedupKey]
+  const run = await pool.query<{ run_id: string; status: string; output_json: Record<string, unknown> }>(
+    `SELECT run_id, status, output_json FROM world_engine_runs
+     WHERE world_id = $1 AND map_id = $2 AND session_id = $3 AND dedup_key = $4
+     ORDER BY run_id DESC LIMIT 1`,
+    [scope.worldId, scope.mapId, sessionId, enqueue.dedupKey]
   );
   const runId = Number(run.rows[0]?.run_id ?? 0);
-  if (!runId) {
-    results.push({ stage: "reasoner_run", status: "fail", detail: "Worker completed but no persisted world_engine_runs record was found." });
+  const worldRevision = Number(run.rows[0]?.output_json?.world_revision ?? 0);
+  if (!runId || run.rows[0]?.status !== "succeeded" || !Number.isSafeInteger(worldRevision) || worldRevision <= 0) {
+    results.push({ stage: "reasoner_run", status: "fail", detail: "Worker completed without a succeeded non-zero scoped Director run/revision." });
     await writeReport(results, { requestId, dedupKey: enqueue.dedupKey, jobId, workerRuns });
     return;
   }
-  results.push({ stage: "reasoner_run", status: "pass", detail: `Persisted validated director run ${runId}.` });
+  results.push({ stage: "reasoner_run", status: "pass", detail: `Persisted validated director run ${runId} at revision ${worldRevision}.` });
 
   const agenda = await pool.query<{ id: string; due_turn_index: number }>(
-    "SELECT id, due_turn_index FROM world_engine_event_queue WHERE run_id = $1 ORDER BY due_turn_index ASC, id ASC LIMIT 1",
-    [runId]
+    `SELECT id, due_turn_index FROM world_engine_event_queue
+     WHERE world_id = $1 AND map_id = $2 AND session_id = $3 AND run_id = $4
+     ORDER BY due_turn_index ASC, id ASC LIMIT 1`,
+    [scope.worldId, scope.mapId, sessionId, runId]
   );
   if (!agenda.rows[0]) {
     results.push({ stage: "agenda", status: "fail", detail: "Director run persisted but scheduled no consumable agenda event." });
   } else {
     results.push({ stage: "agenda", status: "pass", detail: `Persisted agenda item ${agenda.rows[0].id}.` });
   }
-  const directorState = await loadDirectorState(sessionId);
+  const directorState = await loadDirectorState({ ...scope, sessionId });
   if (!directorState) results.push({ stage: "director_state", status: "fail", detail: "Director state was not persisted." });
   else results.push({ stage: "director_state", status: "pass", detail: `Director phase ${directorState.phase} persisted.` });
-  const consumerTurnIndex = agenda.rows[0]?.due_turn_index ?? probeTurnIndex;
-  const due = await loadDueDirectorAgenda({ sessionId, turnIndex: consumerTurnIndex, limit: 3, timeoutMs: 500 });
-  if (due.length === 0) results.push({ stage: "consumer", status: "fail", detail: "No persisted agenda was readable by the runtime consumer." });
-  else results.push({ stage: "consumer", status: "pass", detail: `Runtime consumer loaded ${due.length} agenda item(s).` });
-  await writeReport(results, { requestId, dedupKey: enqueue.dedupKey, jobId, workerRuns });
+  const consumerTurnIndex = probeTurnIndex + 1;
+  const writerHint = await loadCommittedDirectorHintForWriter({
+    scope: { ...scope, sessionId },
+    turnIndex: consumerTurnIndex,
+    timeoutMs: 500,
+  });
+  if (!writerHint) results.push({ stage: "consumer", status: "fail", detail: "No committed scoped hint envelope was rendered by the actual next-turn Writer consumer." });
+  else results.push({ stage: "consumer", status: "pass", detail: `Next-turn Writer consumer rendered hint ${writerHint.envelope.hintId}.` });
+  await writeReport(results, {
+    requestId,
+    scope,
+    dedupKey: enqueue.dedupKey,
+    jobId,
+    runId,
+    worldRevision,
+    hintId: writerHint?.envelope.hintId ?? null,
+    writerHintChars: writerHint?.block.length ?? 0,
+    workerRuns,
+  });
 }
 
 void main().catch(async (error) => {

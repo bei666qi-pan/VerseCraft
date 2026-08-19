@@ -272,10 +272,50 @@ function scoreCombatDimension(dimId: string, ctx: CombatContext): number {
     case "no_severe_injuries":
       return isSafeZone ? 5 : 3;
 
-    default:
-      return 3; // 未知维度：中性默认
+      // bm_combat_006 — 紧急撤退（逃离，A-002 + boundary_guard）
+      case "retreat_attempt_recognized":
+        return 5; // 场景本身即测撤退
+      case "escape_route_described":
+        return anomaly?.styleTags.includes("boundary_guard") ? 5 : 4;
+      case "obstacle_use_described":
+        return anomaly !== null ? 5 : 3;
+      case "partial_cost_reflected":
+        return anomaly?.styleTags.includes("boundary_guard") ? 4 : 3;
+
+      // bm_combat_007 — 环境战斗
+      case "environment_usage_described":
+        return weapon && anomaly ? 5 : 4;
+      case "trap_setup_narrated":
+        return anomaly?.styleTags.includes("ambush") ? 3 : 5;
+      case "hazard_exploitation":
+        return 5; // 场景本身即测环境利用
+      case "combat_environment_synergy":
+        return anomaly?.styleTags.includes("close_quarters") ? 5 : 4;
+
+      // bm_combat_008 — 赤手战斗
+      case "weaponless_state_acknowledged":
+        return !weapon ? 5 : 2;
+      case "improvised_weapon_described":
+        return !weapon ? 5 : 3;
+      case "combat_disadvantage_reflected":
+        return !weapon ? 5 : 3;
+      case "narrative_tension_built":
+        return highThreat && !weapon ? 5 : 3;
+
+      // bm_combat_009 — 潜行绕过
+      case "stealth_approach_narrated":
+        return 5;
+      case "combat_avoided":
+        return anomaly?.styleTags.includes("boundary_guard") ? 3 : 5;
+      case "shadow_cover_described":
+        return anomaly?.styleTags.includes("mirror_counter") ? 5 : 4;
+      case "silent_movement_described":
+        return 5;
+
+      default:
+        return 3; // 未知维度：中性默认
+    }
   }
-}
 
 /**
  * 运行单个场景的评估

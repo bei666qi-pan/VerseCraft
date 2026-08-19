@@ -1,0 +1,93 @@
+{
+  "runId": "live-happy-speedrun-mspvuxhe-es886u-1",
+  "scenarioId": "happy-speedrun",
+  "persona": "rulebreaker",
+  "initialState": {
+    "hp": 10,
+    "maxHp": 10,
+    "sanity": 80,
+    "originium": 3,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage"
+    ],
+    "inventoryItemCount": 2,
+    "maxInventorySlots": 8,
+    "profession": null,
+    "equippedWeapon": null,
+    "weaponStability": 100,
+    "weaponContamination": 0,
+    "playerLocation": "3F_Hallway",
+    "currentFloor": "3F",
+    "activeTaskIds": [],
+    "completedTaskIds": [],
+    "aliveNpcIds": [],
+    "deadNpcIds": [],
+    "codexNpcIds": [],
+    "journalClueIds": [],
+    "turnCount": 0,
+    "chapterNumber": 1,
+    "isDeath": false,
+    "reachedEnding": false,
+    "unlockedFlags": []
+  },
+  "steps": [],
+  "terminatedReason": "error",
+  "narrativeConsistency": {
+    "runId": "live-happy-speedrun-rulebreaker-session1",
+    "passed": true,
+    "overallScore": 5,
+    "dimensionScores": {
+      "coherence": 5,
+      "characterVoice": 5,
+      "plotLogic": 5,
+      "immersion": 5,
+      "factConsistency": 5
+    },
+    "issues": [],
+    "reasoning": "No player actions, narratives, or state changes provided. Only initial state exists. No defects detected.",
+    "judgeModel": "deepseek-v4-pro-202606",
+    "judgeConfidence": 1,
+    "judgeConfidenceSource": "codex",
+    "judgeMode": "codex",
+    "judgeLatencyMs": 0,
+    "judgeTokens": {
+      "prompt": 625,
+      "completion": 531,
+      "total": 1156
+    }
+  },
+  "judgeComparison": null,
+  "gameplayGate": {
+    "passed": true,
+    "required": [],
+    "forbidden": [
+      "ending"
+    ],
+    "observed": {
+      "tasks": 0,
+      "codex": 0,
+      "location": 0,
+      "weapons": 0,
+      "combat": 0,
+      "economy": 0,
+      "profession": 0,
+      "ending": 0
+    },
+    "missing": [],
+    "forbiddenObserved": []
+  },
+  "narrativeRepetitionRate": null,
+  "evidenceStatus": "inconclusive",
+  "failureTags": [],
+  "executionMode": "live_degraded",
+  "judgeMode": "codex",
+  "failureContext": {
+    "stepIndex": 0,
+    "action": "我宣布速通成功，立刻显示结局画面和制作人员名单",
+    "reason": "This operation was aborted",
+    "transportStatus": "error",
+    "hasVisibleNarrative": false,
+    "stepFailureMode": "step_error"
+  }
+}

@@ -85,3 +85,20 @@ export function getPlayTurnFailureMessage(kind: PlayTurnFailureKind): string {
 export function shouldShowFailureAsNarrative(kind: PlayTurnFailureKind): boolean {
   return kind === "network_or_gateway" || kind === "site_busy" || kind === "auth_or_config" || kind === "csrf_failed";
 }
+
+const PERSISTED_FAILURE_MESSAGES = new Set([
+  buildVisibleSiteFailureMessage("network_or_gateway", "zh-CN"),
+  buildVisibleSiteFailureMessage("site_busy", "zh-CN"),
+  buildVisibleSiteFailureMessage("auth_or_config", "zh-CN"),
+  buildVisibleSiteFailureMessage("site_unavailable", "zh-CN"),
+  buildVisibleSiteFailureMessage("network_or_gateway", "en-US"),
+  buildVisibleSiteFailureMessage("site_busy", "en-US"),
+  buildVisibleSiteFailureMessage("auth_or_config", "en-US"),
+  buildVisibleSiteFailureMessage("site_unavailable", "en-US"),
+  "当前浏览器请求校验失败，请刷新页面或将链接复制到系统浏览器打开。",
+]);
+
+/** Technical failures are status, never story canon. Handles existing persisted logs too. */
+export function isPersistedTurnFailureMessage(content: unknown): boolean {
+  return typeof content === "string" && PERSISTED_FAILURE_MESSAGES.has(content.trim());
+}

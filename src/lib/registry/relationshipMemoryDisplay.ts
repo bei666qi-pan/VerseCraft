@@ -30,7 +30,7 @@ const RELATIONSHIP_RELEVANT_KINDS: ReadonlySet<MemorySpineEntry["kind"]> = new S
 ]);
 
 /** 形如 N-010 / A-003（注册表 id）或 1F_XXX / B1_XXX / B2_XXX（位置节点 id）的片段。 */
-const LOOKS_LIKE_INTERNAL_ID_RE = /\b[A-Za-z]-\d{2,4}\b|\b(?:[1-7]F|B[12])_[A-Za-z]+\b/;
+const LOOKS_LIKE_INTERNAL_ID_RE = /\bXQ-N\d{3}\b|\b[A-Za-z]-\d{2,4}\b|\b(?:[1-7]F|B[12])_[A-Za-z]+\b|\bQS_[A-Z_]+\b/;
 
 function looksSafeForPlayerDisplay(text: string | null | undefined): boolean {
   const t = String(text ?? "").trim();
@@ -44,6 +44,8 @@ export interface NpcMemoryMomentOptions {
   maxItems?: number;
   /** 是否允许 resolved/consumed 状态的记忆，默认 true；始终排除 expired */
   includeResolved?: boolean;
+  /** 将当前锚定 NPC 的内部 ID 替换为已登记展示名；仅替换完全匹配的当前 npcId。 */
+  displayName?: string;
 }
 
 /**
@@ -61,13 +63,17 @@ export function selectNpcMemoryMoments(
   const maxItems = Math.max(1, Math.min(6, opts.maxItems ?? 3));
   const includeResolved = opts.includeResolved ?? true;
 
-  const candidates = memorySpine.entries.filter((e) => {
-    if (!e || e.status === "expired") return false;
-    if (!includeResolved && e.status !== "active") return false;
-    if (!RELATIONSHIP_RELEVANT_KINDS.has(e.kind)) return false;
+  const candidates = memorySpine.entries.flatMap((e) => {
+    if (!e || e.status === "expired") return [];
+    if (!includeResolved && e.status !== "active") return [];
+    if (!RELATIONSHIP_RELEVANT_KINDS.has(e.kind)) return [];
     const npcIds = e.anchors?.npcIds ?? [];
-    if (!npcIds.includes(id)) return false;
-    return looksSafeForPlayerDisplay(e.summary);
+    if (!npcIds.includes(id)) return [];
+    const displayName = String(opts.displayName ?? "").trim();
+    const candidate = displayName && String(e.summary ?? "").includes(id)
+      ? { ...e, summary: String(e.summary ?? "").split(id).join(displayName) }
+      : e;
+    return looksSafeForPlayerDisplay(candidate.summary) ? [candidate] : [];
   });
 
   const byMergeKey = new Map<string, MemorySpineEntry>();

@@ -177,7 +177,8 @@ export type NarrativeValidationIssueCode =
   | "narrative_alias_misuse"
   | "item_not_in_inventory"
   | "item_effect_type_mismatch"
-  | "item_consumed_not_in_structured";
+  | "item_consumed_not_in_structured"
+  | "social_event_must_not_reveal_leaked";
 
 export type NarrativeValidationIssue = {
   code: NarrativeValidationIssueCode;
@@ -231,9 +232,8 @@ export type NarrativeValidationReport = {
    */
   narrativeOverride: string | null;
   /**
-   * Non-null when the action resolver backfills items from narrative
-   * (e.g. "捡起了徽章" but awarded_items was empty). Caller must merge
-   * these into the DM record's awarded_items.
+   * Retained for report compatibility. Always null: narrative is never an
+   * authoritative item source.
    */
   awardedItemsOverride: unknown[] | null;
   telemetry: NarrativeValidationTelemetry;
@@ -292,6 +292,8 @@ export type ValidateNarrativeArgs = {
   factDetectionMaxRevealRank?: number;
   /** Current client inventory ids, used only for conservative possession checks. */
   inventoryItemIds?: readonly string[];
+  /** Social event must_not_reveal terms — narrative/options must not leak these. */
+  socialEventMustNotRevealTerms?: readonly string[];
 };
 
 /**
@@ -483,8 +485,49 @@ function optionLooksLikeCombatVerb(opt: string): boolean {
  */
 const INVENTORY_ACQUISITION_PATTERN =
   /(捡起|拾起|收进口袋|放进口袋|装进背包|放入背包|收下了|得到了|获得了|塞进(?:了)?(?:口袋|兜里|裤兜|包里|背包)|揣进(?:了)?(?:口袋|兜里|怀里)|握紧(?:了)?(?:钥匙|纸条|照片|徽章|卡片|信件|信)|抽出(?:了)?(?:信封|纸条|信件|钥匙|照片|文件|笔记本)|拿起(?:了)?(?:钥匙|纸条|照片|信封|信件|徽章|卡片)|取下(?:了)?(?:钥匙|纸条|照片|徽章|卡片|信件|笔记本)|翻出(?:了)?(?:钥匙|纸条|照片|信封|徽章|卡片)|摸出(?:了)?(?:钥匙|纸条|照片|徽章|卡片))/;
-const FIRST_PERSON_POSSESSION_PATTERN =
-  /我(?:下意识)?(?:摸(?:了摸|向)?|伸手(?:摸向|探进)?|翻找)?(?:自己的)?(?:口袋|背包)(?:里|中的|内).{0,12}?(便签|纸条|钥匙|徽章|卡片|药|绷带|武器|刀|枪|证件|硬币|信|笔记本)/;
+const POSSESSION_ITEM_SURFACE_PATTERN =
+  "(便签|纸条|钥匙|徽章|卡片|药|绷带|武器|刀|枪|证件|硬币|手机|信|笔记本|粉笔)";
+const SUBJECTLESS_FIRST_PERSON_POSSESSION_PATTERN = new RegExp(
+  `(?:^|(?<=[。！？]))\\s*(?:我)?(?:下意识|反手|伸手)?(?:摸|探|翻)(?:了摸|向|进)?(?:自己的)?(?:口袋|背包|衣兜|裤兜|兜)(?:里|中|内)?.{0,16}?${POSSESSION_ITEM_SURFACE_PATTERN}`,
+);
+const FIRST_PERSON_POSSESSION_PATTERNS: readonly RegExp[] = [
+  new RegExp(
+    `我(?:下意识|反手)?(?:(?:摸(?:了摸|向)?|伸手(?:摸向|探进)?|翻找)?(?:自己的)?(?:口袋|背包|衣兜|裤兜|兜)(?:里|中的|中|内)?|(?:从)?(?:自己的)?(?:口袋|背包|衣兜|裤兜|兜)(?:里|中|内)?(?:摸出|掏出|翻出|取出)(?:了)?).{0,16}?${POSSESSION_ITEM_SURFACE_PATTERN}`,
+  ),
+  new RegExp(
+    `(?:我的|自己的|随身的)(?:口袋|背包)(?:里|中|内)(?:有|装着|放着|塞着|躺着|藏着)\\s*(?:一(?:把|枚|张|部|卷|瓶|支|件|封|本))?\\s*${POSSESSION_ITEM_SURFACE_PATTERN}`,
+  ),
+  // Writer prose is first-person. A subjectless possession at the very start
+  // therefore still describes the player, while anchoring here avoids treating
+  // a later-described NPC bag or ordinary scene container as player inventory.
+  new RegExp(
+    `^\\s*(?:口袋|背包)(?:里|中|内)(?:有|装着|放着|塞着|躺着|藏着)\\s*(?:一(?:把|枚|张|部|卷|瓶|支|件|封|本))?\\s*${POSSESSION_ITEM_SURFACE_PATTERN}`,
+  ),
+  // In first-person Writer prose, a new sentence can omit "我" in a compact
+  // action such as `反手摸兜，指尖碰到那截红粉笔`. Keep the sentence-boundary
+  // anchor so an NPC clause later in the paragraph is not treated as player
+  // inventory.
+  SUBJECTLESS_FIRST_PERSON_POSSESSION_PATTERN,
+];
+
+function findFirstPersonPossession(narrative: string): RegExpMatchArray | null {
+  for (const pattern of FIRST_PERSON_POSSESSION_PATTERNS) {
+    const match = narrative.match(pattern);
+    if (!match?.[1]) continue;
+    if (pattern === SUBJECTLESS_FIRST_PERSON_POSSESSION_PATTERN && match.index && !match[0].trimStart().startsWith("我")) {
+      const before = narrative.slice(0, match.index);
+      const previousBoundary = Math.max(
+        before.lastIndexOf("。", before.length - 2),
+        before.lastIndexOf("！", before.length - 2),
+        before.lastIndexOf("？", before.length - 2),
+      );
+      const previousSentence = before.slice(previousBoundary + 1);
+      if (!/我/.test(previousSentence)) continue;
+    }
+    return match;
+  }
+  return null;
+}
 
 const BUILTIN_ITEM_SURFACES: Readonly<Record<string, readonly string[]>> = {
   item_phone: ["手机"],
@@ -667,7 +710,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
   // Restrict to first-person bag/pocket grammar to avoid flagging scene props
   // or items held by NPCs.
   if (!intentIsSystemTransition && narrative) {
-    const possession = narrative.match(FIRST_PERSON_POSSESSION_PATTERN);
+    const possession = findFirstPersonPossession(narrative);
     if (possession?.[1]) {
       const claimedSurface = possession[1];
       const knownSurfaces = inventorySurfaceNames(args.inventoryItemIds ?? []);
@@ -709,6 +752,44 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
         detail: "narrative_claims_task_completion_without_delta",
         severity: "low",
       });
+    }
+  }
+
+  // 9.4. social_event_must_not_reveal_leaked: social events carry
+  //      must_not_reveal terms that MUST NOT appear in player-visible
+  //      narrative or options. This is a deterministic post-hoc check
+  //      that complements the social-world insertion-time validator.
+  if (args.socialEventMustNotRevealTerms && args.socialEventMustNotRevealTerms.length > 0) {
+    const terms = args.socialEventMustNotRevealTerms;
+    // Check narrative.
+    if (narrative) {
+      for (const term of terms) {
+        if (term.length >= 2 && narrative.includes(term)) {
+          issues.push({
+            code: "social_event_must_not_reveal_leaked",
+            detail: `narrative_leaked_term:${term}`,
+            anchor: term,
+            severity: "high",
+          });
+          break; // one hit is enough to trigger the gate; report the first
+        }
+      }
+    }
+    // Check options.
+    if (options.length > 0) {
+      for (const opt of options) {
+        for (const term of terms) {
+          if (term.length >= 2 && opt.includes(term)) {
+            issues.push({
+              code: "social_event_must_not_reveal_leaked",
+              detail: `option_leaked_term:${term}`,
+              anchor: term,
+              severity: "high",
+            });
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -933,11 +1014,6 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
         })()
       : null;
 
-  let awardedItemsOverride: unknown[] | null = null;
-  if (backfillResult?.didBackfill && backfillResult.awardedItems?.length) {
-    awardedItemsOverride = backfillResult.awardedItems;
-  }
-
   const telemetry: NarrativeValidationTelemetry = {
     totalIssues: issues.length,
     byCode,
@@ -983,7 +1059,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     issues,
     optionsOverride,
     narrativeOverride,
-    awardedItemsOverride,
+    awardedItemsOverride: null,
     telemetry,
   };
 }

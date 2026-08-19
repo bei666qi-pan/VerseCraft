@@ -26,7 +26,12 @@ import type {
   WorldEngineTrigger,
 } from "@/lib/worldEngine/contracts";
 import { detectWorldEngineTriggers } from "@/lib/worldEngine/contracts";
+import { validatePacingChapterSignals } from "@/lib/worldEngine/contracts";
 import type { TurnCommitSummary } from "@/lib/turnEngine/commitTurn";
+import {
+  type MapId,
+  type WorldId,
+} from "@/lib/worlds/types";
 
 export type BackgroundTickDecision = {
   shouldEnqueue: boolean;
@@ -96,10 +101,11 @@ export function decideBackgroundTick(
 
 export type EnqueueWorldEngineTickFn = (
   payload: Omit<WorldEngineTickPayload, "dedupKey" | "enqueuedAt">
-) => Promise<{ enqueued: boolean; dedupKey: string }>;
+) => Promise<{ enqueued: boolean; jobId?: number | null; dedupKey: string }>;
 
 export type BackgroundTickEnqueueResult = {
   enqueued: boolean;
+  jobId: number | null;
   dedupKey: string | null;
   error?: Error;
 };
@@ -107,7 +113,17 @@ export type BackgroundTickEnqueueResult = {
 export type ScheduleBackgroundWorldTickArgs = DecideBackgroundTickArgs & {
   requestId: string;
   userId: string | null;
+  worldId: WorldId;
+  mapId: MapId;
   dmNarrativePreview: string;
+  pacingControllerDigest?: {
+    tension?: number;
+    beatModeHint?: string;
+    pressureFlags?: readonly string[];
+    pendingIncidentCodes?: readonly string[];
+    mustRecallHookCodes?: readonly string[];
+    chapterId?: string | null;
+  } | null;
   /**
    * Injected enqueue function. In production this is `enqueueWorldEngineTick`
    * from `@/lib/worldEngine/queue`; tests pass a stub.
@@ -134,6 +150,41 @@ export type ScheduleBackgroundWorldTickResult = {
   /** Resolves once the detached enqueue + optional onSettled have completed. */
   pending: Promise<BackgroundTickEnqueueResult>;
 };
+
+function extractChangedIds(record: Record<string, unknown> | null, keys: readonly string[]): string[] {
+  if (!record) return [];
+  const out = new Set<string>();
+  for (const key of keys) {
+    const values = record[key];
+    if (!Array.isArray(values)) continue;
+    for (const value of values) {
+      const id = typeof value === "string"
+        ? value
+        : value && typeof value === "object" && !Array.isArray(value)
+          ? String((value as Record<string, unknown>).id ?? (value as Record<string, unknown>).task_id ?? (value as Record<string, unknown>).clue_id ?? "")
+          : "";
+      const normalized = id.trim().slice(0, 128);
+      if (normalized) out.add(normalized);
+      if (out.size >= 64) return [...out];
+    }
+  }
+  return [...out];
+}
+
+function classifyActionKinds(
+  raw: string,
+  after: string | null,
+  before?: string | null,
+): Array<"exploration" | "dialogue" | "confrontation" | "movement" | "other"> {
+  const input = raw.toLowerCase();
+  const kinds = new Set<"exploration" | "dialogue" | "confrontation" | "movement" | "other">();
+  if (/看|观察|检查|调查|search|inspect|look/.test(input)) kinds.add("exploration");
+  if (/问|说|喊|对话|告诉|ask|talk|say/.test(input)) kinds.add("dialogue");
+  if (/打|砸|冲|逃|躲|fight|attack|run|hide/.test(input)) kinds.add("confrontation");
+  if (before && after && before !== after) kinds.add("movement");
+  if (kinds.size === 0) kinds.add("other");
+  return [...kinds];
+}
 
 /**
  * Schedule a world-engine tick without blocking the online path.
@@ -171,7 +222,7 @@ export function scheduleBackgroundWorldTick(
   });
 
   if (!decision.shouldEnqueue || !args.sessionId) {
-    const skipResult: BackgroundTickEnqueueResult = { enqueued: false, dedupKey: null };
+    const skipResult: BackgroundTickEnqueueResult = { enqueued: false, jobId: null, dedupKey: null };
     const pending = Promise.resolve().then(async () => {
       try {
         await args.onSettled?.({
@@ -189,27 +240,73 @@ export function scheduleBackgroundWorldTick(
 
   const sessionId = args.sessionId;
   const triggers = decision.triggers;
+  const phaseByBeat: Record<string, WorldEngineTickPayload["pacingChapterSignals"]["phase"]> = {
+    quiet: "quiet",
+    pressure: "pressure",
+    reveal: "reveal",
+    collision: "pressure",
+    countdown: "build_up",
+    peak: "pressure",
+    aftershock: "recovery",
+  };
+  const digest = args.pacingControllerDigest;
+  const pacingChapterSignals = validatePacingChapterSignals({
+    phase: phaseByBeat[String(digest?.beatModeHint ?? "")] ?? "quiet",
+    tension: digest && typeof digest.tension === "number"
+      ? Math.max(0, Math.min(1, digest.tension / 100))
+      : Math.max(0, Math.min(1, args.currentTension ?? 0.3)),
+    chapterId: digest?.chapterId ?? (typeof args.dmRecord?.chapter_id === "string" ? args.dmRecord.chapter_id : null),
+    chapterIndex: typeof args.dmRecord?.chapter_index === "number" ? args.dmRecord.chapter_index : 0,
+    progress: typeof args.dmRecord?.chapter_progress === "number" ? args.dmRecord.chapter_progress : 0,
+  });
+  const pacingStateCodes = [...new Set([
+    ...(digest?.pressureFlags ?? []),
+    ...(digest?.pendingIncidentCodes ?? []),
+    ...(digest?.mustRecallHookCodes ?? []),
+  ].map((value) => String(value).trim().slice(0, 128)).filter(Boolean))].slice(0, 32);
 
   const pending = Promise.resolve().then(async (): Promise<BackgroundTickEnqueueResult> => {
     let enqResult: BackgroundTickEnqueueResult;
     try {
       const r = await args.enqueueFn({
+        version: 2,
         requestId: args.requestId,
         userId: args.userId,
         sessionId,
-        latestUserInput: args.latestUserInput,
+        worldId: args.worldId,
+        mapId: args.mapId,
         triggerSignals: [...triggers],
         controlRiskTags: [...args.preflightRiskTags],
-        dmNarrativePreview: args.dmNarrativePreview.slice(0, 1200),
-        playerLocation: args.playerLocation,
-        previousPlayerLocation: args.previousPlayerLocation,
+        playerLocationBefore: args.previousPlayerLocation ?? null,
+        playerLocationAfter: args.playerLocation,
+        presentNpcIds: Array.isArray(args.dmRecord?.present_npc_ids)
+          ? args.dmRecord.present_npc_ids.filter((id): id is string => typeof id === "string").slice(0, 64)
+          : [],
+        deadNpcIds: Array.isArray(args.dmRecord?.dead_npc_ids)
+          ? args.dmRecord.dead_npc_ids.filter((id): id is string => typeof id === "string").slice(0, 64)
+          : [],
+        changedTaskIds: extractChangedIds(args.dmRecord, ["task_updates", "new_tasks"]),
+        changedClueIds: extractChangedIds(args.dmRecord, ["clue_updates", "codex_updates"]),
+        pacingChapterSignals,
+        worldStateSummary: {
+          day: Math.max(0, Math.floor(args.turnIndex / 12)),
+          timeSlot: "unknown",
+          danger: args.preflightRiskTags.length > 0 ? "medium" : "low",
+          stateCodes: pacingStateCodes,
+        },
+        latestTurnSignals: {
+          actionKinds: classifyActionKinds(args.latestUserInput, args.playerLocation, args.previousPlayerLocation),
+          legal: args.dmRecord?.is_action_legal !== false,
+          death: args.dmRecord?.is_death === true,
+          riskTags: [...args.preflightRiskTags].slice(0, 16),
+        },
         npcLocationUpdateCount: args.npcLocationUpdateCount,
         turnIndex: args.turnIndex,
       });
-      enqResult = { enqueued: r.enqueued, dedupKey: r.dedupKey };
+      enqResult = { enqueued: r.enqueued, jobId: r.jobId ?? null, dedupKey: r.dedupKey };
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
-      enqResult = { enqueued: false, dedupKey: null, error: err };
+      enqResult = { enqueued: false, jobId: null, dedupKey: null, error: err };
     }
     try {
       await args.onSettled?.({

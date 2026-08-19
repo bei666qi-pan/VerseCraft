@@ -11,13 +11,10 @@
  */
 
 import type { NormalizedPlayerIntent } from "./types";
-import { NPCS } from "@/lib/registry/npcs";
 import { MAP_ROOMS } from "@/lib/registry/world";
+import { isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
 
 // ── Registry-derived lookup tables ─────────────────────────────────
-
-/** All NPC display names from the registry, used for narrative-to-codex extraction. */
-const ALL_NPC_NAMES: readonly string[] = NPCS.map((n) => n.name);
 
 /** All traversable room codes from the world registry, used for location extraction. */
 const ALL_LOCATIONS: readonly string[] = Object.values(MAP_ROOMS).flat();
@@ -207,8 +204,8 @@ export interface BackfillResult {
  *
  * 回填策略（按优先级）：
  * 1. 从 slots 直接映射（如 locationHint → player_location）
- * 2. 从叙事文本提取（使用 actionResolver 模式）
- * 3. 从上下文推断默认值
+ * 2. 从玩家行动提取已注册目标
+ * 3. 从上下文推断无副作用默认值
  */
 export function backfillMissingFields(args: {
   missingFields: string[];
@@ -228,13 +225,7 @@ export function backfillMissingFields(args: {
           backfilled.player_location = slots.locationHint;
           break;
         }
-        // Strategy 2: from movement verbs in narrative
-        const locFromNarrative = extractLocationFromText(args.narrative);
-        if (locFromNarrative) {
-          backfilled.player_location = locFromNarrative;
-          break;
-        }
-        // Strategy 3: from player action text
+        // Narrative is never a state source. Only inspect the player action.
         const locFromAction = extractLocationFromText(args.playerAction);
         if (locFromAction) {
           backfilled.player_location = locFromAction;
@@ -250,33 +241,17 @@ export function backfillMissingFields(args: {
       }
 
       case "sanity_damage": {
-        // Combat intent without explicit damage → default to 1
-        if (args.intent.kind === "combat") {
-          backfilled.sanity_damage = 1;
-        } else {
-          backfilled.sanity_damage = 0;
-        }
+        backfilled.sanity_damage = 0;
         break;
       }
 
       case "codex_updates": {
-        // Try extracting NPC names from narrative
-        const npcNames = extractNpcMentions(args.narrative);
-        if (npcNames.length > 0) {
-          backfilled.codex_updates = npcNames.map((name) => ({
-            id: `N-REF-${name}`,
-            name,
-            type: "npc",
-            observation: "从本回合叙事中识别。",
-          }));
-          break;
-        }
         failed.push(field);
         break;
       }
 
       case "relationship_updates": {
-        if (slots.target) {
+        if (slots.target && isRegisteredCanonicalNpcId(slots.target)) {
           backfilled.relationship_updates = [
             {
               npcId: slots.target,
@@ -349,14 +324,4 @@ function extractLocationFromText(text: string): string | null {
   }
 
   return null;
-}
-
-const NPC_NAME_PATTERNS = ALL_NPC_NAMES;
-
-function extractNpcMentions(text: string): string[] {
-  const found = new Set<string>();
-  for (const name of NPC_NAME_PATTERNS) {
-    if (text.includes(name)) found.add(name);
-  }
-  return [...found];
 }

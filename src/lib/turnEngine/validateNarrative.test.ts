@@ -337,25 +337,54 @@ test("validateNarrative keeps unsupported narrative actions out of structured st
 });
 
 test("validateNarrative flags a first-person possession that is absent from inventory", () => {
+  for (const narrative of [
+    "我摸了摸口袋里那张皱巴巴的便签，继续观察登记台。",
+    "我从口袋里摸出一枚硬币，插进木板缝隙里用力一撬。",
+    "口袋里有一把钥匙，拴着褪色的“302”塑料牌。",
+    "我的背包里装着一枚徽章，我把它举到灯下细看。",
+  ]) {
+    const report = validateNarrative(baseArgs({
+      inventoryItemIds: ["item_phone", "item_bandage"],
+      dmRecord: {
+        narrative,
+        options: [],
+        awarded_items: [],
+        awarded_warehouse_items: [],
+      },
+    }));
+    assert.ok(report.issues.some((issue) => issue.code === "inventory_conflict" && issue.detail === "narrative_claims_unowned_first_person_possession"));
+    assert.ok(report.narrativeOverride?.includes("那里没有能派上用场的东西"));
+    assert.equal(report.narrativeOverride?.includes("皱巴巴的便签"), false);
+    assert.equal(report.narrativeOverride?.includes("硬币"), false);
+  }
+});
+
+test("validateNarrative removes the r19 red-chalk pocket hallucination", () => {
   const report = validateNarrative(baseArgs({
     inventoryItemIds: ["item_phone", "item_bandage"],
     dmRecord: {
-      narrative: "我摸了摸口袋里那张皱巴巴的便签，继续观察登记台。",
+      narrative: "门没动，锁着。我用肩膀抵住想强行顶开，门缝却纹丝不动。反手摸兜，指尖碰到那截红粉笔——硌得生疼。",
       options: [],
       awarded_items: [],
       awarded_warehouse_items: [],
     },
   }));
   assert.ok(report.issues.some((issue) => issue.code === "inventory_conflict" && issue.detail === "narrative_claims_unowned_first_person_possession"));
-  assert.ok(report.narrativeOverride?.includes("那里没有能派上用场的东西"));
-  assert.equal(report.narrativeOverride?.includes("皱巴巴的便签"), false);
+  assert.doesNotMatch(String(report.narrativeOverride), /红粉笔|粉笔/);
+  assert.match(String(report.narrativeOverride), /那里没有能派上用场的东西/);
 });
 
 test("possession check allows owned items and ignores NPC-held scene props", () => {
   const owned = validateNarrative(baseArgs({ inventoryItemIds: ["item_bandage"], dmRecord: { narrative: "我摸了摸背包里的绷带。", options: [] } }));
   assert.equal(owned.issues.some((issue) => issue.code === "inventory_conflict"), false);
+  const ownedPhone = validateNarrative(baseArgs({ inventoryItemIds: ["item_phone"], dmRecord: { narrative: "口袋里有一部手机，我按亮屏幕查看时间。", options: [] } }));
+  assert.equal(ownedPhone.issues.some((issue) => issue.code === "inventory_conflict"), false);
   const npcProp = validateNarrative(baseArgs({ inventoryItemIds: [], dmRecord: { narrative: "她手里捏着一封信，站在登记台旁。", options: [] } }));
   assert.equal(npcProp.issues.some((issue) => issue.code === "inventory_conflict"), false);
+  const npcBag = validateNarrative(baseArgs({ inventoryItemIds: [], dmRecord: { narrative: "她的背包里装着一把钥匙，搭在椅背上。", options: [] } }));
+  assert.equal(npcBag.issues.some((issue) => issue.code === "inventory_conflict"), false);
+  const npcSubjectlessContinuation = validateNarrative(baseArgs({ inventoryItemIds: [], dmRecord: { narrative: "她把信封收好。反手摸兜，指尖碰到一枚硬币。", options: [] } }));
+  assert.equal(npcSubjectlessContinuation.issues.some((issue) => issue.code === "inventory_conflict"), false);
 });
 
 test("validateNarrative flags time_feel_drift when consumesTime=false but narrative says long duration", () => {

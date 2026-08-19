@@ -96,7 +96,7 @@ async function runOneSystem(system: SystemGroup): Promise<void> {
     runNarrativeJudge: false,
     softlockThreshold: 40,
     stepTimeoutMs: 120000,
-    traceOutputDir: `.runtime-data/playthrough/live-${system.name}`,
+    traceOutputDir: `.runtime-data/eval/playthrough/live-${system.name}`,
     enableFailureClustering: true,
     // 自适应步间延迟：deepseek-v4-flash 响应较快的前 5 步 3s → 之后 5s
     stepDelayMs: (stepIndex: number) => {
@@ -181,7 +181,7 @@ async function main() {
   console.log(`${"═".repeat(60)}`);
   console.log("✅ Stage A 并行测试完成");
   console.log(`    总耗时: ${overallElapsed} 小时`);
-  console.log(`    Trace: .runtime-data/playthrough/live-*`);
+  console.log(`    Trace: .runtime-data/eval/playthrough/live-*`);
   console.log(`    注意: 当前是长程验证（每局 ${parseInt(process.env.LIVE_MAX_STEPS ?? "1000", 10)} 步）。`);
   console.log(`${"═".repeat(60)}`);
 }

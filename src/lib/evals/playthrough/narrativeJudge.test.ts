@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import {
   createInitialStateSnapshot,
 } from "./invariants";
-import { judgeNarrativeConsistencyCodex } from "./narrativeJudge";
+import { buildNarrativeJudgePrompt, judgeNarrativeConsistencyCodex, judgeNarrativeConsistencyLive } from "./narrativeJudge";
 import type { PlaythroughTranscript } from "./types";
 
 function makeTranscript(overrides: Partial<PlaythroughTranscript>): PlaythroughTranscript {
@@ -74,6 +74,37 @@ function makePayloadForMockModel(overrides?: Partial<{
 }
 
 describe("Codex 叙事裁判（离线）", () => {
+  it("模型裁判接收注册移动边证据并区分非持久环境描写", () => {
+    const initialState = createInitialStateSnapshot();
+    const movedState = { ...initialState, playerLocation: "2F_Corridor", currentFloor: "2F" };
+    const prompt = buildNarrativeJudgePrompt(makeTranscript({
+      steps: [{
+        stepIndex: 0,
+        playerAction: "继续下楼",
+        narrative: "我沿楼梯进入二楼走廊，墙边的灯光微微摇晃。",
+        dmJson: { is_action_legal: true, sanity_damage: 0, is_death: false, player_location: "2F_Corridor" },
+        stateAfter: movedState,
+        authorityEvidence: {
+          locationTransition: {
+            from: "3F_Stairwell",
+            to: "2F_Corridor",
+            source: "registered_world_graph",
+            registeredAdjacent: true,
+            traversable: true,
+          },
+        },
+        timestamp: 1,
+      }],
+      initialState: { ...initialState, playerLocation: "3F_Stairwell", currentFloor: "3F" },
+      finalState: movedState,
+      totalSteps: 1,
+    }));
+
+    assert.match(prompt.user, /"registeredAdjacent":true/);
+    assert.match(prompt.system, /单边移动已有充分依据/);
+    assert.match(prompt.system, /普通感官、材质、气味、光影/);
+  });
+
   it("首回合任务进展应计入关键进展判定，避免误报 8+ 回合停滞", async () => {
     const initialState = createInitialStateSnapshot();
     const steps = makeSteps(initialState, (index, prevState) => {
@@ -232,6 +263,39 @@ describe("Codex 叙事裁判（离线）", () => {
       } else {
         process.env.VERSECRAFT_EVAL_DISABLE_CACHE = originalCache;
       }
+    }
+  });
+
+  it("live 裁判认证失败必须抛出，不能返回 mock fallback 分数", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalKey = process.env.PLAYTEST_LLM_API_KEY;
+    const originalBase = process.env.PLAYTEST_LLM_BASE_URL;
+    const originalModel = process.env.PLAYTEST_LLM_MODEL;
+    const originalCache = process.env.VERSECRAFT_EVAL_DISABLE_CACHE;
+    process.env.PLAYTEST_LLM_API_KEY = "sk-invalid-test-key";
+    process.env.PLAYTEST_LLM_BASE_URL = "https://api.deepseek.com/v1";
+    process.env.PLAYTEST_LLM_MODEL = "deepseek-v4-flash";
+    process.env.VERSECRAFT_EVAL_DISABLE_CACHE = "1";
+    globalThis.fetch = (async () => new Response(
+      JSON.stringify({ error: { message: "Authentication Fails" } }),
+      { status: 401, headers: { "content-type": "application/json" } },
+    )) as typeof fetch;
+
+    try {
+      await assert.rejects(
+        () => judgeNarrativeConsistencyLive(makeTranscript({})),
+        /401|Authentication Fails/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalKey == null) delete process.env.PLAYTEST_LLM_API_KEY;
+      else process.env.PLAYTEST_LLM_API_KEY = originalKey;
+      if (originalBase == null) delete process.env.PLAYTEST_LLM_BASE_URL;
+      else process.env.PLAYTEST_LLM_BASE_URL = originalBase;
+      if (originalModel == null) delete process.env.PLAYTEST_LLM_MODEL;
+      else process.env.PLAYTEST_LLM_MODEL = originalModel;
+      if (originalCache == null) delete process.env.VERSECRAFT_EVAL_DISABLE_CACHE;
+      else process.env.VERSECRAFT_EVAL_DISABLE_CACHE = originalCache;
     }
   });
 

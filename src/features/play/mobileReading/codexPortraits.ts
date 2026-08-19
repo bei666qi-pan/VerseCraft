@@ -1,6 +1,7 @@
 import { assetUrl } from "@/lib/config/publicRuntime";
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { NPCS } from "@/lib/registry/npcs";
+import { QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
 
 export type CodexPortrait = {
   /** 兜底 PNG 路径（供不支持 avif/webp 的浏览器）。 */
@@ -14,16 +15,25 @@ export type CodexPortrait = {
 const PORTRAIT_IDS = new Set<string>([
   ...NPCS.map((npc) => npc.id),
   ...ANOMALIES.map((anomaly) => anomaly.id),
+  ...QINGSHI_NPCS.map((npc) => npc.id),
 ]);
 
 export const CODEX_PORTRAITS: Partial<Record<string, CodexPortrait>> = Object.fromEntries(
-  [...NPCS, ...ANOMALIES]
+  [...NPCS, ...ANOMALIES, ...QINGSHI_NPCS]
     .filter((entry) => PORTRAIT_IDS.has(entry.id))
     .map((entry) => [
       entry.id,
       {
-        src: assetUrl(`/assets/npc-avatars/${entry.id}.png`),
-        basePath: assetUrl(`/assets/npc-avatars/${entry.id}`),
+        src: assetUrl(
+          entry.id.startsWith("XQ-")
+            ? `/assets/npc-avatars/xingni/${entry.id}.png`
+            : `/assets/npc-avatars/${entry.id}.png`
+        ),
+        basePath: assetUrl(
+          entry.id.startsWith("XQ-")
+            ? `/assets/npc-avatars/xingni/${entry.id}`
+            : `/assets/npc-avatars/${entry.id}`
+        ),
         alt: entry.name,
         objectPosition: "center top",
       },

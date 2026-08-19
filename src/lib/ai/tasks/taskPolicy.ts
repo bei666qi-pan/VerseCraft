@@ -1,7 +1,7 @@
 // src/lib/ai/tasks/taskPolicy.ts
 /**
  * Single source of truth: task → logical roles, limits, and forbidden routes.
- * Upstream model names are resolved in env (AI_MODEL_*), not here.
+ * Upstream model names are resolved from managed purpose routes, not here.
  */
 import type { ResolvedAiEnv } from "@/lib/ai/config/envCore";
 import { resolveAiEnv } from "@/lib/ai/config/envCore";
@@ -361,10 +361,6 @@ function uniqueRoles(ids: readonly AiLogicalRole[]): AiLogicalRole[] {
   return out;
 }
 
-function filterRolesWithConfiguredModel(chain: AiLogicalRole[], env: ResolvedAiEnv): AiLogicalRole[] {
-  return chain.filter((r) => (env.modelsByRole[r] ?? "").trim().length > 0);
-}
-
 function applyForbidden(task: TaskType, chain: AiLogicalRole[]): AiLogicalRole[] {
   return chain.filter((r) => !isRoleForbiddenForTask(task, r));
 }
@@ -416,11 +412,10 @@ export function resolveOrderedRoleChain(
       `[ai/taskPolicy] Dropped roles for task=${task} (forbidden or duplicate): ${dropped.join(", ") || "(none)"}`
     );
   }
-  const configured = filterRolesWithConfiguredModel(allowed, env);
   if (task === "PLAYER_CHAT" && env.playerChatMaxRoleCandidates > 0) {
-    return configured.slice(0, env.playerChatMaxRoleCandidates);
+    return allowed.slice(0, env.playerChatMaxRoleCandidates);
   }
-  return configured;
+  return allowed;
 }
 
 export function resolveFallbackPolicy(
@@ -439,7 +434,7 @@ export function resolveFallbackPolicy(
 export interface RoutingTraceLine {
   role: AiLogicalRole;
   excluded: boolean;
-  reason?: "forbidden" | "no_model_config" | "duplicate";
+  reason?: "forbidden" | "duplicate";
 }
 
 /** For logs / admin debug: why each role was kept or skipped (pre-model filter). */
@@ -478,11 +473,8 @@ export function explainTaskRouting(
       lines.push({ role, excluded: true, reason: "forbidden" });
       continue;
     }
-    const after = filterRolesWithConfiguredModel([role], env);
-    if (after.length === 0) {
-      lines.push({ role, excluded: true, reason: "no_model_config" });
-      continue;
-    }
+    // Model availability is resolved from the managed runtime snapshot after
+    // policy ordering. Legacy env.modelsByRole is not an authoritative source.
     lines.push({ role, excluded: false });
   }
   return lines;

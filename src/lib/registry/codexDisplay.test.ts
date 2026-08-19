@@ -13,6 +13,10 @@ describe("codexDisplay", () => {
       "时差症候群"
     );
     assert.equal(
+      resolveCodexDisplayName({ id: "XQ-N001", name: "XQ-N001", type: "npc" }),
+      "顾玄岳"
+    );
+    assert.equal(
       resolveCodexDisplayName({ id: "N-999", name: "N-999", type: "npc" }),
       "某位住户"
     );
@@ -22,11 +26,28 @@ describe("codexDisplay", () => {
     );
   });
 
+  it("name and intro lookup reject cross-world registry ids", () => {
+    assert.equal(
+      resolveCodexDisplayName({ id: "N-008", name: "N-008", type: "npc" }, "xingni_taichu"),
+      "某位住户",
+    );
+    assert.equal(
+      resolveCodexDisplayName({ id: "XQ-N002", name: "XQ-N002", type: "npc" }, "dark_moon_prologue"),
+      "某位住户",
+    );
+    assert.equal(buildCodexIntro({ id: "N-008", type: "npc" }, "xingni_taichu"), "");
+    assert.equal(buildCodexIntro({ id: "XQ-N002", type: "npc" }, "dark_moon_prologue"), "");
+  });
+
   it("buildCodexIntro 不含文档指针类开发者残片", () => {
     const intro = buildCodexIntro({ id: "N-010", type: "npc" });
     assert.ok(intro.length > 0);
     assert.ok(!intro.includes("majorNpcDeepCanon"));
     assert.ok(!intro.includes("详情见"));
+  });
+
+  it("buildCodexIntro uses the registered Xingni role and realm", () => {
+    assert.equal(buildCodexIntro({ id: "XQ-N003", type: "npc" }), "神工坊炼器师，修为筑基中期。");
   });
 
   it("computeRelationshipLabel follows default rules", () => {

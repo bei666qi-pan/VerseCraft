@@ -35,15 +35,13 @@ test("enrichOptions: generates explore options as default", () => {
 
 // ── Codex ──
 
-test("enrichCodex: adds NPC codex when mentioned in narrative", () => {
+test("enrichCodex: narrative mentions never create codex state", () => {
   const result = enrichCodexFromNarrative({
     existingCodex: [],
     narrative: "麟泽站在安全区门口，雨水从他外套上滴下来。",
     sceneNpcIds: ["N-015"],
   });
-  assert.ok(result.length > 0, "should detect 麟泽 in narrative");
-  assert.equal(result[0]!.name, "麟泽");
-  assert.equal(result[0]!.type, "npc");
+  assert.deepEqual(result, []);
 });
 
 test("enrichCodex: skips NPCs already in codex", () => {
@@ -69,13 +67,12 @@ test("enrichCodex: skips NPCs not in narrative", () => {
 
 // ── Items ──
 
-test("enrichItems: detects item acquisition", () => {
+test("enrichItems: narrative acquisition never creates inventory state", () => {
   const result = enrichItemsFromNarrative({
     existingItems: [],
     narrative: "我捡起地上的螺纹钢，握在手里掂了掂重量。",
   });
-  assert.ok(result.length > 0, "should detect rebar acquisition");
-  assert.equal(result[0]!.id, "rebar");
+  assert.deepEqual(result, []);
 });
 
 test("enrichItems: skips items without acquisition verb", () => {
@@ -97,7 +94,7 @@ test("enrichItems: skips already-owned items", () => {
 
 // ── Combined ──
 
-test("enrichGameState: fills all missing fields", () => {
+test("enrichGameState: fills options but never state from narrative", () => {
   const result = enrichGameState({
     narrative: "麟泽说：「小心那道门。」我捡起地上的钥匙。",
     currentOptions: [],
@@ -106,9 +103,9 @@ test("enrichGameState: fills all missing fields", () => {
     sceneNpcIds: ["N-015"],
   });
   assert.ok(result.options.length > 0, "options should be filled");
-  assert.ok(result.codexUpdates.length > 0, "codex should detect 麟泽");
-  // "捡起" + "钥匙" should trigger item extraction
-  assert.ok(result.awardedItems.length > 0, "should detect key acquisition");
+  assert.deepEqual(result.codexUpdates, []);
+  assert.deepEqual(result.awardedItems, []);
+  assert.equal(result.playerLocation, null);
   assert.ok(result.notes.length > 0, "should have enrichment notes");
 });
 

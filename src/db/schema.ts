@@ -371,6 +371,139 @@ export const adminAuditLogs = pgTable(
   })
 );
 
+/** Managed AI connections. Secrets are encrypted by the application and never selected by admin APIs. */
+export const aiServiceConnections = pgTable(
+  "ai_service_connections",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    name: varchar("name", { length: 96 }).notNull(),
+    baseUrl: varchar("base_url", { length: 1024 }).notNull(),
+    transport: varchar("transport", { length: 32 }).notNull().default("openai_compatible"),
+    encryptedApiKey: text("encrypted_api_key").notNull(),
+    keyLastFour: varchar("key_last_four", { length: 8 }).notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    lastTestStatus: varchar("last_test_status", { length: 24 }),
+    lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
+    lastTestMessage: varchar("last_test_message", { length: 191 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`).$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => ({ activeIdx: index("ai_service_connections_active_idx").on(table.enabled, table.deletedAt) })
+);
+
+export const aiServiceModels = pgTable(
+  "ai_service_models",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    serviceId: varchar("service_id", { length: 64 }).notNull().references(() => aiServiceConnections.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 96 }).notNull(),
+    upstreamModel: varchar("upstream_model", { length: 191 }).notNull(),
+    capability: varchar("capability", { length: 24 }).notNull().default("generation"),
+    embeddingDimension: integer("embedding_dimension"),
+    inputPriceCnyFenPerMillion: integer("input_price_cny_fen_per_million"),
+    outputPriceCnyFenPerMillion: integer("output_price_cny_fen_per_million"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`).$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => ({
+    serviceIdx: index("ai_service_models_service_idx").on(table.serviceId, table.enabled),
+    modelUnique: uniqueIndex("ai_service_models_service_upstream_unique").on(table.serviceId, table.upstreamModel),
+  })
+);
+
+export const aiRouteAssignments = pgTable(
+  "ai_route_assignments",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    purpose: varchar("purpose", { length: 32 }).notNull(),
+    modelId: varchar("model_id", { length: 64 }).notNull().references(() => aiServiceModels.id, { onDelete: "cascade" }),
+    priority: integer("priority").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`).$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    purposePriorityUnique: uniqueIndex("ai_route_assignments_purpose_priority_unique").on(table.purpose, table.priority),
+    purposeModelUnique: uniqueIndex("ai_route_assignments_purpose_model_unique").on(table.purpose, table.modelId),
+  })
+);
+
+export const aiConfigState = pgTable("ai_config_state", {
+  id: integer("id").primaryKey().default(1),
+  version: bigint("version", { mode: "number" }).notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const aiUsageEvents = pgTable(
+  "ai_usage_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    idempotencyKey: varchar("idempotency_key", { length: 191 }).notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    requestId: varchar("request_id", { length: 191 }).notNull(),
+    purpose: varchar("purpose", { length: 32 }).notNull(),
+    task: varchar("task", { length: 64 }).notNull(),
+    serviceId: varchar("service_id", { length: 64 }),
+    serviceName: varchar("service_name", { length: 96 }).notNull(),
+    modelId: varchar("model_id", { length: 64 }),
+    modelName: varchar("model_name", { length: 191 }).notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    usageEstimated: boolean("usage_estimated").notNull().default(false),
+    costCnyMicros: bigint("cost_cny_micros", { mode: "number" }),
+    inputPriceCnyFenPerMillion: integer("input_price_cny_fen_per_million"),
+    outputPriceCnyFenPerMillion: integer("output_price_cny_fen_per_million"),
+    latencyMs: integer("latency_ms"),
+    outcome: varchar("outcome", { length: 24 }).notNull(),
+    errorCategory: varchar("error_category", { length: 64 }),
+  },
+  (table) => ({
+    idempotencyUnique: uniqueIndex("ai_usage_events_idempotency_unique").on(table.idempotencyKey),
+    occurredIdx: index("ai_usage_events_occurred_idx").on(table.occurredAt),
+    purposeOccurredIdx: index("ai_usage_events_purpose_occurred_idx").on(table.purpose, table.occurredAt),
+  })
+);
+
+export const aiUsageDaily = pgTable(
+  "ai_usage_daily",
+  {
+    dateKey: date("date_key").notNull(),
+    purpose: varchar("purpose", { length: 32 }).notNull(),
+    serviceId: varchar("service_id", { length: 64 }).notNull().default("deleted"),
+    serviceName: varchar("service_name", { length: 96 }).notNull(),
+    modelId: varchar("model_id", { length: 64 }).notNull().default("deleted"),
+    modelName: varchar("model_name", { length: 191 }).notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+    successCount: integer("success_count").notNull().default(0),
+    estimatedCount: integer("estimated_count").notNull().default(0),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    cachedInputTokens: bigint("cached_input_tokens", { mode: "number" }).notNull().default(0),
+    totalTokens: bigint("total_tokens", { mode: "number" }).notNull().default(0),
+    costCnyMicros: bigint("cost_cny_micros", { mode: "number" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    primary: uniqueIndex("ai_usage_daily_identity_unique").on(table.dateKey, table.purpose, table.serviceId, table.modelId),
+    dateIdx: index("ai_usage_daily_date_idx").on(table.dateKey),
+  })
+);
+
+export const aiServiceConnectionsRelations = relations(aiServiceConnections, ({ many }) => ({
+  models: many(aiServiceModels),
+}));
+export const aiServiceModelsRelations = relations(aiServiceModels, ({ one, many }) => ({
+  service: one(aiServiceConnections, { fields: [aiServiceModels.serviceId], references: [aiServiceConnections.id] }),
+  routes: many(aiRouteAssignments),
+}));
+export const aiRouteAssignmentsRelations = relations(aiRouteAssignments, ({ one }) => ({
+  model: one(aiServiceModels, { fields: [aiRouteAssignments.modelId], references: [aiServiceModels.id] }),
+}));
+
 /**
  * ========= Analytics Data Foundation =========
  *
@@ -939,6 +1072,8 @@ export const worldKnowledgeChunks = pgTable(
     entityId: integer("entity_id")
       .notNull()
       .references(() => worldEntities.id, { onDelete: "cascade" }),
+    worldId: varchar("world_id", { length: 64 }).notNull().default("dark_moon_prologue"),
+    mapId: varchar("map_id", { length: 64 }),
 
     chunkIndex: integer("chunk_index").notNull(),
     content: text("content").notNull(),
@@ -972,7 +1107,8 @@ export const worldKnowledgeChunks = pgTable(
       .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
-    entityChunkUnique: uniqueIndex("world_knowledge_chunks_entity_chunk_unique").on(table.entityId, table.chunkIndex),
+    entityChunkUnique: uniqueIndex("world_knowledge_chunks_world_entity_chunk_unique").on(table.worldId, table.entityId, table.chunkIndex),
+    worldMapIdx: index("world_knowledge_chunks_world_map_idx").on(table.worldId, table.mapId),
     entityIdx: index("world_knowledge_chunks_entity_idx").on(table.entityId),
     visibilityScopeIdx: index("world_knowledge_chunks_visibility_scope_idx").on(table.visibilityScope),
     ownerScopeIdx: index("world_knowledge_chunks_owner_scope_idx").on(table.ownerUserId, table.visibilityScope),
@@ -1093,6 +1229,8 @@ export const worldEngineRuns = pgTable(
     requestId: varchar("request_id", { length: 191 }).notNull(),
     userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
     sessionId: varchar("session_id", { length: 191 }).notNull(),
+    worldId: varchar("world_id", { length: 64 }).notNull(),
+    mapId: varchar("map_id", { length: 64 }).notNull(),
     triggerSignals: jsonb("trigger_signals").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     modelTask: varchar("model_task", { length: 64 }).notNull(),
     status: varchar("status", { length: 32 }).notNull(),
@@ -1105,8 +1243,8 @@ export const worldEngineRuns = pgTable(
       .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
-    dedupUnique: uniqueIndex("world_engine_runs_dedup_unique").on(table.dedupKey),
-    sessionCreatedIdx: index("world_engine_runs_session_created_idx").on(table.sessionId, table.createdAt),
+    dedupUnique: uniqueIndex("world_engine_runs_scope_dedup_unique").on(table.worldId, table.mapId, table.sessionId, table.dedupKey),
+    sessionCreatedIdx: index("world_engine_runs_scope_session_created_idx").on(table.worldId, table.mapId, table.sessionId, table.createdAt),
     statusCreatedIdx: index("world_engine_runs_status_created_idx").on(table.status, table.createdAt),
   })
 );
@@ -1117,6 +1255,8 @@ export const worldEngineEventQueue = pgTable(
     id: serial("id").primaryKey(),
     runId: integer("run_id").notNull().references(() => worldEngineRuns.runId, { onDelete: "cascade" }),
     sessionId: varchar("session_id", { length: 191 }).notNull(),
+    worldId: varchar("world_id", { length: 64 }).notNull(),
+    mapId: varchar("map_id", { length: 64 }).notNull(),
     userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
     eventCode: varchar("event_code", { length: 128 }).notNull(),
     title: text("title").notNull(),
@@ -1141,10 +1281,10 @@ export const worldEngineEventQueue = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
-    sessionStatusDueIdx: index("world_engine_event_queue_session_status_due_idx").on(table.sessionId, table.status, table.dueInTurns),
+    sessionStatusDueIdx: index("world_engine_event_queue_scope_status_due_idx").on(table.worldId, table.mapId, table.sessionId, table.status, table.dueInTurns),
     eventCodeIdx: index("world_engine_event_queue_event_code_idx").on(table.eventCode),
-    directorDueIdx: index("world_engine_event_queue_director_due_idx").on(table.sessionId, table.status, table.dueTurnIndex),
-    directorDedupUnique: uniqueIndex("world_engine_event_queue_director_dedup_unique").on(table.sessionId, table.eventCode, table.dedupKey),
+    directorDueIdx: index("world_engine_event_queue_scope_director_due_idx").on(table.worldId, table.mapId, table.sessionId, table.status, table.dueTurnIndex),
+    directorDedupUnique: uniqueIndex("world_engine_event_queue_scope_director_dedup_unique").on(table.worldId, table.mapId, table.sessionId, table.eventCode, table.dedupKey),
   })
 );
 
@@ -1154,14 +1294,16 @@ export const worldEngineAgendaSnapshots = pgTable(
     id: serial("id").primaryKey(),
     runId: integer("run_id").notNull().references(() => worldEngineRuns.runId, { onDelete: "cascade" }),
     sessionId: varchar("session_id", { length: 191 }).notNull(),
+    worldId: varchar("world_id", { length: 64 }).notNull(),
+    mapId: varchar("map_id", { length: 64 }).notNull(),
     userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
     agendaRevision: integer("agenda_revision").notNull(),
     snapshotJson: jsonb("snapshot_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
-    sessionRevisionUnique: uniqueIndex("world_engine_agenda_session_revision_unique").on(table.sessionId, table.agendaRevision),
-    sessionCreatedIdx: index("world_engine_agenda_session_created_idx").on(table.sessionId, table.createdAt),
+    sessionRevisionUnique: uniqueIndex("world_engine_agenda_scope_revision_unique").on(table.worldId, table.mapId, table.sessionId, table.agendaRevision),
+    sessionCreatedIdx: index("world_engine_agenda_scope_created_idx").on(table.worldId, table.mapId, table.sessionId, table.createdAt),
   })
 );
 
@@ -1170,6 +1312,8 @@ export const worldEngineDirectorState = pgTable(
   {
     id: serial("id").primaryKey(),
     sessionId: varchar("session_id", { length: 191 }).notNull(),
+    worldId: varchar("world_id", { length: 64 }).notNull(),
+    mapId: varchar("map_id", { length: 64 }).notNull(),
     userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
     turnIndex: integer("turn_index").notNull().default(0),
     phase: varchar("phase", { length: 24 }).notNull().default("quiet"),
@@ -1182,7 +1326,7 @@ export const worldEngineDirectorState = pgTable(
       .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
-    sessionUnique: uniqueIndex("world_engine_director_state_session_unique").on(table.sessionId),
+    sessionUnique: uniqueIndex("world_engine_director_state_scope_session_unique").on(table.worldId, table.mapId, table.sessionId),
     userUpdatedIdx: index("world_engine_director_state_user_updated_idx").on(table.userId, table.updatedAt),
   })
 );
@@ -1192,6 +1336,8 @@ export const npcAgentState = pgTable(
   {
     id: serial("id").primaryKey(),
     sessionId: varchar("session_id", { length: 191 }).notNull(),
+    worldId: varchar("world_id", { length: 64 }).notNull(),
+    mapId: varchar("map_id", { length: 64 }).notNull(),
     userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
     npcId: varchar("npc_id", { length: 128 }).notNull(),
     stateJson: jsonb("state_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
@@ -1204,14 +1350,47 @@ export const npcAgentState = pgTable(
       .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
-    sessionNpcUnique: uniqueIndex("npc_agent_state_session_npc_unique").on(table.sessionId, table.npcId),
-    sessionStatusEligibleIdx: index("npc_agent_state_session_status_eligible_idx").on(
+    sessionNpcUnique: uniqueIndex("npc_agent_state_scope_session_npc_unique").on(table.worldId, table.mapId, table.sessionId, table.npcId),
+    sessionStatusEligibleIdx: index("npc_agent_state_scope_status_eligible_idx").on(
+      table.worldId,
+      table.mapId,
       table.sessionId,
       table.status,
       table.nextEligibleTurn
     ),
     userUpdatedIdx: index("npc_agent_state_user_updated_idx").on(table.userId, table.updatedAt),
   })
+);
+
+export const worldEngineHintEnvelopes = pgTable(
+  "world_engine_hint_envelopes",
+  {
+    id: serial("id").primaryKey(),
+    hintId: varchar("hint_id", { length: 128 }).notNull(),
+    runId: integer("run_id").notNull().references(() => worldEngineRuns.runId, { onDelete: "cascade" }),
+    worldId: varchar("world_id", { length: 64 }).notNull(),
+    mapId: varchar("map_id", { length: 64 }).notNull(),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    worldRevision: bigint("world_revision", { mode: "bigint" }).notNull(),
+    validFromTurn: integer("valid_from_turn").notNull(),
+    validThroughTurn: integer("valid_through_turn").notNull(),
+    phase: varchar("phase", { length: 24 }).notNull(),
+    envelopeJson: jsonb("envelope_json").$type<Record<string, unknown>>().notNull(),
+    lifecycle: varchar("lifecycle", { length: 24 }).notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    hintIdUnique: uniqueIndex("world_engine_hint_envelopes_hint_id_unique").on(table.hintId),
+    scopeTurnIdx: index("world_engine_hint_envelopes_scope_turn_idx").on(
+      table.worldId,
+      table.mapId,
+      table.sessionId,
+      table.lifecycle,
+      table.validFromTurn,
+      table.validThroughTurn,
+    ),
+  }),
 );
 
 export const npcRelationEdges = pgTable(

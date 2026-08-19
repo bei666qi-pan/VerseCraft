@@ -1,8 +1,8 @@
 // src/lib/ai/types/core.ts
 import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 
-/** Unified gateway (one-api OpenAI-compatible) plus deterministic local mock for tests/evals. */
-export type AiProviderId = "oneapi" | "mock";
+/** Managed transports plus deterministic local mock for tests/evals. */
+export type AiProviderId = "openai_compatible" | "openai_responses" | "ark_multimodal" | "mock";
 
 /**
  * Task taxonomy for routing. Policy table: `src/lib/ai/tasks/taskPolicy.ts`.

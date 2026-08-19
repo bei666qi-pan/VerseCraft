@@ -19,7 +19,7 @@
  * 设计目标（每晚定时）：
  * - 默认 mock 模式：不调外部 API，CI / 本地都能跑
  * - 可选 live 模式：调真实 /api/chat，需要 AI gateway 凭据
- * - 输出 trace artifact 到 .runtime-data/fuzz-traces/ 便于回放
+ * - 输出 trace artifact 到 .runtime-data/eval/fuzz-traces/ 便于回放
  * - 失败聚类输出到 stdout + JSON report，便于追踪反复出现的失败模式
  */
 
@@ -69,7 +69,7 @@ function parseArgs(): CliArgs {
     failOnRegression: args.includes("--fail-on-regression"),
     threshold: getFloat("--threshold", 0.10),
     categories: cats ? (cats.split(",").map((s) => s.trim()) as ScenarioCategory[]) : undefined,
-    traceOutputDir: getStr("--trace-dir") ?? ".runtime-data/fuzz-traces",
+    traceOutputDir: getStr("--trace-dir") ?? ".runtime-data/eval/fuzz-traces",
     verbose: args.includes("--verbose") || args.includes("-v"),
   };
 }

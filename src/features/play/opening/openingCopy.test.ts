@@ -8,6 +8,8 @@ import {
   isOpeningSystemUserMessage,
   OPENING_SYSTEM_PROMPT,
   OPENING_SYSTEM_PROMPT_EN,
+  XINGNI_FIXED_OPENING_NARRATIVE,
+  XINGNI_OPENING_SYSTEM_PROMPT,
 } from "./openingCopy";
 
 test("OPENING_SYSTEM_PROMPT：要求主笔产出非空四条 options，与固定前文协议一致", () => {
@@ -19,6 +21,7 @@ test("OPENING_SYSTEM_PROMPT：要求主笔产出非空四条 options，与固定
 test("isOpeningSystemUserMessage：trim 后与 OPENING_SYSTEM_PROMPT 对齐", () => {
   assert.equal(isOpeningSystemUserMessage(`  ${OPENING_SYSTEM_PROMPT}  `), true);
   assert.equal(isOpeningSystemUserMessage(`  ${OPENING_SYSTEM_PROMPT_EN}  `), true);
+  assert.equal(isOpeningSystemUserMessage(`  ${XINGNI_OPENING_SYSTEM_PROMPT}  `), true);
   assert.equal(isOpeningSystemUserMessage("玩家行动：观察"), false);
 });
 
@@ -27,6 +30,13 @@ test("英文开场与 system prompt 使用英文版本", () => {
   assert.equal(getOpeningSystemPrompt("en-US"), OPENING_SYSTEM_PROMPT_EN);
   assert.ok(FIXED_OPENING_NARRATIVE_EN.includes("Kisaragi Apartments"));
   assert.ok(OPENING_SYSTEM_PROMPT_EN.includes("exactly four"));
+});
+
+test("星逆开场保持第三人称且不含暗月上下文", () => {
+  assert.equal(getFixedOpeningNarrative("zh-CN", "xingni_taichu"), XINGNI_FIXED_OPENING_NARRATIVE);
+  assert.equal(getOpeningSystemPrompt("zh-CN", "xingni_taichu"), XINGNI_OPENING_SYSTEM_PROMPT);
+  assert.doesNotMatch(XINGNI_FIXED_OPENING_NARRATIVE, /如月公寓|原石|B1/);
+  assert.match(XINGNI_OPENING_SYSTEM_PROMPT, /第三人称/);
 });
 
 test("FIXED_OPENING_NARRATIVE：非空固定开场", () => {

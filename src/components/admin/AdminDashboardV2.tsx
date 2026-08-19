@@ -100,8 +100,8 @@ type AiExperienceData = {
     tokenPerEffectiveAction?: number;
     tokenPerActiveActor?: number;
     highCostActors?: Array<{ actorKey: string; actions: number; tokens: number }>;
-    byRole?: Array<{ role: string; requests: number; promptTokens: number; completionTokens: number; totalTokens: number; estimatedUsd: number }>;
-    estimatedTotalUsd?: number;
+    byRole?: Array<{ role: string; requests: number; promptTokens: number; completionTokens: number; totalTokens: number; estimatedUsd: number | null }>;
+    estimatedTotalUsd?: number | null;
   };
   turnLaneDistribution?: Array<{ lane: string; count: number }>;
   worldEngineEnqueueRate?: { enqueuedCount: number; completedActionCount: number; rate: number };
@@ -965,14 +965,14 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Panel>
-                <SectionTitle title="AI 成本按逻辑角色拆分" meta={`预估总成本 $${(aiExperience?.cost?.estimatedTotalUsd ?? 0).toFixed(4)}（USD，按 costModel.ts 单价估算，仅供参考）`} />
+                <SectionTitle title="AI Token 按逻辑角色拆分" meta="费用请以 AI 管理中的人民币单价快照为准。" />
                 <div className="mt-3 space-y-2">
                   {(aiExperience?.cost?.byRole ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无样本。</p> : null}
                   {(aiExperience?.cost?.byRole ?? []).map((r) => (
                     <div key={r.role} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
                       <div className="flex items-center justify-between gap-3">
                         <span className="font-medium text-[#173f39]">{aiRoleLabel(r.role)}</span>
-                        <span>${r.estimatedUsd.toFixed(4)}</span>
+                        <span>{fmt(r.totalTokens)} Token</span>
                       </div>
                       <p className="mt-1 text-xs text-[#68746c]">请求 {fmt(r.requests)} · 输入 {fmt(r.promptTokens)} · 输出 {fmt(r.completionTokens)} · 合计 {fmt(r.totalTokens)}</p>
                     </div>

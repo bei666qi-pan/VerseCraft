@@ -7,8 +7,11 @@
 // 同一个理由、同一个先例。
 // 直接从 envCore（无 server-only guard）取，而不是 `@/lib/ai/config/env`——
 // 原因同上：保持本文件可被 `pnpm test:unit` 直接测试。
-import { resolveEmbeddingBinding } from "@/lib/ai/config/envCore";
+import { randomUUID } from "node:crypto";
 import { envNumber } from "@/lib/config/envRaw";
+import { getManagedEmbeddingBindings } from "@/lib/ai/managed/state";
+import { buildManagedUsageRecord, enqueueManagedUsage } from "@/lib/ai/managed/usage";
+import { resilientFetch } from "@/lib/ai/resilience/fetchWithRetry";
 
 /**
  * T4（2026-07，世界知识向量检索）：批量向量化调用路径。
@@ -45,74 +48,104 @@ function isFiniteNumberArray(value: unknown): value is number[] {
  *   不传时使用 `AI_EMBEDDING_TIMEOUT_MS`（默认 20s，适合离线 batch worker)。
  */
 export async function embedText(text: string, timeoutMsOverride?: number): Promise<EmbedTextResult> {
-  const binding = resolveEmbeddingBinding();
-  if (!binding.configured) {
+  const bindings = getManagedEmbeddingBindings();
+  if (bindings.length === 0) {
     return { ok: false, reason: "not_configured" };
   }
-
-  if (binding.apiUrl === "mock://embeddings") {
+  const requestId = `embedding_${randomUUID()}`;
+  let lastFailure: EmbedTextResult = { ok: false, reason: "not_configured" };
+  const failedServices = new Set<string>();
+  for (const binding of bindings) {
+    if (failedServices.has(binding.serviceId)) continue;
+    if (binding.transport === "mock") {
     // Mock provider: deterministic pseudo-embedding for tests/dev without real credentials.
-    const dim = binding.dimension;
+    const dim = binding.embeddingDimension ?? 1024;
     const vector = new Array(dim).fill(0).map((_, i) => {
       const seed = (text.length + i * 31) % 997;
       return Math.sin(seed) * 0.01;
     });
-    return { ok: true, vector, model: binding.model || "mock-embedding" };
-  }
+      return { ok: true, vector, model: binding.modelName || "mock-embedding" };
+    }
 
   const timeoutMs =
     typeof timeoutMsOverride === "number" && Number.isFinite(timeoutMsOverride) && timeoutMsOverride > 0
       ? timeoutMsOverride
       : Math.max(1000, envNumber("AI_EMBEDDING_TIMEOUT_MS", 20_000));
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const startedAt = Date.now();
 
   try {
     // Ark 多模态向量化（provider: "ark_multimodal"，见 envCore.ts 的架构例外说明）走独立的
     // 请求体形状：input 是 [{type:"text", text}]，且支持 dimensions 参数直接要求目标维度
     // （已用真实凭证探测确认合法值为 1024/2048）。标准 openai_compatible 路径保持原有形状。
     const requestBody =
-      binding.provider === "ark_multimodal"
-        ? { model: binding.model, input: [{ type: "text", text }], dimensions: binding.dimension, encoding_format: "float" }
-        : { model: binding.model, input: text };
+      binding.transport === "ark_multimodal"
+        ? { model: binding.modelName, input: [{ type: "text", text }], dimensions: binding.embeddingDimension, encoding_format: "float" }
+        : { model: binding.modelName, input: text };
 
-    const res = await fetch(binding.apiUrl, {
+    const res = await resilientFetch(binding.baseUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${binding.apiKey}`,
       },
       body: JSON.stringify(requestBody),
-      signal: controller.signal,
+    }, {
+      timeoutMs,
+      maxRetries: 0,
+      parentSignal: controller.signal,
+      transport:
+        binding.serviceId.startsWith("test-service-")
+          ? "default"
+          : binding.baseUrl.startsWith("https:")
+            ? "http1"
+            : "default",
+      // Node contract tests use non-resolving `.test` hosts behind a stubbed
+      // fetch. Production and ordinary scripts still enforce managed URL DNS
+      // validation.
+      validateManagedUrl: !binding.serviceId.startsWith("test-service-"),
+      allowLocalhost: process.env.NODE_ENV !== "production",
     });
 
     if (!res.ok) {
-      const bodyText = await res.text().catch(() => "");
-      return { ok: false, reason: "http_error", status: res.status, message: bodyText.slice(0, 500) };
+      if (res.status === 401 || res.status === 403 || res.status === 429) failedServices.add(binding.serviceId);
+      enqueueManagedUsage(buildManagedUsageRecord({ requestId, task: "MEMORY_COMPRESSION", binding, phase: `embedding_error_${binding.modelId}`, latencyMs: Date.now() - startedAt, outcome: "error", errorCategory: `http_${res.status}` }));
+      lastFailure = { ok: false, reason: "http_error", status: res.status, message: "embedding service request failed" };
+      continue;
     }
 
     const json = (await res.json().catch(() => null)) as EmbeddingWireResponse | null;
     const vector = Array.isArray(json?.data) ? json?.data?.[0]?.embedding : json?.data?.embedding;
     if (!isFiniteNumberArray(vector) || vector.length === 0) {
-      return { ok: false, reason: "bad_response", message: "response missing embedding vector" };
+      enqueueManagedUsage(buildManagedUsageRecord({ requestId, task: "MEMORY_COMPRESSION", binding, phase: `embedding_error_${binding.modelId}`, latencyMs: Date.now() - startedAt, outcome: "error", errorCategory: "bad_response" }));
+      lastFailure = { ok: false, reason: "bad_response", message: "response missing embedding vector" };
+      continue;
     }
 
-    if (vector.length !== binding.dimension) {
+    if (binding.embeddingDimension && vector.length !== binding.embeddingDimension) {
       // 真实模型输出维度与 schema 的 vector(256) 不一致时，不在这里静默截断/补零——
       // 那样会产生语义错误的向量。直接判为 bad_response，让调用方（worker）跳过这条记录
       // 并计入失败计数，倒逼在上线前用真实凭证核对 AI_EMBEDDING_DIMENSION 设置。
-      return {
+      enqueueManagedUsage(buildManagedUsageRecord({ requestId, task: "MEMORY_COMPRESSION", binding, phase: `embedding_error_${binding.modelId}`, latencyMs: Date.now() - startedAt, outcome: "error", errorCategory: "dimension_mismatch" }));
+      lastFailure = {
         ok: false,
         reason: "bad_response",
-        message: `embedding dimension mismatch: got ${vector.length}, expected ${binding.dimension} (AI_EMBEDDING_DIMENSION)`,
+        message: `embedding dimension mismatch: got ${vector.length}, expected ${binding.embeddingDimension}`,
       };
+      continue;
     }
 
-    return { ok: true, vector, model: binding.model };
+    enqueueManagedUsage(buildManagedUsageRecord({ requestId, task: "MEMORY_COMPRESSION", binding,
+      phase: `embedding_complete_${binding.modelId}`, inputText: text, latencyMs: Date.now() - startedAt, outcome: "success" }));
+    return { ok: true, vector, model: binding.modelName };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, reason: "network_error", message };
+    enqueueManagedUsage(buildManagedUsageRecord({ requestId, task: "MEMORY_COMPRESSION", binding, phase: `embedding_error_${binding.modelId}`, latencyMs: Date.now() - startedAt, outcome: "error", errorCategory: "network_error" }));
+    lastFailure = { ok: false, reason: "network_error", message };
   } finally {
     clearTimeout(timer);
   }
+  }
+  return lastFailure;
 }

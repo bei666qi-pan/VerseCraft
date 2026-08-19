@@ -59,6 +59,23 @@ test("selectNpcMemoryMoments：防御性拒绝看起来像未清洗内部标识�
   assert.equal(out.length, 0, "两条都应被防御性过滤掉");
 });
 
+test("buildNpcMemoryMomentLines：可将当前星逆 NPC ID 投影为登记姓名", () => {
+  const s = spine([
+    entry({
+      id: "xq-a",
+      kind: "relationship_shift",
+      summary: "你与XQ-N005的关系有了新变化——对你添了几分好感。",
+      anchors: { npcIds: ["XQ-N005"] },
+    }),
+  ]);
+
+  assert.deepEqual(
+    buildNpcMemoryMomentLines(s, "XQ-N005", { displayName: "柳三娘" }),
+    ["你与柳三娘的关系有了新变化——对你添了几分好感。"],
+  );
+  assert.deepEqual(buildNpcMemoryMomentLines(s, "XQ-N005"), []);
+});
+
 test("selectNpcMemoryMoments：按最近优先排序，并按 mergeKey 去重（保留较新一条）", () => {
   const s = spine([
     entry({ id: "old", kind: "relationship_shift", summary: "你与欣蓝的关系有了新变化——似乎对你冷淡了几分。", mergeKey: "rel:N-010", createdAtHour: 5, anchors: { npcIds: ["N-010"] } }),

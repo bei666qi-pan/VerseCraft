@@ -42,6 +42,7 @@ import type {
   NarrativeValidationReport,
 } from "@/lib/turnEngine/validateNarrative";
 import type { FactCommitGateResult } from "@/lib/worldFacts/factCommitGate";
+import type { WorldId } from "@/lib/worlds/types";
 
 export const COMMIT_STATE_CHANGING_FIELDS = [
   "player_location",
@@ -107,6 +108,8 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
 
 const UNKNOWN_ENTITY_SAFE_NARRATIVE_ZH = "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。";
 const UNKNOWN_ENTITY_SAFE_NARRATIVE_EN = "A brief sound echoes from the far end of the corridor, but the dim light and distance keep its source unidentifiable.";
+const XINGNI_UNKNOWN_ENTITY_SAFE_NARRATIVE_ZH = "风穿过青石县的檐角，眼前人影隔着雨幕尚难辨认；未经登记的身份仍不能当作事实。";
+const XINGNI_UNKNOWN_ENTITY_SAFE_NARRATIVE_EN = "Wind passes beneath Qingshi County's eaves. The figure beyond the rain remains indistinct, and an unregistered identity cannot be treated as fact.";
 
 /** 位置/环境安全叙事变体，避免连续 fallback 时反复出现相同文本 */
 const SAFE_NARRATIVE_VARIANTS_ZH = [
@@ -123,20 +126,42 @@ const SAFE_NARRATIVE_VARIANTS_EN = [
   "The shadows at the far end of the corridor hold nothing. You confirm — there is no immediate danger.",
   "Your footsteps echo through the empty hallway. Nothing around you has changed.",
 ];
+const XINGNI_SAFE_NARRATIVE_VARIANTS_ZH = [
+  "青石县檐角的雨珠落上石板，稀薄灵气缓缓流转；眼前没有能够确认的新威胁。",
+  "他停下动作凝神细察，风声越过青石县长街，附近没有出现已登记之外的异状。",
+  "青石县四周重新安静下来，潮湿石路映着天光；未经确认的人与事仍藏在沉默之后。",
+  "青石县远处传来短促声响，又很快散入风里。他重新确认局势，眼下没有直接危险。",
+  "青石县的灵气在经脉间微微一滞，随后恢复平稳。四周没有发生可被确认的异常变化。",
+];
+const XINGNI_SAFE_NARRATIVE_VARIANTS_EN = [
+  "Rain slips from the eaves of Qingshi County onto the stone road while the thin spiritual qi settles. No new threat can be confirmed.",
+  "He pauses and focuses. Wind crosses Qingshi County's long street, and nothing outside the registered situation appears nearby.",
+  "Qingshi County grows quiet again, daylight reflected on the damp stones. Unconfirmed people and events remain unresolved.",
+  "A brief sound carries from somewhere in Qingshi County, then dissolves into the wind. He reassesses and finds no immediate danger.",
+  "The spiritual qi of Qingshi County catches briefly in his meridians before settling. No confirmable change has occurred nearby.",
+];
 const BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH = "眼前的动静尚不足以形成可提交的战果；你停下动作重新确认局势，武器与世界状态没有变化。";
 const BLOCKED_CONFLICT_SAFE_NARRATIVE_EN = "The commotion ahead amounts to nothing actionable; you pause to reassess — your weapons and the world state remain unchanged.";
+const XINGNI_BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH = "眼前灵机尚不足以形成可提交的战果；他收住动作重新确认局势，法器、伤势与任务进度都没有变化。";
+const XINGNI_BLOCKED_CONFLICT_SAFE_NARRATIVE_EN = "The spiritual disturbance is not enough to establish a committed outcome. He stops to reassess; artifact, injuries, and quest progress remain unchanged.";
 
-function getUnknownEntitySafeNarrative(language: GameLanguage): string {
-  return languageText(language, UNKNOWN_ENTITY_SAFE_NARRATIVE_ZH, UNKNOWN_ENTITY_SAFE_NARRATIVE_EN);
+function getUnknownEntitySafeNarrative(language: GameLanguage, worldId?: WorldId): string {
+  return worldId === "xingni_taichu"
+    ? languageText(language, XINGNI_UNKNOWN_ENTITY_SAFE_NARRATIVE_ZH, XINGNI_UNKNOWN_ENTITY_SAFE_NARRATIVE_EN)
+    : languageText(language, UNKNOWN_ENTITY_SAFE_NARRATIVE_ZH, UNKNOWN_ENTITY_SAFE_NARRATIVE_EN);
 }
 
-function getSafeNarrativeVariant(language: GameLanguage, turnIndex: number): string {
-  const variants = language === "en-US" ? SAFE_NARRATIVE_VARIANTS_EN : SAFE_NARRATIVE_VARIANTS_ZH;
-  return variants[turnIndex % variants.length] ?? getUnknownEntitySafeNarrative(language);
+function getSafeNarrativeVariant(language: GameLanguage, turnIndex: number, worldId?: WorldId): string {
+  const variants = worldId === "xingni_taichu"
+    ? language === "en-US" ? XINGNI_SAFE_NARRATIVE_VARIANTS_EN : XINGNI_SAFE_NARRATIVE_VARIANTS_ZH
+    : language === "en-US" ? SAFE_NARRATIVE_VARIANTS_EN : SAFE_NARRATIVE_VARIANTS_ZH;
+  return variants[turnIndex % variants.length] ?? getUnknownEntitySafeNarrative(language, worldId);
 }
 
-function getBlockedConflictSafeNarrative(language: GameLanguage): string {
-  return languageText(language, BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH, BLOCKED_CONFLICT_SAFE_NARRATIVE_EN);
+function getBlockedConflictSafeNarrative(language: GameLanguage, worldId?: WorldId): string {
+  return worldId === "xingni_taichu"
+    ? languageText(language, XINGNI_BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH, XINGNI_BLOCKED_CONFLICT_SAFE_NARRATIVE_EN)
+    : languageText(language, BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH, BLOCKED_CONFLICT_SAFE_NARRATIVE_EN);
 }
 
 function hasDescribedUnknownPersonIssue(report: NarrativeSafetyReport | null | undefined): boolean {
@@ -238,6 +263,8 @@ export type CommitTurnArgs = {
   factCommitGateResult?: FactCommitGateResult | null;
   /** Player-facing language for safe fallback narrative text. Defaults to "zh-CN". */
   gameLanguage?: GameLanguage;
+  /** World scope for deterministic safety copy. Legacy callers default to Dark Moon wording. */
+  worldId?: WorldId;
 };
 
 export type CommitTurnResult = {
@@ -541,7 +568,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     // place merely because no asynchronous repair model answered. This stays
     // deterministic and final-hook-only, so it adds no first-token latency.
     // Use turn-index-based variant to avoid repetitive identical fallback text.
-    const safeNarrative = getSafeNarrativeVariant(gameLanguage, args.turnIndex);
+    const safeNarrative = getSafeNarrativeVariant(gameLanguage, args.turnIndex, args.worldId);
     committed = {
       ...committed,
       narrative: safeNarrative,
@@ -554,7 +581,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     // committed as authoritative state.
     committed = {
       ...committed,
-      narrative: getBlockedConflictSafeNarrative(gameLanguage),
+      narrative: getBlockedConflictSafeNarrative(gameLanguage, args.worldId),
       options: [],
     };
     flags.add("safe_narrative_fallback_applied");

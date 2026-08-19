@@ -151,6 +151,18 @@ function asUnknownRecord(v: unknown): Record<string, unknown> | null {
   return v as Record<string, unknown>;
 }
 
+function normalizeWorldDelta(v: unknown): TurnEnvelope["world_delta"] {
+  const value = asUnknownRecord(v);
+  const state = asUnknownRecord(value?.resolvedState);
+  if (value?.worldId !== "xingni_taichu" || value.mapId !== "xingni_qingshi_county" || !state || state.kind !== "xingni_taichu") return undefined;
+  try {
+    if (JSON.stringify(value).length > 8_192) return undefined;
+  } catch {
+    return undefined;
+  }
+  return value as TurnEnvelope["world_delta"];
+}
+
 function normalizeInternalMeta(v: unknown): Record<string, unknown> | undefined {
   if (!v || typeof v !== "object" || Array.isArray(v)) {
     return undefined;
@@ -267,7 +279,7 @@ export function downgradeAcquireSemanticsInNarrative(narrative: string): { text:
   // 换成“注意到”会留下同样错误的所有权结论，甚至形成病句。此时让调用方走
   // 明确的无所有权 fallback，宁可少留一段文学细节，也不能把未提交的道具写成
   // 玩家已经持有。
-  if (/(?:塞进|放进|装进|收入).{0,12}(?:背包|行囊)|(?:握紧|握住).{0,10}(?:它|这(?:件|根|把)|[\u4e00-\u9fff]{1,8})/.test(src)) {
+  if (/(?:塞进|放进|装进|收入).{0,12}(?:背包|行囊|口袋)|(?:握紧|握住).{0,10}(?:它|这(?:件|根|把)|[\u4e00-\u9fff]{1,8})/.test(src)) {
     return { text: src, applied: false };
   }
   const rules: Array<{ re: RegExp; to: string }> = [
@@ -470,16 +482,20 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     (input as { conflict_outcome?: unknown }).conflict_outcome ??
     (input as { combat_summary?: unknown }).combat_summary
   );
-  const injuryDelta = conflict_outcome
-    ? likelyCostToInjuryDelta(conflict_outcome.likelyCost ?? "none")
+  // Narrative is player-visible presentation, never a state source. Conflict
+  // state must already exist in structured candidate/mechanics fields before
+  // this normalization boundary.
+  const resolvedConflictOutcome = conflict_outcome;
+  const injuryDelta = resolvedConflictOutcome
+    ? likelyCostToInjuryDelta(resolvedConflictOutcome.likelyCost ?? "none")
     : null;
   const resolvedSanityDamage = injuryDelta
     ? Math.max(asFiniteInt(input.sanity_damage, 0), injuryDelta.sanityDamage)
     : asFiniteInt(input.sanity_damage, 0);
-  if (injuryDelta && conflict_outcome) {
+  if (injuryDelta && resolvedConflictOutcome) {
     // `sanity_damage` is the authoritative turn delta. Keep the conflict
     // envelope aligned even when the physical-cost tier is `none`.
-    conflict_outcome.injury_delta = {
+    resolvedConflictOutcome.injury_delta = {
       ...injuryDelta,
       sanityDamage: resolvedSanityDamage,
       ...(resolvedSanityDamage > 0 && injuryDelta.injuries.length === 0
@@ -491,6 +507,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     (input as { next_chapter_title_candidate?: unknown }).next_chapter_title_candidate,
     32
   );
+  const worldDelta = normalizeWorldDelta((input as { world_delta?: unknown }).world_delta);
 
   const out: ResolvedDmTurn = {
     is_action_legal: asBoolean(input.is_action_legal, false),
@@ -522,6 +539,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     foreshadow_ops: asUnknownArray((input as { foreshadow_ops?: unknown }).foreshadow_ops),
     weapon_updates: asObjectArray(input.weapon_updates),
     weapon_bag_updates: asObjectArray((input as { weapon_bag_updates?: unknown }).weapon_bag_updates),
+    ...(worldDelta ? { world_delta: worldDelta } : {}),
     ...(bgm_track ? { bgm_track } : {}),
     ...(nextChapterTitleCandidate ? { next_chapter_title_candidate: nextChapterTitleCandidate } : {}),
     ...(endingFinale ? { ending_finale: endingFinale } : {}),
@@ -548,7 +566,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     relation_changes: {
       relationship_updates: asUnknownArray(input.relationship_updates),
     },
-    conflict_outcome,
+    conflict_outcome: resolvedConflictOutcome,
     loot_changes: {
       currency_change: asFiniteInt(input.currency_change, 0),
       consumed_items: asStringArray(input.consumed_items),
@@ -560,6 +578,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       clue_updates: normalizedClueUpdateRecords,
     },
     world_state_changes: {
+      ...(worldDelta ? { world_delta: worldDelta } : {}),
       ...(typeof input.player_location === "string" && input.player_location.trim()
         ? { player_location: clampString(input.player_location.trim(), 80) }
         : {}),

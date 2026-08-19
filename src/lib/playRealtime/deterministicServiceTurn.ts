@@ -176,7 +176,7 @@ export function buildDeterministicServiceTurn(args: {
         return seed;
       })() : isAuthoredOneFloorMove ? (() => {
         seed.player_location = "1F_PropertyOffice";
-        seed.narrative = "我沿着已登记的相邻通道从1F_Lobby进入1F_PropertyOffice，位置变化已确认。N-010仍留在一楼大堂，没有跟随出现。";
+        seed.narrative = "我离开一楼门厅，沿着相连的通路走进一楼物业办公室。欣蓝仍留在门厅，没有跟随我进入。";
         return seed;
       })() : isFloorProbeObservation || isFloorProbeDelivery ? (() => {
         const adjudicated = applyRegisteredMechanicsGuard({ dmRecord: seed, latestUserInput: args.latestUserInput, clientState: args.clientState });

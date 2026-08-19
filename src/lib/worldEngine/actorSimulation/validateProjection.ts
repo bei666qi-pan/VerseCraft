@@ -34,6 +34,7 @@ export interface ValidateProjectionArgs {
   forbiddenFactIds: Set<string>;
   /** 注册的位置 ID 集合 */
   registeredLocationIds?: Set<string>;
+  registeredActionCodes?: Set<string>;
 }
 
 export interface ValidateProjectionResult {
@@ -54,6 +55,7 @@ export function validateActorProjection(args: ValidateProjectionArgs): ValidateP
     allowedKnownFactIds,
     forbiddenFactIds,
     registeredLocationIds = new Set(),
+    registeredActionCodes = new Set(),
   } = args;
 
   const issues: ActorProjectionIssue[] = [];
@@ -117,6 +119,14 @@ export function validateActorProjection(args: ValidateProjectionArgs): ValidateP
 
   // 5. 位置可达性检查
   for (const action of projection.candidateActions) {
+    if (registeredActionCodes.size > 0 && !registeredActionCodes.has(action.actionCode)) {
+      issues.push({
+        code: "unregistered_action",
+        severity: "high",
+        detail: `Action ${action.actionCode} is not registered for this world`,
+        npcId: projection.npcId,
+      });
+    }
     if (action.targetLocationId && !registeredLocationIds.has(action.targetLocationId)) {
       issues.push({
         code: "location_impossible",
@@ -171,7 +181,7 @@ export function validateActorProjection(args: ValidateProjectionArgs): ValidateP
   if (projection.knownFactIdsUsed.length === 0 && projection.candidateActions.length > 0) {
     issues.push({
       code: "missing_source",
-      severity: "low",
+      severity: "high",
       detail: "Projection has actions but no fact sources cited",
       npcId: projection.npcId,
     });

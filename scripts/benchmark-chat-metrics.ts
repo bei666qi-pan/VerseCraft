@@ -9,6 +9,10 @@ import path from "node:path";
 import { CHAT_LATENCY_BUDGET } from "../src/lib/perf/waitingConfig";
 import { probeChatSse, type ChatSseProbeMetrics } from "../src/lib/perf/chatSseProbe";
 import { buildBenchmarkPlayerInput } from "../src/lib/evals/benchmarkInput";
+import {
+  buildBenchmarkClientState,
+  type BenchmarkClientStateOverrides,
+} from "../src/lib/evals/benchmarkClientState";
 import { resolveNarrativeBudget } from "../src/lib/playRealtime/narrativeBudgetPackets";
 
 type BenchmarkMode = "fixtures" | "mock" | "live" | "degraded";
@@ -28,6 +32,7 @@ type Fixture = {
   playerContext: string;
   observabilityNotes?: string;
   mockScenario?: string;
+  clientState?: BenchmarkClientStateOverrides;
   expect: FixtureExpect;
 };
 
@@ -251,13 +256,9 @@ async function probeOne(baseUrl: string, fixture: Fixture, run: number, mode: Be
       messages: [{ role: "user", content }],
       playerContext: fixture.playerContext,
       sessionId: requestId,
-      // Minimal clientState required for live mode turn resolution
-      clientState: JSON.stringify({
-        playerLocation: "3F_Hallway",
-        stats: { sanity: 12, agility: 12, luck: 10, charm: 10, background: 10 },
-        time: { day: 1, hour: 8 },
-        originium: 10,
-      }),
+      // Send the same object shape as the real client. Serializing this field
+      // makes validation discard it and correctly triggers phantom-item guards.
+      clientState: buildBenchmarkClientState(fixture.clientState),
     },
   });
   const narrativeMinimumChars = resolveBenchmarkNarrativeMinimum(fixture);

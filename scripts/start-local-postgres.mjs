@@ -1,5 +1,5 @@
 /**
- * 本机一键：Docker 启动共用 PostgreSQL（映射宿主机端口），并确保存在 versecraft / oneapi 两库。
+ * 本机一键：Docker 启动 VerseCraft PostgreSQL（映射宿主机端口）。
  *
  * 前提：Docker Desktop 已启动。
  *
@@ -120,7 +120,6 @@ async function main() {
   }
 
   ensureDb("versecraft");
-  ensureDb("oneapi");
 
   /** @param {string} db */
   function ensureVectorExtension(db) {
@@ -136,20 +135,18 @@ async function main() {
   }
 
   ensureVectorExtension("versecraft");
-  ensureVectorExtension("oneapi");
 
   console.log("");
   console.log("[postgres:local] 完成。连接串示例（密码含特殊字符时请自行 URL 编码）：");
   console.log(`  VerseCraft DATABASE_URL → postgresql://${user}:***@127.0.0.1:${port}/versecraft`);
-  console.log(`  one-api SQL_DSN（宿主机跑网关）→ postgresql://${user}:***@127.0.0.1:${port}/oneapi`);
   if (port !== "5432") {
     console.log("");
     console.log(
-      `[postgres:local] 提示：宿主机端口为 ${port}（因 5432 常被占用）。请把 DATABASE_URL / SQL_DSN 中的端口改为 ${port}。`
+      `[postgres:local] 提示：宿主机端口为 ${port}（因 5432 常被占用）。请把 DATABASE_URL 中的端口改为 ${port}。`
     );
   }
   console.log("");
-  console.log("下一步：配置 one-api 与 .env.local，见 docs/local-one-api.md。");
+  console.log("下一步：设置 AI_CONFIG_ENCRYPTION_KEY，启动应用后在后台“AI 管理”添加服务。");
 }
 
 main().catch((err) => {

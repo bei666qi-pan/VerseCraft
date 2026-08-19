@@ -105,7 +105,6 @@ export type AnalyticsEventName =
   | "memory_compression_completed"
   | "narrative_expansion_skipped"
   | "storage_degraded"
-  | "world_engine_langgraph_node"
   | "prompt_assembly_completed";
 
 export type AnalyticsPlatform = "mobile" | "desktop" | "unknown";

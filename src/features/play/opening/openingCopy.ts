@@ -1,4 +1,5 @@
 import type { GameLanguage } from "@/lib/i18n/language";
+import type { WorldId } from "@/lib/worlds/types";
 
 /** 固定开局叙事：由前端直接渲染，不经大模型流式输出 */
 export const FIXED_OPENING_NARRATIVE = `夕阳斜斜地压在黑板上，粉笔灰薄薄洒了一层。老师的声音在教室里来回反弹，平得让人犯困。
@@ -155,7 +156,26 @@ I held my breath. The sound did not come again.
 
 But its echo was still behind me, and my heart would not slow down.`;
 
-export function getFixedOpeningNarrative(language: GameLanguage = "zh-CN"): string {
+export const XINGNI_FIXED_OPENING_NARRATIVE = `青石县的雨刚停。
+
+他坐在归雁客栈最靠墙的旧桌旁，掌心压着一只缺口茶盏。窗外车辙积着浑水，挑担的脚夫与佩剑散修擦肩而过，谁也没多看这个脸色苍白的年轻人一眼。
+
+三个月前，他还是炼气六层。如今气海留着一道未愈的裂痕，每次运转灵力，都像有细针沿经脉缓慢刮过。修为跌到炼气二层，储物袋里只剩十二枚灵石，以及一部最寻常的基础吐纳法。
+
+但人还活着，路便没有断。
+
+柜台后的柳三娘拨了拨算盘。邻桌两个散修正低声谈论黑松岭的妖兽委托；更远处，有人提到了百草堂、神工坊，以及七日后在升仙台举行的升仙试。
+
+青石县很小，小到一场雨就能洗净半条街。
+
+可对一个跌落谷底的散修而言，这里已经足够大——大到能藏下灵材、机缘、敌手，以及一条重新向上的路。
+
+他松开茶盏，缓缓吐出一口浊气。
+
+先从眼前这一步开始。`;
+
+export function getFixedOpeningNarrative(language: GameLanguage = "zh-CN", worldId: WorldId = "dark_moon_prologue"): string {
+  if (worldId === "xingni_taichu") return XINGNI_FIXED_OPENING_NARRATIVE;
   return language === "en-US" ? FIXED_OPENING_NARRATIVE_EN : FIXED_OPENING_NARRATIVE;
 }
 
@@ -182,12 +202,19 @@ export const OPENING_SYSTEM_PROMPT_EN =
   "options must be exactly four non-empty, distinct English first-person actionable strings. Spread them across exploring, approaching someone present, checking personal condition, and observing danger or exits. Do not use a fixed template, force a named character encounter, or start with a grand cross-floor objective. " +
   "Use sensible defaults for remaining fields: is_action_legal:true, sanity_damage:0, is_death:false, consumes_time:true, consumed_items:[], player_location:\"B1_SafeZone\", bgm_track:\"bgm_b1_daily\". Never omit options or return an empty options array.";
 
-export function getOpeningSystemPrompt(language: GameLanguage = "zh-CN"): string {
+export const XINGNI_OPENING_SYSTEM_PROMPT =
+  "【星逆·太初·青石县开局首轮】客户端已展示固定第三人称开场：气海受损、修为跌至炼气二层的落魄散修坐在归雁客栈，听见黑松岭委托与升仙试消息。请严格以 JSON 格式输出单一对象。" +
+  "narrative 仅作一至三句第三人称贴身承接，不复述开场，不进入柳三娘或其他 NPC 内心；" +
+  "options 必须是四条第三人称可执行行动，分别侧重打听公开消息、检查自身资源、观察客栈在场人物、前往相邻登记地点；不得写第一人称，不得编造地点、NPC、功法、物品或通行出口；" +
+  "其余键使用合法保守默认：is_action_legal:true，sanity_damage:0，is_death:false，consumes_time:false，consumed_items:[]，player_location:\"QS_GUOYAN_INN\"。不得提交未满足条件的 world_delta。";
+
+export function getOpeningSystemPrompt(language: GameLanguage = "zh-CN", worldId: WorldId = "dark_moon_prologue"): string {
+  if (worldId === "xingni_taichu") return XINGNI_OPENING_SYSTEM_PROMPT;
   return language === "en-US" ? OPENING_SYSTEM_PROMPT_EN : OPENING_SYSTEM_PROMPT;
 }
 
 /** 与 route / 客户端首轮判定对齐（trim 后全等） */
 export function isOpeningSystemUserMessage(userContent: string): boolean {
   const normalized = String(userContent ?? "").trim();
-  return normalized === OPENING_SYSTEM_PROMPT.trim() || normalized === OPENING_SYSTEM_PROMPT_EN.trim();
+  return normalized === OPENING_SYSTEM_PROMPT.trim() || normalized === OPENING_SYSTEM_PROMPT_EN.trim() || normalized === XINGNI_OPENING_SYSTEM_PROMPT.trim();
 }

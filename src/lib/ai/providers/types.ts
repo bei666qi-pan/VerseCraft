@@ -6,7 +6,7 @@ export interface NormalizedCompletionRequest {
   modelApiName: string;
   messages: ChatMessage[];
   stream: boolean;
-  /** Legacy advisory only. The Sangfor/OpenAI-compatible transport omits max_tokens. */
+  /** Legacy advisory only. The OpenAI-compatible transport omits max_tokens. */
   maxTokens?: number;
   temperature?: number;
   responseFormatJsonObject?: boolean;

@@ -76,6 +76,8 @@ test("scheduleBackgroundWorldTick returns synchronously and does not block onlin
     requestId: "req_1",
     userId: "u_1",
     sessionId: "s_1",
+    worldId: "dark_moon_prologue",
+    mapId: "dark_moon_apartment",
     turnIndex: 12,
     latestUserInput: "我找线索",
     dmRecord: { narrative: "x", task_updates: [{ task_id: "T_1" }] },
@@ -101,12 +103,57 @@ test("scheduleBackgroundWorldTick returns synchronously and does not block onlin
   assert.equal(enqueueCalled, true);
 });
 
+test("scheduleBackgroundWorldTick forwards explicit world and map scope", async () => {
+  let captured: Record<string, unknown> | null = null;
+  const { pending } = scheduleBackgroundWorldTick({
+    requestId: "req_xingni",
+    userId: "u_xingni",
+    sessionId: "s_xingni",
+    worldId: "xingni_taichu",
+    mapId: "xingni_qingshi_county",
+    turnIndex: 5,
+    latestUserInput: "前往镇邪司登记散修身份",
+    dmRecord: { narrative: "陆沉沿长街走向镇邪司。", task_updates: [{ task_id: "QS_MAIN_01" }] },
+    previousPlayerLocation: "QS_GUOYAN_INN",
+    playerLocation: "QS_MAGISTRATE_WARDEN",
+    npcLocationUpdateCount: 0,
+    preflightRiskTags: [],
+    dmNarrativePreview: "陆沉沿长街走向镇邪司。",
+    pacingControllerDigest: {
+      tension: 72,
+      beatModeHint: "countdown",
+      pressureFlags: ["urgent", "urgent"],
+      pendingIncidentCodes: ["XQ-EV01"],
+      mustRecallHookCodes: [],
+      chapterId: "XQ-CH01",
+    },
+    enqueueFn: async (payload) => {
+      captured = payload as unknown as Record<string, unknown>;
+      return { enqueued: true, dedupKey: "dk_xingni" };
+    },
+  });
+  const result = await pending;
+  assert.equal(result.enqueued, true);
+  assert.equal(captured?.worldId, "xingni_taichu");
+  assert.equal(captured?.mapId, "xingni_qingshi_county");
+  assert.deepEqual(captured?.pacingChapterSignals, {
+    phase: "build_up",
+    tension: 0.72,
+    chapterId: "XQ-CH01",
+    chapterIndex: 0,
+    progress: 0,
+  });
+  assert.deepEqual((captured?.worldStateSummary as { stateCodes?: string[] })?.stateCodes, ["urgent", "XQ-EV01"]);
+});
+
 test("scheduleBackgroundWorldTick swallows enqueue errors into pending", async () => {
   let settledInfo: unknown = null;
   const { pending } = scheduleBackgroundWorldTick({
     requestId: "req_2",
     userId: null,
     sessionId: "s_1",
+    worldId: "dark_moon_prologue",
+    mapId: "dark_moon_apartment",
     turnIndex: 24,
     latestUserInput: "我找真相",
     dmRecord: { narrative: "x", task_updates: [{ task_id: "T_1" }] },
@@ -134,6 +181,8 @@ test("scheduleBackgroundWorldTick still fires onSettled when skipping", async ()
     requestId: "req_3",
     userId: null,
     sessionId: null,
+    worldId: "dark_moon_prologue",
+    mapId: "dark_moon_apartment",
     turnIndex: 1,
     latestUserInput: "",
     dmRecord: null,

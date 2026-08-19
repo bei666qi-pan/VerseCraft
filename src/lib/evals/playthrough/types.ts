@@ -18,7 +18,9 @@ export type PersonaType =
   | "explorer"      // 探索型：到处乱逛，测边缘分支
   | "rulebreaker"   // 搞破坏型：试图违反规则、卡 bug
   | "confused"      // 迷茫型：乱输入、答非所问，测鲁棒性
-  | "collector";    // 收集癖：疯狂拾取，测库存上限与经济系统
+  | "collector"     // 收集癖：疯狂拾取，测库存上限与经济系统
+  | "boundary_tester" // 边界测试：故意非法动作、跨层跳跃、安全区收敛、物品幻觉
+  | "social";       // 社交型：大量 NPC 对话、世界观询问、测试 NPC 认知边界
 
 /** Persona 配置 */
 export interface PersonaConfig {
@@ -99,6 +101,25 @@ export interface TranscriptStep {
   dmJson: Record<string, unknown>;
   /** 执行后的状态快照 */
   stateAfter: GameStateSnapshot;
+  /**
+   * Deterministic adjudication provenance supplied by the SUT harness.
+   * This is evidence for the judge only; it never creates or mutates state.
+   */
+  authorityEvidence?: {
+    locationNormalization?: {
+      from: string;
+      to: string;
+      canonical: string;
+      source: "registered_location_alias";
+    };
+    locationTransition?: {
+      from: string;
+      to: string;
+      source: "registered_world_graph";
+      registeredAdjacent: boolean;
+      traversable: boolean;
+    };
+  };
   /** 性能指标 */
   metrics?: { latencyMs: number; firstStatusMs?: number; firstTokenMs?: number; finalMs?: number; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number };
   /** 模拟时间戳 */

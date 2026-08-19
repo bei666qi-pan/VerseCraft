@@ -441,6 +441,7 @@ async function ensureKgWorkerLayer(client) {
     CREATE TABLE IF NOT EXISTS vc_jobs (
       job_id BIGSERIAL PRIMARY KEY,
       job_type TEXT NOT NULL,
+      idempotency_key TEXT,
       payload JSONB NOT NULL DEFAULT '{}'::jsonb,
       status TEXT NOT NULL DEFAULT 'pending',
       run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -458,6 +459,8 @@ async function ensureKgWorkerLayer(client) {
     CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
     ON vc_jobs (status, run_at, priority DESC, job_id);
   `);
+  await client.query(`ALTER TABLE vc_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;`);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS vc_jobs_type_idempotency_unique ON vc_jobs (job_type, idempotency_key) WHERE idempotency_key IS NOT NULL;`);
 
   try {
     await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);

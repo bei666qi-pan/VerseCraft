@@ -43,7 +43,21 @@ test("legacy third-floor hallway enters the registered stairwell on downstairs i
     clientState: { playerLocation: "旧公寓三楼走廊", worldFlags: [] },
   });
   assert.equal(out.player_location, "3F_Stairwell");
-  assert.match(String(out.narrative), /3F_Stairwell/);
+  assert.match(String(out.narrative), /三楼楼梯间/);
+  assert.doesNotMatch(String(out.narrative), /已登记|逐段确认|位置变化|3F_/);
+  assert.ok((out._commit_flags as string[]).includes("canonical_location_transition_v1"));
+});
+
+test("explicit Chinese stairwell alias resolves the adjacent registered edge", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: { is_action_legal: true, narrative: "通往楼梯间的门锁着，无法进入。" },
+    latestUserInput: "沿三楼走廊前往楼梯间；如果道路受阻，明确说明阻碍来自哪里。",
+    clientState: { playerLocation: "3F_Hallway", worldFlags: [] },
+  });
+  assert.equal(out.player_location, "3F_Stairwell");
+  assert.doesNotMatch(String(out.narrative), /锁着|无法进入/);
+  assert.match(String(out.narrative), /三楼走廊.*三楼楼梯间/);
+  assert.doesNotMatch(String(out.narrative), /已登记|逐段确认|位置变化|3F_|陌生人/);
   assert.ok((out._commit_flags as string[]).includes("canonical_location_transition_v1"));
 });
 
@@ -54,7 +68,29 @@ test("downstairs intent continues one confirmed edge at a time", () => {
     clientState: { playerLocation: "3F_Stairwell", worldFlags: [] },
   });
   assert.equal(out.player_location, "2F_Corridor");
-  assert.match(String(out.narrative), /2F_Corridor/);
+  assert.match(String(out.narrative), /三楼楼梯间.*二楼走廊/);
+  assert.doesNotMatch(String(out.narrative), /已登记|逐段确认|位置变化|(?:2F|3F)_|陌生人/);
+});
+
+test("unique adjacent bare room number resolves to one canonical edge", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: { is_action_legal: true, narrative: "我停在楼梯间等路线确认。" },
+    latestUserInput: "进入302",
+    clientState: { playerLocation: "3F_Stairwell", worldFlags: [] },
+  });
+  assert.equal(out.player_location, "3F_Room302");
+  assert.match(String(out.narrative), /三楼 302 室/);
+  assert.doesNotMatch(String(out.narrative), /已登记|逐段确认|位置变化|3F_|陌生人/);
+  assert.ok((out._commit_flags as string[]).includes("canonical_location_transition_v1"));
+});
+
+test("unknown bare room number is not synthesized", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: { is_action_legal: true, narrative: "我还在楼梯间。" },
+    latestUserInput: "进入399",
+    clientState: { playerLocation: "3F_Stairwell", worldFlags: [] },
+  });
+  assert.equal(out.player_location, undefined);
 });
 
 test("unknown location candidate is stripped without rejecting an observation turn", () => {

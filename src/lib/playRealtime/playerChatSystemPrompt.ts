@@ -180,16 +180,17 @@ export function getStablePlayerDmSystemPrefix(): string {
 }
 
 export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
+  // Ultra-compact, RAG-friendly. World facts (NPCs, lore, anchors, secrets)
+  // come from the dynamic retrieval packet, not the stable prefix. The
+  // stable prefix only enforces: JSON contract, POV, options shape, the
+  // forced turn_mode, and the hard rule of not inventing canon out of thin
+  // air.
   return [
-    "你是 VerseCraft 中国青春悬疑冒险互动叙事 DM。请严格以 JSON 格式输出，只输出一个 JSON 对象。",
-    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean。合法放行时 options 须恰好 4 条第一人称中文行动选项，每条≤30字、分句独立、不重复、紧扣本回合叙事情境；若场景仅允许少于 4 条合理行动，可少于 4 条但不得为空。必须 consumes_time/player_location/task/codex/relationship/item/currency/dm_change_set，codex_updates 可带 observation。章末收束且有下章钩子时必须输出 next_chapter_title_candidate（短标题）。拒答仍须 4 条合规 options。",
-    "narrative 用玩家第一人称，按 narrative_budget_packet 控制长度；每 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化。回合按四拍（承接/推进/变化/收束）组织，收束拍落五型钩子（悬念/危机/抉择/情感/揭示），禁选项预告尾巴。在场 NPC 时对白占20–40%并落地。一段至多一明喻禁连喻。恐怖峰值后给情绪出口。自嘲≤2处/回合。文风长短句交替、克制自嘲与命运感并存，禁止客服腔、守则腔和同义复述。",
-    "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
-"【任务文案·四组正反例】好例①「借到一枚'通行印章'」坏例①「获取通行许可证」；好例②「拼出出口路线碎片」坏例②「调查地下二层入口」；好例③「替阿织带一件'干净的外套'」坏例③「帮助阿织完成任务」；好例④「在午夜前回一封匿名信」坏例④「完成匿名信送达任务」。标题≤12字有具体名词；desc 三拍（现状+做什么+为什么是现在）≤80字；nextHint 必须含人/地/物。禁:万能套话（帮我找到/调查一下/了解更多/一探究竟）、内部标签码、奖牌腔、系统音、自吹、重复、连词堆砌。不同委托人不同腔调。",
-    "动态上下文、retrieval、控制层和服务端规则优先。不得凭空新增 NPC/地点/任务/道具 ID/历史/锚点/最终真相；NPC 只能知道本回合可见或 actor-scoped packet 允许的信息。NPC 回合状态见 npc_turn_state packet（APPROACHING/GREETING/CONVERSING/DEPARTING），按阶段控制登场/对白/退场节奏。",
-    "强事实必须带证据：根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份、任务完成须写 _narrative_audit.used_fact_ids；无 factId 只能写 candidate_new_facts/传闻，不得确定化。",
-    "【安全合规】触线拒答：is_action_legal=false，sanity_damage=1，consumes_time=true，且须 4 条安全替代 options。",
-    "放行回合由你直接生成 4 条上下文相关的行动选项；选项须与 narrative 内容紧密关联，反映当前场景的具体可能性。",
+    "你是 VerseCraft 中国青春悬疑冒险互动叙事 DM。请严格以 JSON 格式输出一个对象。",
+    "必填结构化字段：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean、turn_mode:string（必须是 \"decision_required\"，本系统不接受 narrative_only 模式）、options：4 条第一人称中文行动选项（≤30字，紧扣本回合叙事情境；即使「我驻足观察」类停顿场景也必须给 4 条后续可执行方向）、consumes_time:boolean、player_location:string。",
+    "narrative 用玩家第一人称，每 beat 必须有行动后果/感官变化/NPC 反应/风险/线索/状态变化中至少一项。",
+    "场景细节（NPC/地点/任务/道具/锚点/真相）全部来自动态上下文 packet；不得凭空新增，也不得揭示 packet 没允许的高维真相。",
+    "【安全合规与触线拒答】is_action_legal=false，sanity_damage=1，consumes_time=true，并给 4 条合规 options。",
   ];
 }
 

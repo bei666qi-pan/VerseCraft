@@ -9,11 +9,14 @@ import {
   INTRO_PARAGRAPHS,
   INTRO_TITLE,
   INTRO_WORLD_SLIDES,
+  XINGNI_CARD_IMAGE,
 } from "./introContent";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 test("intro content keeps the darkmoon world as the first playable slide", () => {
   assert.equal(INTRO_PAGE_TITLE, "选择世界观");
-  assert.equal(INTRO_PAGE_SUBTITLE, "AI 悬疑互动小说");
+  assert.equal(INTRO_PAGE_SUBTITLE, "AI 互动叙事世界");
   assert.equal(INTRO_TITLE, "序章 · 暗月");
   assert.equal(INTRO_CTA, "进入公寓");
   assert.equal(INTRO_DISABLED_CTA, "世界观筹备中");
@@ -28,8 +31,21 @@ test("intro content keeps the darkmoon world as the first playable slide", () =>
   assert.deepEqual(INTRO_PARAGRAPHS, firstSlide.introBody);
 });
 
-test("placeholder worlds remain unavailable and image-free", () => {
-  for (const slide of INTRO_WORLD_SLIDES.slice(1)) {
+test("active intro card positioning is not overridden by a transform animation", () => {
+  const source = readFileSync(join(process.cwd(), "src/app/intro/IntroPageClient.tsx"), "utf8");
+  assert.doesNotMatch(source, /-translate-x-1\/2 animate-fade-in/);
+});
+
+test("xingni is the second playable world and later placeholders remain unavailable", () => {
+  const xingni = INTRO_WORLD_SLIDES[1];
+  assert.equal(xingni.worldId, "xingni_taichu");
+  assert.equal(xingni.available, true);
+  assert.equal(xingni.imageSrc, XINGNI_CARD_IMAGE);
+  assert.ok(XINGNI_CARD_IMAGE.startsWith("/assets/intro/xingni-qingshi-card-"));
+  assert.ok(XINGNI_CARD_IMAGE.endsWith(".jpg"));
+  assert.match(xingni.introBody.join(""), /第一处区域|世界全貌/);
+
+  for (const slide of INTRO_WORLD_SLIDES.slice(2)) {
     assert.equal(slide.available, false);
     assert.equal("imageSrc" in slide ? slide.imageSrc : undefined, undefined);
   }

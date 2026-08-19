@@ -96,7 +96,7 @@ async function runDetectors(): Promise<void> {
     results,
   });
 
-  const jsonPath = cli.jsonOut ?? ".runtime-data/eval-detectors.json";
+  const jsonPath = cli.jsonOut ?? ".runtime-data/eval/detectors/report.json";
   writeJson(jsonPath, output);
   if (cli.jsonOnly) { console.log(JSON.stringify(output)); return; }
 

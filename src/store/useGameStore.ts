@@ -74,7 +74,7 @@ import { buildCombatPromptBlockV1 } from "@/lib/combat/combatPromptBlock";
 import type { IncidentQueueState, StoryDirectorState } from "@/lib/storyDirector/types";
 import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
 import { normalizeDirectorState, postTurnStoryDirectorUpdate } from "@/lib/storyDirector/postTurn";
-import { buildDirectorDigestForServer, buildDirectorPromptBlock } from "@/lib/storyDirector/prompt";
+import { buildDirectorDigestForServer } from "@/lib/storyDirector/prompt";
 import { buildIncidentDigest, normalizeIncidentQueue } from "@/lib/storyDirector/queue";
 import type { EscapeMainlineState } from "@/lib/escapeMainline/types";
 import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/template";
@@ -108,6 +108,11 @@ import type {
   SnapshotCodexEntry,
   SnapshotMainThreatState,
 } from "@/lib/state/snapshot/types";
+import type { MapId, WorldId } from "@/lib/worlds/types";
+import { DARK_MOON_MAP_ID, DARK_MOON_WORLD_ID, QINGSHI_MAP_ID, XINGNI_WORLD_ID } from "@/lib/worlds/types";
+import { getMainSaveSlotId } from "@/lib/worlds/saveScope";
+import { QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
+import { createInitialXingniState, getCurrentQingshiObjective, normalizeXingniState, type SpiritRoot, type XingniTaichuState } from "@/lib/worlds/xingni/progression";
 import { runReviveSyncPipeline, type ReviveOption } from "@/lib/revive/pipeline";
 import { tickInfusions } from "@/lib/playRealtime/weaponInfusion";
 import { buildItemGameplayPromptBlock } from "@/lib/play/itemGameplay";
@@ -444,6 +449,10 @@ function mergeCodexObservations(previous: unknown, incoming: readonly string[]):
 export type GameTask = GameTaskV2;
 
 export interface SaveSlotData {
+  worldId?: WorldId;
+  mapId?: MapId;
+  unlockedMapIds?: MapId[];
+  worldState?: XingniTaichuState | null;
   slotMeta?: SaveSlotMeta;
   runSnapshotV2?: RunSnapshotV2;
   stats: Record<StatType, number>;
@@ -500,6 +509,7 @@ export type ActiveMenu =
   | "warehouse"
   | "achievements"
   | "tasks"
+  | "map"
   | null;
 
 /**
@@ -516,6 +526,10 @@ const TALENT_ACTION_COOLDOWNS: Record<EchoTalent, number> = {
 };
 
 export interface GameState extends IntegrityMetaState {
+  worldId: WorldId;
+  mapId: MapId;
+  unlockedMapIds: MapId[];
+  worldState: XingniTaichuState | null;
   currentSaveSlot: string;
   /** 最多 5 个用户可见记录；auto_* 恢复槽不占展示名额 */
   saveSlots: Record<string, SaveSlotData>;
@@ -735,6 +749,7 @@ export interface GameState extends IntegrityMetaState {
   updateTaskStatus: (taskId: string, status: GameTaskStatus) => void;
   updateTask: (taskPatch: { id: string } & Partial<GameTask>) => void;
   setPlayerLocation: (loc: string) => void;
+  applyXingniWorldState: (state: XingniTaichuState) => void;
   updateNpcLocation: (npcId: string, location: string) => void;
   applyMainThreatUpdates: (updates: Array<Partial<SnapshotMainThreatState> & { floorId?: string }>) => void;
   applyWeaponUpdates: (updates: Array<{
@@ -798,7 +813,8 @@ export interface GameState extends IntegrityMetaState {
   initCharacter: (
     profile: { name: string; gender: string; height: number; personality: string },
     stats: Record<StatType, number>,
-    talent: EchoTalent
+    talent: EchoTalent,
+    worldOptions?: { worldId?: WorldId; spiritRoot?: SpiritRoot }
   ) => void;
 
   // 终极逻辑闭环：为大模型生成系统提示词的上下文
@@ -810,6 +826,9 @@ export interface GameState extends IntegrityMetaState {
    */
   getStructuredClientStateForServer: () => {
     v: 1;
+    worldId: WorldId;
+    mapId: MapId;
+    worldStateDigest?: XingniTaichuState;
     turnIndex: number;
     playerLocation: string;
     time: { day: number; hour: number };
@@ -1225,6 +1244,10 @@ export const useGameStore = create<GameState>()(
   persist(
     checksumMiddleware((set, get) => ({
       currentSaveSlot: "main_slot",
+      worldId: DARK_MOON_WORLD_ID,
+      mapId: DARK_MOON_MAP_ID,
+      unlockedMapIds: [DARK_MOON_MAP_ID],
+      worldState: null,
       saveSlots: {},
       isHydrated: false,
       storageMode: "normal",
@@ -1847,6 +1870,17 @@ export const useGameStore = create<GameState>()(
             professionState,
           };
         }),
+      applyXingniWorldState: (worldState) =>
+        set((s) => {
+          if (s.worldId !== XINGNI_WORLD_ID || worldState?.kind !== "xingni_taichu") return {};
+          const unlockedMapIds = worldState.unlockedMapIds.filter(
+            (id): id is MapId => id === QINGSHI_MAP_ID || id === "xingni_qingyun_ferry"
+          );
+          return {
+            worldState: JSON.parse(JSON.stringify(normalizeXingniState(worldState))),
+            unlockedMapIds: unlockedMapIds.length > 0 ? unlockedMapIds : [QINGSHI_MAP_ID],
+          };
+        }),
       updateNpcLocation: (npcId, location) =>
         set((s) => ({
           dynamicNpcStates: {
@@ -2269,11 +2303,24 @@ export const useGameStore = create<GameState>()(
           dialogueCount: (s.dialogueCount ?? 0) + 1,
         })),
 
-      initCharacter: (profile, stats, talent) => {
+      initCharacter: (profile, stats, talent, worldOptions) => {
         const background = stats.background ?? DEFAULT_STATS.background;
         const initialSanity = stats.sanity ?? DEFAULT_STATS.sanity;
+        const worldId = worldOptions?.worldId === XINGNI_WORLD_ID ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID;
+        const isXingni = worldId === XINGNI_WORLD_ID;
+        const mapId = isXingni ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID;
+        const worldState = isXingni ? createInitialXingniState(worldOptions?.spiritRoot) : null;
+        const initialLocation = isXingni ? "QS_GUOYAN_INN" : "B1_SafeZone";
+        const initialNpcStates = isXingni
+          ? Object.fromEntries(QINGSHI_NPCS.map((npc) => [npc.id, { currentLocation: npc.home, isAlive: true }]))
+          : Object.fromEntries(Object.entries(NPC_HOME_LOCATION_SEED).map(([id, homeLocation]) => [id, { currentLocation: homeLocation, isAlive: true }]));
 
         set({
+          worldId,
+          mapId,
+          unlockedMapIds: [mapId],
+          worldState,
+          currentSaveSlot: getMainSaveSlotId(worldId),
           playerName: profile.name,
           gender: profile.gender,
           height: profile.height,
@@ -2294,18 +2341,13 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           inputMode: "options" as const,
-          originium: 10 + background,
-          tasks: activateClaimableHiddenTasks(createStageOneStarterTasks()),
-          playerLocation: "B1_SafeZone",
+          originium: isXingni ? 0 : 10 + background,
+          tasks: isXingni ? [] : activateClaimableHiddenTasks(createStageOneStarterTasks()),
+          playerLocation: initialLocation,
           historicalMaxFloorScore: 0,
           deathCount: 0,
-          dynamicNpcStates: Object.fromEntries(
-            Object.entries(NPC_HOME_LOCATION_SEED).map(([id, homeLocation]) => [
-              id,
-              { currentLocation: homeLocation, isAlive: true },
-            ])
-          ),
-          mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
+          dynamicNpcStates: initialNpcStates,
+          mainThreatByFloor: isXingni ? {} : DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
           equippedWeapon: null,
           weaponBag: [],
           intrusionFlashUntil: 0,
@@ -2325,6 +2367,24 @@ export const useGameStore = create<GameState>()(
 
       getPromptContext: () => {
         const s = get();
+        if (s.worldId === XINGNI_WORLD_ID && s.worldState?.kind === "xingni_taichu") {
+          const location = s.playerLocation ?? "QS_GUOYAN_INN";
+          const presentNpcIds = Object.entries(s.dynamicNpcStates ?? {})
+            .filter(([, value]) => value?.isAlive && value.currentLocation === location)
+            .map(([id]) => id)
+            .slice(0, 16);
+          const state = s.worldState;
+          return [
+            "世界[星逆·太初|xingni_taichu]。当前开放地图[青石县|xingni_qingshi_county]。",
+            `玩家位置[${location}]。游戏时间[第${(s.time?.day ?? 0) + 1}日 ${String(s.time?.hour ?? 0).padStart(2, "0")}:00]。`,
+            `角色[${s.playerName || "落魄散修"}|${s.gender || "未定"}]。灵根[${state.spiritRoot}]。修为[${state.cultivation.realm}|进度${state.cultivation.progress}|气海受损${state.cultivation.qiSeaDamaged ? "1" : "0"}]。`,
+            `灵石[${state.spiritStones}]。功法[${state.techniqueIds.join("/") || "无"}]。配方[${state.recipeIds.join("/") || "无"}]。声望[${state.reputation}]。`,
+            `历练凭证[${state.credentials.join("/") || "无"}]。升仙试[${state.ascensionTrial}]。已解锁地图[${state.unlockedMapIds.join("/")}]。`,
+            `主线阶段[${state.quests.mainStageId}]。当前目标[${getCurrentQingshiObjective(state)}]。时段[第${state.clock.day}日${state.clock.slot}]。`,
+            `体魄[${state.vitality.health}/${state.vitality.maxHealth}]。体力[${state.vitality.stamina}/${state.vitality.maxStamina}]。伤势[${state.vitality.injury}]。失败恢复[${state.recovery.pending ? "待恢复" : "正常"}]。`,
+            `行囊道具[${(s.inventory ?? []).map((item) => item.id).slice(0, 48).join("/") || "无"}]。在场NPC[${presentNpcIds.join("/") || "无"}]。`,
+          ].join("");
+        }
         const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
         const inv = (s.inventory ?? [])
           .map((i) => `${i.name}[${i.id}|${i.tier}]`)
@@ -2434,36 +2494,11 @@ export const useGameStore = create<GameState>()(
           }
         })();
 
-        const directorBlock = (() => {
-          try {
-            const director = (s as any).storyDirector ?? createEmptyDirectorState((s.logs ?? []).length);
-            const incidentQueue = normalizeIncidentQueue((s as any).incidentQueue ?? createEmptyIncidentQueue());
-            const nowTurn = Math.max(0, (s.logs ?? []).length);
-            const fired = (incidentQueue.items ?? [])
-              .filter((x) => x.status === "fired" && x.dueTurn <= nowTurn)
-              .sort((a, b) => (b.dueTurn ?? 0) - (a.dueTurn ?? 0))[0] ?? null;
-            const preview = buildIncidentDigest(incidentQueue, nowTurn);
-            const plan = {
-              beatMode: ((director as any).lastBeatMode as any) || (director.tension >= 65 ? "pressure" : director.stallCount >= 2 ? "pressure" : "quiet"),
-              mustAdvance: (director.stallCount ?? 0) >= 2,
-              mustRecallHookCodes: Array.isArray((director as any).lastRecallHooks) ? (director as any).lastRecallHooks : [],
-              preferredIncidentCode: (director as any).lastFiredIncidentCode ?? null,
-              softPressureHint: null,
-              hardConstraint: null,
-              suppressions: [],
-              pressureFlags: Array.isArray((director as any).lastPressureFlags) ? (director as any).lastPressureFlags : [],
-            } as any;
-            return buildDirectorPromptBlock({
-              plan,
-              armedIncident: fired,
-              incidentPreviewCodes: [...(preview.armedCodes ?? []), ...(preview.pendingCodes ?? [])],
-              chapter: (director as any).chapter ?? null,
-              maxChars: 360,
-            });
-          } catch {
-            return "";
-          }
-        })();
+        // The persisted `storyDirector` remains the deterministic Pacing &
+        // Chapter Controller, but it no longer emits a second free-text Writer
+        // direction. The server consumes its bounded `directorDigest` signals
+        // only after validating enums, ranges and registered IDs.
+        const directorBlock = "";
 
         let npcHeartViewsCache: Array<ReturnType<typeof buildNpcHeartRuntimeView>> = [];
         const npcHeartBlock = (() => {
@@ -2916,6 +2951,11 @@ export const useGameStore = create<GameState>()(
         const chapterBudget = resolveChapterNarrativeBudget(chapterDefinition);
         return {
           v: 1 as const,
+          worldId: s.worldId,
+          mapId: s.mapId,
+          ...(s.worldId === XINGNI_WORLD_ID && s.worldState
+            ? { worldStateDigest: JSON.parse(JSON.stringify(s.worldState)) as XingniTaichuState }
+            : {}),
           guestId: s.guestId ?? null,
           isGuest: Boolean(s.isGuest ?? !s.user),
           turnIndex: (s.logs ?? []).length,
@@ -3668,9 +3708,9 @@ export const useGameStore = create<GameState>()(
 
       saveGame: (slotId) => {
         const s = get();
-        // 单线时间线：只写 main_slot
+        // 每个世界保持一条主时间线；世界之间使用独立槽位。
         void slotId;
-        const effectiveSlotId = "main_slot";
+        const effectiveSlotId = getMainSaveSlotId(s.worldId);
         const safeStats = s.stats ?? DEFAULT_STATS;
         const chapterState = normalizeChapterState(s.chapterState);
         const endingForSave = normalizeEndingState(s.endingState);
@@ -3722,6 +3762,10 @@ export const useGameStore = create<GameState>()(
           snapshotSummary: summary,
         });
         const snapshot = buildRunSnapshotV2({
+          worldId: s.worldId,
+          mapId: s.mapId,
+          unlockedMapIds: s.unlockedMapIds,
+          worldState: s.worldState,
           slotMeta: baseMeta,
           runId: runIdForSave,
           startedAt: s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.startedAt,
@@ -3787,6 +3831,10 @@ export const useGameStore = create<GameState>()(
         });
         const legacyProjection = projectSnapshotToLegacy(snapshot);
         const data: SaveSlotData = {
+          worldId: s.worldId,
+          mapId: s.mapId,
+          unlockedMapIds: JSON.parse(JSON.stringify(s.unlockedMapIds)),
+          worldState: JSON.parse(JSON.stringify(s.worldState)),
           slotMeta: {
             ...baseMeta,
             runId: snapshot.meta.runId,
@@ -3893,8 +3941,8 @@ export const useGameStore = create<GameState>()(
       },
 
       loadGame: (slotId) => {
-        // 单线时间线：禁止读取其它分支/槽位，避免时间线回退
-        if (slotId !== "main_slot") return;
+        // 每个世界仅允许读取其主槽；不同世界可并存。
+        if (slotId !== "main_slot" && slotId !== "main:xingni_taichu") return;
         const data = get().saveSlots[slotId];
         if (!data) return;
         let normalizedSnapshot = normalizeRunSnapshotV2(
@@ -3958,6 +4006,10 @@ export const useGameStore = create<GameState>()(
           snapshotSummary: buildFallbackSummaryFromLegacy(data),
         });
         set({
+          worldId: normalizedSnapshot.worldId ?? DARK_MOON_WORLD_ID,
+          mapId: normalizedSnapshot.mapId ?? DARK_MOON_MAP_ID,
+          unlockedMapIds: normalizedSnapshot.unlockedMapIds ?? [DARK_MOON_MAP_ID],
+          worldState: normalizedSnapshot.worldState ?? null,
           currentSaveSlot: slotId,
           saveSlots: pruneVisibleSaveSlots(
             {
@@ -4126,6 +4178,10 @@ export const useGameStore = create<GameState>()(
           const hasProgress = Array.isArray(loadedLogs) && loadedLogs.length > 0;
           void hasProgress;
           return {
+            worldId: normalizedSnapshot.worldId ?? DARK_MOON_WORLD_ID,
+            mapId: normalizedSnapshot.mapId ?? DARK_MOON_MAP_ID,
+            unlockedMapIds: normalizedSnapshot.unlockedMapIds ?? [DARK_MOON_MAP_ID],
+            worldState: normalizedSnapshot.worldState ?? null,
             currentSaveSlot: slotId,
             saveSlots: pruneVisibleSaveSlots(
               {
@@ -4321,6 +4377,10 @@ export const useGameStore = create<GameState>()(
       },
       // Excludes transient UI: isHydrated, storageMode, currentOptions, recentOptions, inputMode, intrusionFlashUntil
       partialize: (s) => ({
+        worldId: s.worldId,
+        mapId: s.mapId,
+        unlockedMapIds: s.unlockedMapIds,
+        worldState: s.worldState,
         currentSaveSlot: s.currentSaveSlot,
         saveSlots: s.saveSlots ?? {},
         user: s.user ?? null,

@@ -69,6 +69,9 @@ export type RuntimeLoreTaskType = TaskType | "BACKGROUND";
 export type RetrievalIntentType = "scene" | "character" | "rule" | "private" | "shared";
 
 export interface RuntimeLoreRequest {
+  /** Explicit content isolation boundary. Legacy callers default to Dark Moon. */
+  worldId?: "dark_moon_prologue" | "xingni_taichu";
+  mapId?: "dark_moon_apartment" | "xingni_qingshi_county" | "xingni_qingyun_ferry";
   latestUserInput: string;
   userId: string | null;
   sessionId: string | null;
@@ -212,4 +215,3 @@ export interface PromptInjectionPayload {
 }
 
 export type LoreReranker = (candidates: RetrievalCandidate[], ctx: { playerContext: string }) => Promise<RetrievalCandidate[]>;
-

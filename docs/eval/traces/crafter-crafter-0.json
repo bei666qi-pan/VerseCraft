@@ -1,0 +1,162 @@
+{
+  "runId": "crafter-forge-economy-1786527205973",
+  "persona": "crafter",
+  "personaConfig": {
+    "name": "工匠型玩家",
+    "systemPrompt": "你是一个擅长锻造、修理和资源管理的工匠型玩家。你的核心乐趣在于打造和优化装备。\n- 优先寻找锻造NPC（如老刘、N-008）并与之互动\n- 每次锻造前仔细核对材料（铁矿石、铜线等）是否足够\n- 关注原石余额，主动询问锻造/修理价格，比较性价比\n- 尝试不同材料组合锻造不同武器\n- 修理低稳定度的装备，关注装备耐久\n- 管理行囊和仓库物品，合理调配资源\n- 尝试用材料换取武器/道具而不是用原石\n- 与NPC讨价还价，关注交易公平性\n- 如果材料不足，主动寻找获取材料的方法\n- 每次行动后核对自己拥有的物品变化"
+  },
+  "scenarioId": "crafter-forge-economy",
+  "description": "工匠画像：锻造武器、修理装备、管理原石和材料、与NPC交易",
+  "campaignGoal": "在B1安全区找到锻造师N-008（老刘），利用手头的材料和原石锻造/修理装备，优化自己的战斗配置，探索交易和资源管理的各种可能性。",
+  "initialState": {
+    "originium": 10,
+    "location": "B1_PowerRoom",
+    "profession": "守灯人",
+    "weapon": "WPN-3F-IRON-PIPE",
+    "weaponBag": [
+      {
+        "id": "WPN-3F-IRON-PIPE",
+        "name": "三楼消防铁管",
+        "stability": 48,
+        "contamination": 12,
+        "repairable": true
+      },
+      {
+        "id": "WPN-CLOCK-PIN",
+        "name": "时针刺",
+        "stability": 72,
+        "contamination": 3,
+        "repairable": false
+      }
+    ],
+    "weaponStability": 48,
+    "weaponContamination": 12,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage",
+      "I-C03",
+      "I-C01",
+      "I-C02"
+    ],
+    "inventoryItemCount": 5,
+    "warehouseItemIds": [
+      "W-B101"
+    ],
+    "presentNpcIds": [
+      "N-008"
+    ],
+    "hp": 10,
+    "sanity": 75
+  },
+  "steps": [
+    {
+      "stepIndex": 0,
+      "playerAction": "查看周围环境，寻找锻造师老刘的所在位置。",
+      "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+        "is_death": false,
+        "consumes_time": false,
+        "consumed_items": [],
+        "options": [],
+        "internal_meta": {
+          "action": "site_fallback",
+          "request_id": "vc_chat_mspw1dqv_deebfc24d1bf07",
+          "reason": "server_internal_generation_failed",
+          "kind": "site_unavailable"
+        }
+      },
+      "stateAfter": {
+        "originium": 10,
+        "location": "B1_PowerRoom",
+        "hp": 10,
+        "sanity": 75,
+        "weaponStability": 48,
+        "weaponContamination": 12,
+        "inventoryItemCount": 5,
+        "equippedWeapon": "WPN-3F-IRON-PIPE",
+        "weaponBag": [
+          {
+            "id": "WPN-3F-IRON-PIPE",
+            "name": "三楼消防铁管",
+            "stability": 48,
+            "contamination": 12,
+            "repairable": true
+          },
+          {
+            "id": "WPN-CLOCK-PIN",
+            "name": "时针刺",
+            "stability": 72,
+            "contamination": 3,
+            "repairable": false
+          }
+        ]
+      },
+      "metrics": {
+        "latencyMs": 95811
+      },
+      "transport": {
+        "status": "degraded",
+        "aiStatus": null
+      }
+    }
+  ],
+  "terminatedReason": "error",
+  "totalSteps": 1,
+  "durationMs": 224166,
+  "degradedSteps": 2,
+  "narrativeConsistency": {
+    "overallScore": 5,
+    "passed": true,
+    "dimensionScores": {
+      "coherence": 5,
+      "characterVoice": 5,
+      "plotLogic": 5,
+      "immersion": 5,
+      "factConsistency": 5,
+      "weaponConsistency": 5,
+      "professionConsistency": 5
+    },
+    "issues": []
+  },
+  "forgeMetrics": {
+    "forgeEvents": 0,
+    "economyEvents": 0,
+    "tradeEvents": 0,
+    "warehouseEvents": 0,
+    "forgeTransactions": [],
+    "resourceConservations": []
+  },
+  "stateDelta": {
+    "originium": {
+      "from": 10,
+      "to": 10
+    },
+    "stability": {
+      "from": 48,
+      "to": 48
+    },
+    "contamination": {
+      "from": 12,
+      "to": 12
+    },
+    "inventory": {
+      "from": 5,
+      "to": 5
+    },
+    "hp": {
+      "from": 10,
+      "to": 10
+    },
+    "sanity": {
+      "from": 75,
+      "to": 75
+    },
+    "location": {
+      "from": "B1_PowerRoom",
+      "to": "B1_PowerRoom"
+    }
+  }
+}

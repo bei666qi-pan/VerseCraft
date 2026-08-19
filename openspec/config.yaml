@@ -2,18 +2,29 @@ schema: spec-driven
 
 # This context is supplied to configured coding agents whenever they create or update OpenSpec artifacts.
 context: |
-  VerseCraft（文界工坊）是单机、浏览器内运行、AI 驱动的中文互动叙事游戏平台原型；
-  当前主世界为「序章·暗月」。所有产品 UI 文案默认使用简体中文。
+  VerseCraft（文界工坊）是由浏览器客户端、Next.js 服务端和后台 worker 组成的
+  AI 驱动单人互动叙事运行时。当前 world types/catalog 定义并登记「序章·暗月」和
+  「星逆·太初」；世界与地图必须按 worldId/mapId 隔离，实际可进入状态以 catalog、
+  服务端开关和运行时代码为准。
+  游戏语言默认 zh-CN，并支持 en-US。
   技术栈固定为 Next.js 16 App Router、React 19、TypeScript、Tailwind CSS v4、Zustand 5、
   Drizzle + PostgreSQL 和 IndexedDB。包管理器为 pnpm@10，Node.js 基线为 >=22.22.0。
+  目标产品架构只有一个玩家可见叙事责任主体 Writer；enhance、润色、扩写和翻译只能作为
+  Writer 内部能力，不能成为第二叙事权威。PLAYER_CHAT 优先通过 submit_player_turn Function
+  Calling/结构化输出提交候选，但候选仍必须经过 normalization、guards、validators、
+  resolveDmTurn 和 commit。Writer 不裁决领域规则、不直接写状态或权威 final。
+  后台 Director 通过 worker 异步推演 plan/agenda，可使用有界最小权限工具；其候选经校验、
+  持久化后只以方向性 hint 引导后续 Writer，不进入当前回合首字前路径，也不直接提交玩家状态。
   /api/chat 是在线回合主链路：必须维持 200 + text/event-stream、status 帧、
   __VERSECRAFT_FINAL__ 终帧覆盖规则以及 keys_missing SSE 降级。模型 JSON 是候选；
   结构化 state delta、guard、validator 和 resolveDmTurn 才是状态真相源。
-  useGameStore 是唯一主游戏 store，并保留 skipHydration: true 和显式 rehydrate()。
+  useGameStore 是主游戏权威状态的唯一客户端 store（辅助 UI/成就 store 可以存在），并保留
+  skipHydration: true 和显式 rehydrate()。
   不将 reasoner、重型检索、数据库写入、analytics rollup 或 world tick 放进首字前路径；
   在线回合只裁决当前回合，后台世界演化交给 worker。新增叙事或 lore 行为必须保持
   epistemic filtering 和 post-generation validation，且不把 narrative 当作可解析状态。
-  开始实施前请先阅读根目录 AGENTS.md；它是完整的架构、兼容性与验证约束来源。
+  开始实施前先读取根目录 AGENTS.md，并以当前代码、测试、配置和已同步主 specs 验证实现事实；
+  AGENTS.md 是目标架构契约、风险索引与执行流程，不得用于自证当前实现。
 
 rules:
   proposal:

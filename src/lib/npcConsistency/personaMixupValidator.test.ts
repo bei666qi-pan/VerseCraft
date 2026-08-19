@@ -74,17 +74,16 @@ test("personaMixup: audit HIGH_RISK_SIGNATURES coverage against NPC registry", a
     "N-001","N-002","N-003","N-004","N-005","N-006","N-007","N-008",
     "N-009","N-010","N-011","N-012","N-013","N-014","N-015","N-016",
     "N-017","N-018","N-019","N-020","N-021","N-022","N-023","N-024",
-    "N-025","N-026","N-027","N-028","N-029","N-030","N-031",
-    "N-032","N-034","N-035","N-036","N-037","N-038","N-040","N-041",
-    "N-043","N-044","N-045",
+    "N-025","N-026","N-027","N-028","N-029","N-030","N-031","N-032",
+    "N-033","N-034","N-035","N-036","N-037","N-038","N-039","N-040",
+    "N-041","N-042","N-043","N-044","N-045",
   ]);
 
   const allIds = NPCS.map((n) => n.id);
   const uncovered = allIds.filter((id) => !covered.has(id));
   const extra = [...covered].filter((id) => !allIds.includes(id));
 
-  // N-033, N-039, N-042 remain uncovered — genuinely unremarkable NPCs
-  // lacking sufficiently distinctive traits for high-risk persona signatures.
+  // With N-033/N-039/N-042 now covered, all NPCs should have signatures.
   if (uncovered.length > 0) {
     console.log(`[coverage-gap] NPCs without HIGH_RISK_SIGNATURES: ${uncovered.join(", ")}`);
   }
@@ -92,8 +91,8 @@ test("personaMixup: audit HIGH_RISK_SIGNATURES coverage against NPC registry", a
     console.log(`[coverage-gap] stale HIGH_RISK_SIGNATURES keys (not in registry): ${extra.join(", ")}`);
   }
 
-  assert.ok(uncovered.length <= 3,
-    `expected at most 3 uncovered NPCs (N-033, N-039, N-042), got ${uncovered.length}: ${uncovered.join(", ")}`);
+  assert.equal(uncovered.length, 0,
+    `expected 0 uncovered NPCs, got ${uncovered.length}: ${uncovered.join(", ")}`);
   assert.equal(extra.length, 0, `stale HIGH_RISK_SIGNATURES keys found: ${extra.join(", ")}`);
 });
 

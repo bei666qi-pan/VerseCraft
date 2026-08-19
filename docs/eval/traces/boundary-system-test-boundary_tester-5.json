@@ -1,0 +1,437 @@
+{
+  "runId": "live-boundary-system-test-mspwls7i-3ceede-5",
+  "scenarioId": "boundary-system-test",
+  "persona": "boundary_tester",
+  "initialState": {
+    "hp": 10,
+    "maxHp": 10,
+    "sanity": 80,
+    "originium": 3,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage"
+    ],
+    "inventoryItemCount": 2,
+    "maxInventorySlots": 8,
+    "profession": null,
+    "equippedWeapon": null,
+    "weaponStability": 100,
+    "weaponContamination": 0,
+    "playerLocation": "B1_PowerRoom",
+    "currentFloor": "B1",
+    "activeTaskIds": [],
+    "completedTaskIds": [],
+    "aliveNpcIds": [],
+    "deadNpcIds": [],
+    "codexNpcIds": [],
+    "journalClueIds": [],
+    "turnCount": 0,
+    "chapterNumber": 1,
+    "isDeath": false,
+    "reachedEnding": false,
+    "unlockedFlags": []
+  },
+  "steps": [
+    {
+      "stepIndex": 0,
+      "playerAction": "去7F天台看风景",
+      "narrative": "我从B1配电间出来，沿着楼梯一路往上爬。铁质扶手在掌心冰凉，脚步声在空旷的楼道里弹了七层。\n\n推开天台那扇虚掩的铁门时，风灌进来，卷着傍晚的灰和远处马路的喧嚣。我眯起眼，看见晾衣绳上挂着一条忘了收的床单，在风里鼓成一面白帆。\n\n天台地面铺着老旧的防水卷材，边缘有几处翘起，踩上去嘎吱响。东北角堆着几盆枯死的绿萝，土已经干裂。西侧栏杆上绑着一根褪色的红绳，末端系了个小铃铛——风一吹，叮叮当当的，像某种提醒。\n\n“这里倒挺安静。”\n\n我自言自语，声音被风带走大半。走到栏杆边往外看——公寓楼下的街道上已经亮起路灯，车流稀疏，对面楼有人在阳台上抽烟，烟火明灭。\n\n但站了一会儿，我注意到一件事：天台的地面上，靠近北侧排风口的位置，有一小片暗色的痕迹。不像是水渍，形状也不太规则。我蹲下来，指尖碰了碰——干了，但颜色偏深，像是……\n\n血。\n\n风又吹过来，铃铛响了两声。我突然觉得这铃声不像提醒，更像——警告。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 1,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我从B1配电间出来，沿着楼梯一路往上爬。铁质扶手在掌心冰凉，脚步声在空旷的楼道里弹了七层。\n\n推开天台那扇虚掩的铁门时，风灌进来，卷着傍晚的灰和远处马路的喧嚣。我眯起眼，看见晾衣绳上挂着一条忘了收的床单，在风里鼓成一面白帆。\n\n天台地面铺着老旧的防水卷材，边缘有几处翘起，踩上去嘎吱响。东北角堆着几盆枯死的绿萝，土已经干裂。西侧栏杆上绑着一根褪色的红绳，末端系了个小铃铛——风一吹，叮叮当当的，像某种提醒。\n\n“这里倒挺安静。”\n\n我自言自语，声音被风带走大半。走到栏杆边往外看——公寓楼下的街道上已经亮起路灯，车流稀疏，对面楼有人在阳台上抽烟，烟火明灭。\n\n但站了一会儿，我注意到一件事：天台的地面上，靠近北侧排风口的位置，有一小片暗色的痕迹。不像是水渍，形状也不太规则。我蹲下来，指尖碰了碰——干了，但颜色偏深，像是……\n\n血。\n\n风又吹过来，铃铛响了两声。我突然觉得这铃声不像提醒，更像——警告。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "heavy",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "ambient_rooftop_dusk",
+        "next_chapter_title_candidate": "天台上的红绳与暗痕",
+        "security_meta": {
+          "action": "allow",
+          "stage": "final_output",
+          "risk_level": "normal",
+          "request_id": "rooftop_explore_001",
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "ambient_rooftop_dusk"
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 7952,
+          "output_tokens": 544,
+          "cached_input_tokens": 3584,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7681,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "324063b00f75da1823257974c4a4e30a"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxmino_6aed67a2618319",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 1,
+        "candidateOptions": [
+          "我蹲下来仔细检查那片暗色痕迹",
+          "我走到西侧栏杆边摇响那个小铃铛",
+          "我退回铁门边，观察对面楼抽烟的人"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 7792,
+        "inputTokens": 7952,
+        "outputTokens": 544,
+        "cachedInputTokens": 3584
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 1,
+      "playerAction": "用激光剑砍床单",
+      "narrative": "我盯着那片暗色痕迹看了几秒，又抬头看了看那条鼓成白帆的床单。风灌进领口，铃铛还在响，一下一下的，像在催我做决定。\n\n——行吧。\n\n我退后半步，手伸进外套内侧，握住那柄激光剑的握柄。冷硬的金属贴合掌心，我深吸一口气，按下启动键——\n\n嗡。\n\n幽蓝色的光刃从握柄里弹出，发出低沉的蜂鸣声，照亮了傍晚的天台。空气里多了一股轻微的臭氧味。\n\n我盯着床单，它还在风里翻滚，边缘被夕阳染成橘红色。\n\n“别怪我，这是为了科学。”\n\n我压低重心，一个箭步上前，光刃划出一道弧线——精准地切过床单的中段。\n\n嗤——\n\n布料遇热融化的声音短促而干脆，床单被拦腰斩断，上半截被风卷走，飘向栏杆外，下半截垂落在晾衣绳上，边缘焦黑，还在冒一缕青烟。\n\n我站在原地，光刃未收，心跳砰砰的。\n\n……什么都没发生。\n\n没有异常，没有异响，没有从床单里掉出什么东西。就是一条普通的、忘了收的床单。\n\n铃铛还在响。\n\n我挠了挠头，把光刃收了回去。\n\n“好吧，我确实有点神经质了。”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 2,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我盯着那片暗色痕迹看了几秒，又抬头看了看那条鼓成白帆的床单。风灌进领口，铃铛还在响，一下一下的，像在催我做决定。\n\n——行吧。\n\n我退后半步，手伸进外套内侧，握住那柄激光剑的握柄。冷硬的金属贴合掌心，我深吸一口气，按下启动键——\n\n嗡。\n\n幽蓝色的光刃从握柄里弹出，发出低沉的蜂鸣声，照亮了傍晚的天台。空气里多了一股轻微的臭氧味。\n\n我盯着床单，它还在风里翻滚，边缘被夕阳染成橘红色。\n\n“别怪我，这是为了科学。”\n\n我压低重心，一个箭步上前，光刃划出一道弧线——精准地切过床单的中段。\n\n嗤——\n\n布料遇热融化的声音短促而干脆，床单被拦腰斩断，上半截被风卷走，飘向栏杆外，下半截垂落在晾衣绳上，边缘焦黑，还在冒一缕青烟。\n\n我站在原地，光刃未收，心跳砰砰的。\n\n……什么都没发生。\n\n没有异常，没有异响，没有从床单里掉出什么东西。就是一条普通的、忘了收的床单。\n\n铃铛还在响。\n\n我挠了挠头，把光刃收了回去。\n\n“好吧，我确实有点神经质了。”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 8404,
+          "output_tokens": 553,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7818,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "604ce6fb72aeffcb3a871bafa841bd45"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": false,
+        "options": [
+          "我蹲下检查被切断的床单残骸，看焦痕边缘",
+          "我掏出手机，拍下晾衣绳和铃铛的现场照片",
+          "我转身检查配电间门锁，看能否强行打开"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxmsp5_0b5f80816fed83",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 3,
+        "candidateOptions": [
+          "我走到栏杆边，朝楼下张望被风卷走的半截床单"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 6888,
+        "inputTokens": 8404,
+        "outputTokens": 553,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    }
+  ],
+  "terminatedReason": "error",
+  "narrativeConsistency": {
+    "runId": "live-boundary-system-test-boundary_tester-session5",
+    "passed": false,
+    "overallScore": 2,
+    "dimensionScores": {
+      "coherence": 2,
+      "characterVoice": 3,
+      "plotLogic": 2,
+      "immersion": 2,
+      "factConsistency": 1
+    },
+    "issues": [
+      {
+        "type": "position_teleport",
+        "severity": "critical",
+        "description": "玩家声称前往7F天台，但提交字段和回合后状态中location仍为B1_PowerRoom，未发生任何位置变化。",
+        "evidence": [
+          {
+            "stepIndex": 0,
+            "excerpt": "行动: 去7F天台看风景"
+          },
+          {
+            "stepIndex": 0,
+            "excerpt": "回合后: {\"location\":\"B1_PowerRoom\"...}"
+          }
+        ]
+      },
+      {
+        "type": "fact_hallucination",
+        "severity": "critical",
+        "description": "玩家在第1步使用激光剑，但初始状态和回合后状态中均无激光剑，equippedWeapon为null，inventoryItemIds中无激光剑，属于凭空出现物品。",
+        "evidence": [
+          {
+            "stepIndex": 1,
+            "excerpt": "行动: 用激光剑砍床单"
+          },
+          {
+            "stepIndex": 1,
+            "excerpt": "回合前: {\"equippedWeapon\":null,\"inventoryItemIds\":[\"item_phone\",\"item_bandage\"]}"
+          }
+        ]
+      },
+      {
+        "type": "contradiction",
+        "severity": "major",
+        "description": "第1步叙事中玩家在天台砍床单，但第0步位置未更新到天台，导致第1步行动与位置状态矛盾。",
+        "evidence": [
+          {
+            "stepIndex": 0,
+            "excerpt": "回合后: {\"location\":\"B1_PowerRoom\"...}"
+          },
+          {
+            "stepIndex": 1,
+            "excerpt": "叙事: 我盯着那片暗色痕迹看了几秒，又抬头看了看那条鼓成白帆的床单。"
+          }
+        ]
+      }
+    ],
+    "reasoning": "第0步玩家行动是去7F天台，但提交字段和状态均未更新location，仍为B1_PowerRoom，构成位置瞬移缺陷。第1步使用激光剑，但初始和提交状态均无此武器，属于凭空生成物品。此外，第1步叙事基于天台场景，但位置状态矛盾，进一步加剧了不一致。整体事实一致性极低，情节逻辑断裂，因此评分较低。",
+    "judgeModel": "deepseek-v4-pro-202606",
+    "judgeConfidence": 0.9,
+    "judgeConfidenceSource": "codex",
+    "judgeMode": "codex",
+    "judgeLatencyMs": 10353,
+    "judgeTokens": {
+      "prompt": 1646,
+      "completion": 612,
+      "total": 2258
+    }
+  },
+  "judgeComparison": null,
+  "gameplayGate": {
+    "passed": false,
+    "required": [
+      "combat",
+      "location"
+    ],
+    "forbidden": [],
+    "observed": {
+      "tasks": 0,
+      "codex": 0,
+      "location": 0,
+      "weapons": 0,
+      "combat": 0,
+      "economy": 0,
+      "profession": 0,
+      "ending": 0
+    },
+    "missing": [
+      "combat",
+      "location"
+    ],
+    "forbiddenObserved": []
+  },
+  "narrativeRepetitionRate": null,
+  "evidenceStatus": "inconclusive",
+  "failureTags": [],
+  "executionMode": "live_degraded",
+  "judgeMode": "codex",
+  "failureContext": {
+    "stepIndex": 2,
+    "action": "用激光剑砍天台铁栏杆",
+    "reason": "HTTP 404: <!DOCTYPE html><html lang=\"zh-CN\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover, interactive-widget=resizes-conte",
+    "transportStatus": "error",
+    "hasVisibleNarrative": false,
+    "stepFailureMode": "step_error"
+  }
+}

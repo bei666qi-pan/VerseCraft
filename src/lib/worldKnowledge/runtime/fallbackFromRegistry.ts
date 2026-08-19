@@ -3,6 +3,21 @@ import { toLoreEvidenceBundleEntry } from "../canon/adapters";
 import { gateCandidatesForLorePacketV1 } from "../reveal/revealGate";
 import type { LoreFact, LorePacket, RetrievalPlan, RuntimeLoreRequest } from "../types";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { QINGSHI_LOCATIONS, QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
+
+function buildXingniFallbackFacts(): LoreFact[] {
+  const locationFacts = Object.entries(QINGSHI_LOCATIONS).map(([id, location]) => ({
+    identity: { factKey: `xingni:${id}` }, layer: "core_canon" as const, factType: "location" as const,
+    canonicalText: `${location.name}：${location.description}`, normalizedHash: `xingni:${id}`,
+    tags: ["xingni_taichu", "qingshi", id], source: { kind: "registry" as const }, isHot: true,
+  }));
+  const npcFacts = QINGSHI_NPCS.map((npc) => ({
+    identity: { factKey: `xingni:${npc.id}` }, layer: "core_canon" as const, factType: "npc" as const,
+    canonicalText: `${npc.name}，${npc.realm}，${npc.role}；活动范围仅限${npc.allowedLocations.join("、")}。`, normalizedHash: `xingni:${npc.id}`,
+    tags: ["xingni_taichu", "qingshi", npc.id], source: { kind: "registry" as const }, isHot: true,
+  }));
+  return [...locationFacts, ...npcFacts];
+}
 
 function scoreFallbackFact(f: LoreFact, req: RuntimeLoreRequest, plan: RetrievalPlan): number {
   const text = `${f.identity.factKey} ${f.canonicalText}`.toLowerCase();
@@ -29,7 +44,7 @@ export function buildRegistryFallbackLorePacket(args: {
   plan: RetrievalPlan;
   reason: "db_error" | "db_empty";
 }): LorePacket {
-  const all = buildCoreCanonFactsFromRegistry();
+  const all = args.input.worldId === "xingni_taichu" ? buildXingniFallbackFacts() : buildCoreCanonFactsFromRegistry();
   const scored = [...all]
     .map((f) => ({ fact: f, score: scoreFallbackFact(f, args.input, args.plan) }))
     .sort((a, b) => b.score - a.score)

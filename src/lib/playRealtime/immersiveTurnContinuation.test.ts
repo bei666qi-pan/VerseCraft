@@ -34,5 +34,5 @@ test("site fallback DM is contract-shaped and explicit", () => {
   assert.equal(dm.is_action_legal, false);
   assert.equal(dm.consumes_time, false);
   assert.match(dm.narrative, /网站|繁忙/);
-  assert.equal(dm.internal_meta.action, "site_fallback");
+  assert.equal(dm.internal_meta.action, "site_service_msg");
 });

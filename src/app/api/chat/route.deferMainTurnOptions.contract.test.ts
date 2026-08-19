@@ -11,6 +11,11 @@ test("api/chat: defer main-turn options skips post-resolve LLM regen when gated"
 
   const deferDecl = content.indexOf("const deferPlayableOptsToSeparateRequest =");
   assert.ok(deferDecl >= 0, "missing deferPlayableOptsToSeparateRequest");
+  assert.match(
+    content.slice(deferDecl, deferDecl + 240),
+    /clientPurpose !== "options_regen_only" && !isMockScenario/,
+    "normal main turns must keep optional options repair off the FINAL critical path",
+  );
 
   const gateIdx = content.indexOf("!deferPlayableOptsToSeparateRequest", deferDecl);
   assert.ok(gateIdx >= 0, "defer gate must skip at least one LLM options path");

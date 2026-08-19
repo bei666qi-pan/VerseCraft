@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { detectWorldEngineTriggers, parseWorldEngineDeltaJson } from "@/lib/worldEngine/contracts";
 import { validateDirectorPlan } from "@/lib/worldEngine/validator";
+import {
+  getWorldDirectorCapabilityProfile,
+  validateDirectorPlanCapabilities,
+} from "@/lib/worldEngine/directorCapabilities";
+import { QINGSHI_MAP_ID, XINGNI_WORLD_ID } from "@/lib/worlds/types";
+import { applySubtractiveCriticDecision } from "@/lib/worldEngine/directorCritic";
 
 test("detectWorldEngineTriggers emits expected trigger categories", () => {
   const got = detectWorldEngineTriggers({
@@ -528,4 +536,95 @@ test("validateDirectorPlan rejects high agency or spoiler plans for agenda", () 
 test("parseWorldEngineDeltaJson returns null on invalid root", () => {
   assert.equal(parseWorldEngineDeltaJson("not-json"), null);
   assert.equal(parseWorldEngineDeltaJson("[]"), null);
+});
+
+test("critic can only subtract from the deterministic accepted set", () => {
+  const validation = {
+    accepted: true,
+    acceptedEventCodes: ["EV_KEEP", "EV_REMOVE"],
+    rejectedEventCodes: ["EV_RULE_REJECT"],
+    acceptedSocialEventCodes: [],
+    rejectedSocialEventCodes: [],
+    issues: [],
+  };
+  const result = applySubtractiveCriticDecision(validation, {
+    accept: true,
+    accepted_event_codes: ["EV_KEEP", "EV_RULE_REJECT", "EV_INVENTED"],
+    reject_reasons: [],
+  });
+  assert.deepEqual(result.acceptedEventCodes, ["EV_KEEP"]);
+  assert.deepEqual(result.rejectedEventCodes.sort(), ["EV_REMOVE", "EV_RULE_REJECT"].sort());
+  assert.equal(result.acceptedEventCodes.includes("EV_RULE_REJECT"), false);
+  assert.equal(result.acceptedEventCodes.includes("EV_INVENTED"), false);
+});
+
+test("xingni world director uses the shared capability-gated soft workflow", () => {
+  const source = readFileSync(join(process.cwd(), "src/lib/worldEngine/engine.ts"), "utf8");
+  assert.match(source, /world_id: input\.payload\.worldId \?\? "dark_moon_prologue"/);
+  assert.match(source, /map_id: input\.payload\.mapId \?\? "dark_moon_apartment"/);
+  assert.match(source, /getWorldDirectorCapabilityProfile\(payload\)/);
+  assert.match(source, /validateDirectorPlanCapabilities/);
+  assert.match(source, /buildXingniActorSimulationContext/);
+  assert.doesNotMatch(source, /projectXingniPacingOnlyPlan/);
+  assert.match(source, /只可使用 capability_profile 中登记的青石县/);
+  assert.match(source, /必须逐字复制 capability_profile 对应 registered_\*_ids/);
+  assert.match(source, /if no registered candidate fits, emit an empty array/);
+});
+
+test("xingni capability validation removes invented facts but keeps registered content", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    schema_version: "director_plan_v1",
+    director_intent: "用已登记微事件调节节奏",
+    current_phase: "quiet",
+    target_phase: "build_up",
+    pacing_assessment: { tension: 0.4, mystery: 0.5, fatigue: 0.2, progress: 0.3, agency_health: 0.8, reveal_pressure: 0.2 },
+    risk_assessment: { agency_risk: "low", continuity_risk: "low", spoiler_risk: "low", safety_risk: "low" },
+    reveal_policy: "hold",
+    npc_next_actions: [
+      { npc_code: "NEW_NPC", action: "move", urgency: "high", eta_turns: 1 },
+      { npc_code: "XQ-N001", action: "observe", urgency: "medium", eta_turns: 1 },
+    ],
+    world_events_to_schedule: [
+      {
+        event_code: "NEW_EVENT",
+        title: "临时事件",
+        due_in_turns: 1,
+        ttl_turns: 2,
+        priority: "low",
+        salience: 0.4,
+        trigger_conditions: ["always"],
+        injection_hint: "一个没有登记来源的新敌人突然出现在青石县街口。",
+        agency_constraints: ["玩家可以避开"],
+        forbidden_outcomes: ["不得强制失败"],
+        payload: { type: "environmental_change" },
+      },
+      {
+        event_code: "XQ-EV01",
+        title: "登记微事件",
+        due_in_turns: 1,
+        ttl_turns: 2,
+        priority: "low",
+        salience: 0.4,
+        trigger_conditions: ["雨后"],
+        injection_hint: "雨后的青石县街角飘来药香，行人脚步略微放缓。",
+        agency_constraints: ["玩家可以忽略"],
+        forbidden_outcomes: ["不得直接结算任务"],
+        payload: { event_id: "XQ-EV01", type: "environmental_change" },
+      },
+    ],
+    story_branch_seeds: [{ seed_code: "NEW_BRANCH", summary: "临时真相", confidence: 0.9 }],
+    consistency_warnings: [{ code: "NEW_WARNING", message: "临时事实", severity: "low" }],
+    player_private_hooks: [{ hook_code: "NEW_HOOK", summary: "临时秘密", ttl_turns: 2 }],
+  }));
+  assert.ok(parsed);
+  const profile = getWorldDirectorCapabilityProfile({ worldId: XINGNI_WORLD_ID, mapId: QINGSHI_MAP_ID });
+  assert.ok(profile);
+  const result = validateDirectorPlanCapabilities(parsed!, profile!);
+  assert.deepEqual(result.plan.npc_next_actions.map((action) => action.npc_code), ["XQ-N001"]);
+  assert.deepEqual(result.plan.world_events_to_schedule.map((event) => event.event_code), ["XQ-EV01"]);
+  assert.deepEqual(result.plan.social_events_to_schedule, []);
+  assert.deepEqual(result.plan.story_branch_seeds, []);
+  assert.deepEqual(result.plan.player_private_hooks, []);
+  assert.ok(result.rejectedCodes.includes("NEW_NPC"));
+  assert.ok(result.rejectedCodes.includes("NEW_EVENT"));
 });

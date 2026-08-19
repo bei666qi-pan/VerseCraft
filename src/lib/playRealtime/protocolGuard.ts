@@ -16,6 +16,9 @@ export interface NarrativeLeakAnalysis {
   hasLeak: boolean;
 }
 
+const EMBEDDED_DM_KEY_RE =
+  /"(?:is_death|sanity_damage|consumes_time|is_action_legal)"\s*(?::|(?:string|boolean|number)\s*=)/i;
+
 function countMatches(text: string, re: RegExp): number {
   const m = text.match(re);
   return m ? m.length : 0;
@@ -31,12 +34,7 @@ export function analyzeNarrativeLeak(text: string): NarrativeLeakAnalysis {
     flags.add("tool_call_markup");
   }
 
-  if (
-    /"is_death"\s*:/.test(t) ||
-    /"sanity_damage"\s*:/.test(t) ||
-    /"consumes_time"\s*:/.test(t) ||
-    /"is_action_legal"\s*:/.test(t)
-  ) {
+  if (EMBEDDED_DM_KEY_RE.test(t)) {
     flags.add("embedded_dm_key");
   }
 
@@ -69,6 +67,25 @@ export function stripTrailingLeakedObject(text: string): string {
   const marker = t.search(/\n{1,3}\s*\{\s*"is_action_legal"\s*:/);
   if (marker <= 0) return t;
   return t.slice(0, marker).trimEnd();
+}
+
+/**
+ * Recover only prose that was fully emitted before an embedded typed DM key.
+ * The polluted key and everything after it are discarded; the returned prefix
+ * is re-audited and is never used to reconstruct structured fields.
+ */
+export function extractSafeNarrativePrefixBeforeProtocolLeak(raw: string): string {
+  let text = stripTrailingLeakedObject(String(raw ?? ""));
+  text = stripToolCallMarkup(text);
+  text = decodeEscapesLight(text).trim();
+  const marker = text.search(EMBEDDED_DM_KEY_RE);
+  if (marker <= 0) return "";
+  const prefix = text
+    .slice(0, marker)
+    .replace(/[\s,，:：;；'"=<>]+$/u, "")
+    .trim();
+  if (Array.from(prefix.replace(/\s+/g, "")).length < 12) return "";
+  return analyzeNarrativeLeak(prefix).hasLeak ? "" : prefix;
 }
 
 function stripToolCallMarkup(text: string): string {

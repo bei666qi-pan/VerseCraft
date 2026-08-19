@@ -1,0 +1,1365 @@
+{
+  "runId": "live-happy-combat-loop-mspx71oh-g7cccj-1",
+  "scenarioId": "happy-combat-loop",
+  "persona": "explorer",
+  "initialState": {
+    "hp": 10,
+    "maxHp": 10,
+    "sanity": 80,
+    "originium": 3,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage"
+    ],
+    "inventoryItemCount": 2,
+    "maxInventorySlots": 8,
+    "profession": null,
+    "equippedWeapon": null,
+    "weaponStability": 100,
+    "weaponContamination": 0,
+    "playerLocation": "旧公寓三楼走廊",
+    "currentFloor": "3F",
+    "activeTaskIds": [],
+    "completedTaskIds": [],
+    "aliveNpcIds": [],
+    "deadNpcIds": [],
+    "codexNpcIds": [],
+    "journalClueIds": [],
+    "turnCount": 0,
+    "chapterNumber": 1,
+    "isDeath": false,
+    "reachedEnding": false,
+    "unlockedFlags": []
+  },
+  "steps": [
+    {
+      "stepIndex": 0,
+      "playerAction": "警惕地观察周围",
+      "narrative": "我贴在走廊墙壁上，屏住呼吸，把目光从脚底那摊水渍慢慢抬起来。\n\n走廊不长，大约七八米，尽头拐角处有一扇半开的门，门缝里透出一道昏黄的灯光。日光灯管在我头顶嗡嗡作响，每隔几秒就闪一下，把墙上的影子拉长又压扁。\n\n空气里有股潮湿的灰尘味，混着一点点——像是煮过头的白菜——食堂的气味。这栋公寓的格局跟我学校教学楼有点像，但更旧，走廊更窄，墙皮起泡剥落，露出底下灰绿色的水泥。\n\n没人。\n\n但刚才那声音——像是什么东西被拖过地板——就是从拐角那扇门后面传来的。\n\n我攥了攥口袋里的钥匙，指腹蹭过齿痕。铁门冰凉，走廊安静，我站在这儿像个走错考场的学生。\n\n“喂。”\n\n一个声音从身后传来，很近，近得我能感觉到声音带起的空气流动。\n\n“找人？”",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 1,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我贴在走廊墙壁上，屏住呼吸，把目光从脚底那摊水渍慢慢抬起来。\n\n走廊不长，大约七八米，尽头拐角处有一扇半开的门，门缝里透出一道昏黄的灯光。日光灯管在我头顶嗡嗡作响，每隔几秒就闪一下，把墙上的影子拉长又压扁。\n\n空气里有股潮湿的灰尘味，混着一点点——像是煮过头的白菜——食堂的气味。这栋公寓的格局跟我学校教学楼有点像，但更旧，走廊更窄，墙皮起泡剥落，露出底下灰绿色的水泥。\n\n没人。\n\n但刚才那声音——像是什么东西被拖过地板——就是从拐角那扇门后面传来的。\n\n我攥了攥口袋里的钥匙，指腹蹭过齿痕。铁门冰凉，走廊安静，我站在这儿像个走错考场的学生。\n\n“喂。”\n\n一个声音从身后传来，很近，近得我能感觉到声音带起的空气流动。\n\n“找人？”",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [
+          "我继续往前探索，注意观察周围环境的变化。",
+          "我检查最近的门是否能够打开。",
+          "我停下来仔细听周围的动静。",
+          "我寻找附近的光源或标识。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "ambient_drone_light_hum",
+        "next_chapter_title_candidate": "走廊里的塑料袋",
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "ambient_drone_light_hum"
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 7771,
+          "output_tokens": 541,
+          "cached_input_tokens": 3584,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7344,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "e10763e27cd67fc42dfb76ec9d174ff2"
+      },
+      "metrics": {
+        "latencyMs": 7555,
+        "inputTokens": 7771,
+        "outputTokens": 541,
+        "cachedInputTokens": 3584
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 1,
+      "playerAction": "检查武器是否在手",
+      "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 2,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+        "is_death": false,
+        "consumes_time": false,
+        "consumed_items": [],
+        "options": [],
+        "internal_meta": {
+          "action": "site_fallback",
+          "request_id": "vc_chat_mspxfjqg_2230d78ff4ff65",
+          "reason": "server_internal_generation_failed",
+          "kind": "site_unavailable"
+        }
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxhkkd_a7e8e875793470",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 0,
+        "candidateOptions": [
+          "我用手电照亮走廊尽头",
+          "我侧耳倾听楼道里的动静",
+          "我推开最近一扇半掩的门",
+          "我蹲下检查地板上的痕迹"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 92741
+      },
+      "transport": {
+        "status": "degraded",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 2,
+      "playerAction": "准备好面对威胁",
+      "narrative": "我猛地转身，膝盖微曲，右手已经攥紧了口袋里的钥匙——钥匙齿从指缝间露出，尖端刺得掌心生疼，不算什么武器，但总比空手强。走廊的日光灯管在我头顶嗡嗡作响，光晕在潮湿的墙皮上投下晃动的阴影。\n\n“哇，别紧张。”\n\n她的声音带着一丝沙哑，像是刚醒。她后退了半步，双手微微抬起，做出一个安抚的姿势，但眼睛却始终没离开我握钥匙的手。我注意到她卫衣下摆那块深色污渍在灯光下泛着暗沉的光泽——不是墨水，更像是某种液体干涸后留下的痕迹，边缘呈不规则的放射状。\n\n“你不像是这栋楼的人。迷路了？”她歪了歪头，目光扫过我身后的走廊，似乎在确认没有其他人跟着。走廊尽头的门缝里，灯光还是亮着，但比刚才暗了一些，像是有人调低了亮度。空气中飘来一股淡淡的铁锈味，混着食堂的油腻气息，让人胃里一阵翻涌。\n\n“找人？”她又问了一遍，语气比刚才更谨慎，尾音微微上扬，带着一丝试探。她的手指在卫衣口袋里动了动，不知在摸什么。我脚下的水泥地冰凉刺骨，从鞋底渗上来，寒意顺着脊椎蔓延。走廊里只剩下日光灯的嗡鸣和远处隐约的水管滴水声，每一声都像在敲打我的耳膜。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 3,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我猛地转身，膝盖微曲，右手已经攥紧了口袋里的钥匙——钥匙齿从指缝间露出，尖端刺得掌心生疼，不算什么武器，但总比空手强。走廊的日光灯管在我头顶嗡嗡作响，光晕在潮湿的墙皮上投下晃动的阴影。\n\n“哇，别紧张。”\n\n她的声音带着一丝沙哑，像是刚醒。她后退了半步，双手微微抬起，做出一个安抚的姿势，但眼睛却始终没离开我握钥匙的手。我注意到她卫衣下摆那块深色污渍在灯光下泛着暗沉的光泽——不是墨水，更像是某种液体干涸后留下的痕迹，边缘呈不规则的放射状。\n\n“你不像是这栋楼的人。迷路了？”她歪了歪头，目光扫过我身后的走廊，似乎在确认没有其他人跟着。走廊尽头的门缝里，灯光还是亮着，但比刚才暗了一些，像是有人调低了亮度。空气中飘来一股淡淡的铁锈味，混着食堂的油腻气息，让人胃里一阵翻涌。\n\n“找人？”她又问了一遍，语气比刚才更谨慎，尾音微微上扬，带着一丝试探。她的手指在卫衣口袋里动了动，不知在摸什么。我脚下的水泥地冰凉刺骨，从鞋底渗上来，寒意顺着脊椎蔓延。走廊里只剩下日光灯的嗡鸣和远处隐约的水管滴水声，每一声都像在敲打我的耳膜。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "free",
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": {
+          "likelyCost": "unknown",
+          "injury_delta": {
+            "injuries": [],
+            "sanityDamage": 0,
+            "narrativeHint": "战斗未造成实质伤害。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_eval_metrics": {
+          "input_tokens": 4210,
+          "output_tokens": 383,
+          "cached_input_tokens": 1024,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1057,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "d3a153fe6c250050c80ce260dc1904ff"
+      },
+      "metrics": {
+        "latencyMs": 10934,
+        "inputTokens": 4210,
+        "outputTokens": 383,
+        "cachedInputTokens": 1024
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 3,
+      "playerAction": "迎战前方的敌人",
+      "narrative": "我不回话，盯着她的眼睛，往前迈了一步。走廊里我的脚步声在墙上撞出回声，像某种警告。\n\n她的瞳孔骤然收缩——不是恐惧，是警觉。她比我预想中更快地抽出了右手，手里攥着一截大约二十厘米长的钢管，末端缠着深色胶带，在日光灯下泛着冷光，反射出一道刺眼的白线划过我的视线。\n\n“哦，是来找事的。”她的语气反倒轻松了，嘴角甚至微微翘起，但握钢管的手指关节发白，青筋从手背上浮起。她歪了歪头，用钢管轻轻敲了敲自己的左肩胛骨，发出沉闷的声响，像在打拍子。“那正好，我也憋了一肚子火。”\n\n她往前倾了倾身子，重心压低，脚步悄无声息地挪了半步，调整到最适合发力的角度。昏黄的灯光把她半陌生人在阴影里，只露出一只眼睛，瞳仁在昏暗里反射出微弱的光，像某种夜行动物。\n\n“你只有一次机会转身走。”她说，声音很轻，但每个字都像钉子一样钉进空气里。我闻到一股淡淡的血腥味，从她身上飘过来，比她身后的走廊还要浓。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 79,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 4,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 1,
+        "narrative": "我不回话，盯着她的眼睛，往前迈了一步。走廊里我的脚步声在墙上撞出回声，像某种警告。\n\n她的瞳孔骤然收缩——不是恐惧，是警觉。她比我预想中更快地抽出了右手，手里攥着一截大约二十厘米长的钢管，末端缠着深色胶带，在日光灯下泛着冷光，反射出一道刺眼的白线划过我的视线。\n\n“哦，是来找事的。”她的语气反倒轻松了，嘴角甚至微微翘起，但握钢管的手指关节发白，青筋从手背上浮起。她歪了歪头，用钢管轻轻敲了敲自己的左肩胛骨，发出沉闷的声响，像在打拍子。“那正好，我也憋了一肚子火。”\n\n她往前倾了倾身子，重心压低，脚步悄无声息地挪了半步，调整到最适合发力的角度。昏黄的灯光把她半陌生人在阴影里，只露出一只眼睛，瞳仁在昏暗里反射出微弱的光，像某种夜行动物。\n\n“你只有一次机会转身走。”她说，声音很轻，但每个字都像钉子一样钉进空气里。我闻到一股淡淡的血腥味，从她身上飘过来，比她身后的走廊还要浓。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "free",
+        "options": [
+          "我保持警惕，慢慢后退到安全距离。",
+          "我寻找周围可以当作武器的东西。",
+          "我压低身体，尽量不发出声音。",
+          "我确认逃跑路线，随时准备撤离。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "tense_standoff",
+        "next_chapter_title_candidate": "走廊里的钢管女孩",
+        "security_meta": {
+          "action": "allow",
+          "stage": "final_output",
+          "risk_level": "normal",
+          "request_id": "turn-3-top",
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": {
+          "likelyCost": "light",
+          "injury_delta": {
+            "injuries": [
+              {
+                "type": "bruise",
+                "severity": "minor",
+                "source": "钝器冲击/撞击伤",
+                "chance": 0.7
+              }
+            ],
+            "sanityDamage": 1,
+            "narrativeHint": "战斗造成了轻微伤势。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "tense_standoff"
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 4798,
+          "output_tokens": 698,
+          "cached_input_tokens": 1024,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1057,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "40cc1a136983a2adcf098f5d281f0f86"
+      },
+      "metrics": {
+        "latencyMs": 8588,
+        "inputTokens": 4798,
+        "outputTokens": 698,
+        "cachedInputTokens": 1024
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 4,
+      "playerAction": "使用钢管格挡攻击",
+      "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 79,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 5,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "网站暂时无法完成本次生成，请稍后再试。",
+        "is_death": false,
+        "consumes_time": false,
+        "consumed_items": [],
+        "options": [],
+        "internal_meta": {
+          "action": "site_fallback",
+          "request_id": "vc_chat_mspxi5ox_6dc6ce51c95479",
+          "reason": "server_internal_generation_failed",
+          "kind": "site_unavailable"
+        }
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxk8nl_d2c2e5e0f4f152",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 1,
+        "candidateOptions": [
+          "我用手电照向走廊尽头的阴影",
+          "我侧身贴墙向前挪动几步",
+          "我蹲下检查地面是否有血迹或脚印"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 95327
+      },
+      "transport": {
+        "status": "degraded",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 5,
+      "playerAction": "后退一步重整姿态",
+      "narrative": "我盯着她的眼睛，攥着钥匙的手没有放下，但脚步收回了半步。走廊里嗡嗡的日光灯管闪了一下，把她脸上一闪而过的诧异照得清清楚楚。\n\n“可以。”我尽量让声音听起来平稳，“但打之前，你能不能告诉我——那扇门后面是什么？”\n\n我朝走廊尽头扬了扬下巴。昏黄的灯光从门缝里漏出来，在地上的水渍上映出一道暗金色的光带，像某种标记。刚才被拖拽的声音就是从那里传来的，我确信。\n\n她愣了一下，钢管在手里晃了晃，但没有放下。她偏过头，顺着我的视线瞥了一眼那扇门，然后转回来，表情变得复杂——不像害怕，更像……忌惮？\n\n“你最好别管那扇门的事。”她说，声音比刚才低了很多，几乎被日光灯的嗡鸣盖住。“我在这儿待了三天，我知道这栋楼里什么东西不该碰。”\n\n潮湿的风从走廊尽头吹过来，带着一股铁锈和腐烂植物混合的气味，从门缝里钻出来，攀上我的脚踝。我背后的汗毛竖了起来。\n\n她的目光在我脸上停了两秒，然后她叹了口气，把钢管垂了下来，但没有收进口袋。“行，不打。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 6,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 1,
+        "narrative": "我盯着她的眼睛，攥着钥匙的手没有放下，但脚步收回了半步。走廊里嗡嗡的日光灯管闪了一下，把她脸上一闪而过的诧异照得清清楚楚。\n\n“可以。”我尽量让声音听起来平稳，“但打之前，你能不能告诉我——那扇门后面是什么？”\n\n我朝走廊尽头扬了扬下巴。昏黄的灯光从门缝里漏出来，在地上的水渍上映出一道暗金色的光带，像某种标记。刚才被拖拽的声音就是从那里传来的，我确信。\n\n她愣了一下，钢管在手里晃了晃，但没有放下。她偏过头，顺着我的视线瞥了一眼那扇门，然后转回来，表情变得复杂——不像害怕，更像……忌惮？\n\n“你最好别管那扇门的事。”她说，声音比刚才低了很多，几乎被日光灯的嗡鸣盖住。“我在这儿待了三天，我知道这栋楼里什么东西不该碰。”\n\n潮湿的风从走廊尽头吹过来，带着一股铁锈和腐烂植物混合的气味，从门缝里钻出来，攀上我的脚踝。我背后的汗毛竖了起来。\n\n她的目光在我脸上停了两秒，然后她叹了口气，把钢管垂了下来，但没有收进口袋。“行，不打。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 4884,
+          "output_tokens": 376,
+          "cached_input_tokens": 1024,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1058,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "987c3b048571d34b8abdd2bcd5e69062"
+      },
+      "metrics": {
+        "latencyMs": 11379,
+        "inputTokens": 4884,
+        "outputTokens": 376,
+        "cachedInputTokens": 1024
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 6,
+      "playerAction": "寻找掩护位置",
+      "narrative": "我扫了一眼走廊两侧——左边是光秃秃的墙皮剥落的墙壁，右边两步远有一扇半开的门，门缝里黑漆漆的，看不清里面是什么。水管漏水的声音从那边传过来，一滴一滴，在寂静里格外清晰。\n\n我侧身往那扇门靠过去，后背贴着墙，脚步尽量放轻。瓷砖地面在我脚下发出细微的摩擦声，像砂纸蹭过木头。\n\n“你干嘛？”她的声音忽然绷紧，钢管再次抬了起来，在昏黄的灯光下划出一道利落的弧线。“别进那间。”\n\n但我已经伸手推开了那扇门。\n\n门轴发出一声尖利的呻吟，像某种被惊扰的动物。一股潮湿的霉味扑面而来，夹杂着更浓的铁锈味。房间很暗，只有走廊的灯光在地板上切出一块惨白的光斑。我看到了——\n\n一张翻倒的椅子。\n\n地上的痕迹——像是有人被拖拽过，在地板上留下了一道暗色的擦痕，延伸到墙角的阴影里。墙角有一滩深色的液体，在光线边缘泛着微弱的光泽。空气里弥漫着一股甜腻的腥味，像生锈的铁钉和腐烂的苹果混在一起，令人作呕。\n\n“操。”她在门外低声骂了一句，但没有跟进来。\n\n我的心脏在肋骨后狠狠撞了一下。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 76,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 7,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 2,
+        "narrative": "我扫了一眼走廊两侧——左边是光秃秃的墙皮剥落的墙壁，右边两步远有一扇半开的门，门缝里黑漆漆的，看不清里面是什么。水管漏水的声音从那边传过来，一滴一滴，在寂静里格外清晰。\n\n我侧身往那扇门靠过去，后背贴着墙，脚步尽量放轻。瓷砖地面在我脚下发出细微的摩擦声，像砂纸蹭过木头。\n\n“你干嘛？”她的声音忽然绷紧，钢管再次抬了起来，在昏黄的灯光下划出一道利落的弧线。“别进那间。”\n\n但我已经伸手推开了那扇门。\n\n门轴发出一声尖利的呻吟，像某种被惊扰的动物。一股潮湿的霉味扑面而来，夹杂着更浓的铁锈味。房间很暗，只有走廊的灯光在地板上切出一块惨白的光斑。我看到了——\n\n一张翻倒的椅子。\n\n地上的痕迹——像是有人被拖拽过，在地板上留下了一道暗色的擦痕，延伸到墙角的阴影里。墙角有一滩深色的液体，在光线边缘泛着微弱的光泽。空气里弥漫着一股甜腻的腥味，像生锈的铁钉和腐烂的苹果混在一起，令人作呕。\n\n“操。”她在门外低声骂了一句，但没有跟进来。\n\n我的心脏在肋骨后狠狠撞了一下。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 5196,
+          "output_tokens": 405,
+          "cached_input_tokens": 1024,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1056,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "ac05cb2afd7272783c93d0279c4d9e3a"
+      },
+      "metrics": {
+        "latencyMs": 6087,
+        "inputTokens": 5196,
+        "outputTokens": 405,
+        "cachedInputTokens": 1024
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 7,
+      "playerAction": "观察敌人的破绽",
+      "narrative": "我核对了当前位置的已有记录，这里没有处于活动状态的已登记威胁；本回合没有生成敌人，也没有发生战斗。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 76,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 8,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我核对了当前位置的已有记录，这里没有处于活动状态的已登记威胁；本回合没有生成敌人，也没有发生战斗。",
+        "is_death": false,
+        "consumes_time": false,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": {
+          "likelyCost": "unknown",
+          "injury_delta": {
+            "injuries": [],
+            "sanityDamage": 0,
+            "narrativeHint": "战斗未造成实质伤害。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "security_meta": {
+          "deterministic_service_fast_lane": true,
+          "deterministic_action_kind": "threat_recon",
+          "request_id": "vc_chat_mspxkt6d_60abd1f477dcd2"
+        },
+        "_eval_metrics": {
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cached_input_tokens": 0,
+          "total_tokens": 0,
+          "model_calls": 0,
+          "turn_path": "deterministic_service"
+        }
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxkuf9_42f35f1b682cf5",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 1,
+        "candidateOptions": [
+          "我用手电照亮走廊尽头的阴影",
+          "我蹲下检查地板上的划痕",
+          "我侧耳倾听楼道里的动静"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 40,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cachedInputTokens": 0
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 8,
+      "playerAction": "推门进入那个房间",
+      "narrative": "我没能确认一条从3F_Hallway出发的可通行相邻路线，因此仍留在原地。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 75,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 9,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 1,
+        "narrative": "我没能确认一条从3F_Hallway出发的可通行相邻路线，因此仍留在原地。",
+        "is_death": false,
+        "consumes_time": false,
+        "time_cost": "standard",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_eval_metrics": {
+          "input_tokens": 5612,
+          "output_tokens": 506,
+          "cached_input_tokens": 768,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1058,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "e8ce31f27b795ea865fa1259dbe0481d"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxl5mf_84b11d7237ca2f",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 0,
+        "candidateOptions": [
+          "我用手电照亮走廊尽头",
+          "我蹲下检查地面是否有脚印",
+          "我侧耳倾听墙后的动静",
+          "我后退几步，观察天花板的裂缝"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 7407,
+        "inputTokens": 5612,
+        "outputTokens": 506,
+        "cachedInputTokens": 768
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 9,
+      "playerAction": "查看半开的门缝里有什么",
+      "narrative": "我盯着那扇半开的门，深吸一口气，挪了过去。走廊里的灯光在身后投下一道拉长的影子，在门缝边缘停顿了一下，然后被黑暗吞没。\n\n我侧过头，把眼睛凑到门缝前。\n\n里面是一个大约十平米的小房间，像是废弃的杂物间。一张办公桌翻倒在地上，桌腿对着我，抽屉歪斜地滑出，里面的纸散落一地。墙角有一把椅子，但椅背朝下，像是被什么东西撞翻的。\n\n最刺眼的是地上的痕迹——一条暗色的擦痕从门口一直延伸到墙角，像是有人被拖进去的。擦痕尽头堆着几件深色的旧衣服，鼓鼓囊囊的，看不出下面盖着什么。空气里弥漫着铁锈和甜腻的腥味，像是腐烂的肉和生锈的铁钉混在一起，每一次呼吸都让胃里翻涌。\n\n头顶的日光灯管闪了一下，我的视线在那一瞬间捕捉到了墙角衣服堆边缘——一根手指。指甲盖发紫，指节微微弯曲，僵在那里。\n\n我猛地后退一步，后背撞在门框上，发出一声闷响。\n\n“你看到了？”她的声音从身后传来，比刚才更轻，像在确认什么。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 74,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "anomaly_room_01"
+        ],
+        "journalClueIds": [],
+        "turnCount": 10,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 1,
+        "narrative": "我盯着那扇半开的门，深吸一口气，挪了过去。走廊里的灯光在身后投下一道拉长的影子，在门缝边缘停顿了一下，然后被黑暗吞没。\n\n我侧过头，把眼睛凑到门缝前。\n\n里面是一个大约十平米的小房间，像是废弃的杂物间。一张办公桌翻倒在地上，桌腿对着我，抽屉歪斜地滑出，里面的纸散落一地。墙角有一把椅子，但椅背朝下，像是被什么东西撞翻的。\n\n最刺眼的是地上的痕迹——一条暗色的擦痕从门口一直延伸到墙角，像是有人被拖进去的。擦痕尽头堆着几件深色的旧衣服，鼓鼓囊囊的，看不出下面盖着什么。空气里弥漫着铁锈和甜腻的腥味，像是腐烂的肉和生锈的铁钉混在一起，每一次呼吸都让胃里翻涌。\n\n头顶的日光灯管闪了一下，我的视线在那一瞬间捕捉到了墙角衣服堆边缘——一根手指。指甲盖发紫，指节微微弯曲，僵在那里。\n\n我猛地后退一步，后背撞在门框上，发出一声闷响。\n\n“你看到了？”她的声音从身后传来，比刚才更轻，像在确认什么。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [
+          "我继续追问刚才的话题，想了解更多。",
+          "我试着换个角度提问，看看对方的反应。",
+          "我观察对方的表情和动作，判断对方是否可信。",
+          "我表示感谢后，准备继续探索。"
+        ],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "anomaly_room_01",
+            "name": "走廊尽头的杂物间",
+            "type": "anomaly",
+            "observation": "房间里有翻倒的桌椅，地上有拖拽痕迹，墙角衣服堆下露出一根发紫的手指。空气中有铁锈和甜腻的腥味。异常气味，可能是血迹。",
+            "known_info": "门缝里透出昏黄灯光的房间，里面有拖拽痕迹和疑似尸体。"
+          }
+        ],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "distant_hum",
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": {
+          "likelyCost": "unknown",
+          "injury_delta": {
+            "injuries": [],
+            "sanityDamage": 1,
+            "narrativeHint": "精神冲击造成理智-1，未造成身体伤势。"
+          }
+        },
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "distant_hum"
+        },
+        "ui_hints": {
+          "consistency_flags": [
+            "conflict_outcome_fallback_from_narrative"
+          ]
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 5682,
+          "output_tokens": 574,
+          "cached_input_tokens": 768,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1061,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "1c48ec3d148664e5f880160178f36aba"
+      },
+      "metrics": {
+        "latencyMs": 12320,
+        "inputTokens": 5682,
+        "outputTokens": 574,
+        "cachedInputTokens": 768
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    }
+  ],
+  "terminatedReason": "max_steps",
+  "narrativeConsistency": {
+    "runId": "live-happy-combat-loop-explorer-session1",
+    "passed": false,
+    "overallScore": 4.5,
+    "dimensionScores": {
+      "coherence": 5,
+      "characterVoice": 5,
+      "plotLogic": 5,
+      "immersion": 5,
+      "factConsistency": 5,
+      "weaponConsistency": 4,
+      "professionConsistency": 5
+    },
+    "issues": [
+      {
+        "type": "world_inconsistency",
+        "severity": "major",
+        "description": "无装备武器但叙事描述挥舞武器",
+        "evidence": [
+          {
+            "stepIndex": 5,
+            "excerpt": "equippedWeapon=null, narrative 含武器持有关键词"
+          }
+        ]
+      }
+    ],
+    "reasoning": "启发式裁判（v5）：1 个问题（0 critical, 1 major, 0 minor）。综合分 4.5/5。叙事重复率 0.0%，状态-叙事矛盾 0 处，原石-叙事不一致 0 处，武器不一致 1 处，职业不一致 0 处。",
+    "judgeMode": "mock",
+    "judgeModel": "heuristic_v5",
+    "judgeConfidenceSource": "mock"
+  },
+  "judgeComparison": null,
+  "gameplayGate": {
+    "passed": true,
+    "required": [],
+    "forbidden": [],
+    "observed": {
+      "tasks": 0,
+      "codex": 1,
+      "location": 1,
+      "weapons": 0,
+      "combat": 4,
+      "economy": 0,
+      "profession": 0,
+      "ending": 0
+    },
+    "missing": [],
+    "forbiddenObserved": []
+  },
+  "narrativeRepetitionRate": null,
+  "evidenceStatus": "inconclusive",
+  "failureTags": [],
+  "executionMode": "live_degraded",
+  "judgeMode": "mock",
+  "failureContext": {
+    "stepIndex": 1,
+    "action": "检查武器是否在手",
+    "reason": "server_internal_generation_failed",
+    "transportStatus": "degraded",
+    "hasVisibleNarrative": true,
+    "stepFailureMode": "step_degraded"
+  }
+}

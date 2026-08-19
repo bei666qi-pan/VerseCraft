@@ -49,8 +49,12 @@ export interface ActorSimulationContext {
   worldFacts: EpistemicFactSummary[];
   /** NPC 关系边 */
   relationEdges: ActorRelationEdge[];
+  /** Preferred actor-partitioned relation view for batch isolation. */
+  relationEdgesByNpc?: Map<string, ActorRelationEdge[]>;
   /** 已知/怀疑/禁止事实 ID 集合（按 NPC ID 索引） */
   epistemicIndex: EpistemicIndex;
+  registeredLocationIds?: Set<string>;
+  registeredActionCodes?: Set<string>;
 }
 
 export interface EpistemicIndex {
@@ -181,7 +185,9 @@ export async function runActorSimulationPhase(
       actorKnownFactIds: knownFacts,
       actorSuspectedFactIds: suspectedFacts,
       forbiddenFactIds: ctx.epistemicIndex.forbiddenFactIds,
-      relationEdges: ctx.relationEdges,
+      relationEdges: ctx.relationEdgesByNpc?.get(castActor.npcId) ?? ctx.relationEdges.filter(
+        (edge) => !edge.sourceNpcId || edge.sourceNpcId === castActor.npcId
+      ),
       horizonTurns: flags.horizonTurns,
       simulationId: `sim-${ctx.turnIndex}-${castActor.npcId}`,
     });
@@ -208,6 +214,8 @@ export async function runActorSimulationPhase(
       ctx: ctx.aiCtx,
       signal: ctx.signal,
       registeredNpcIds: new Set(ctx.npcStates.map((s) => s.npcId)),
+      registeredLocationIds: ctx.registeredLocationIds,
+      registeredActionCodes: ctx.registeredActionCodes,
       telemetry,
     });
 

@@ -5,11 +5,11 @@
 ## 状态机（请求级）
 
 1. **解析运行模式** `resolveOperationMode()` → `full` | `safe` | `emergency`（`AI_OPERATION_MODE` / `AI_DEGRADE_MODE`）。
-2. **按任务取有序角色链** `resolveOrderedRoleChain(task, mode)`：主角色优先 **main**，再按任务策略与禁止表追加；`emergency` 下玩家主链路仅 **main**（且需 `AI_MODEL_MAIN` 已配置）。
-3. **逐角色尝试**（流式：`executePlayerChatStream`；非流式：`executeChatCompletion`），请求均发往 **同一** `AI_GATEWAY_BASE_URL`，`model` 字段来自对应 `AI_MODEL_*`。  
-   - 若角色处于**熔断打开**（网关 provider 或 **logicalRole** 维度），记为跳过类失败，**不发起 HTTP**，直接下一角色。  
+2. **按任务解析运营用途**，从运行时快照读取管理员配置的主用和备用模型；任务策略与禁止表继续约束逻辑角色。
+3. **逐服务/模型候选尝试**（流式：`executePlayerChatStream`；非流式：`executeChatCompletion`）。
+   - 若服务或模型处于**熔断打开**，记为跳过类失败，**不发起 HTTP**，直接下一候选。
    - 发起请求；失败则 `classifyAiFailure` 标准化原因（超时 / 429 / 5xx / 解析 / 空内容 / 流中断等）。  
-   - 若判定为**应计入熔断**的失败，写入 `recordModelFailure` / provider 熔断器。  
+   - 若判定为**应计入熔断**的失败，写入服务/模型隔离的熔断器。
    - 若判定为**应换角色**（如可重试类已用尽、或 JSON/空内容无效），**换链上下一角色**，fallback 计数 +1。  
 4. **成功**时 `recordModelSuccess`，返回内容 + **路由报告**（intendedRole、actualLogicalRole、fallback 次数、失败摘要、运行模式）。
 
@@ -38,9 +38,8 @@
    - 主 **enhance**；失败 → **main**（及必要时 **control**）。增强失败不阻塞主流程（调用方处理 `executeChatCompletion` 结果）。
 
 4. **运行模式**  
-   - `full`：主角色 + env 玩家链合并。  
-   - `safe`：策略内主备，不合并 `AI_PLAYER_ROLE_CHAIN` 额外项。  
-   - `emergency`：玩家链仅 **main**。
+   - `full`：使用后台配置的用途主备顺序。
+   - `safe` / `emergency`：继续收紧任务策略；不会从旧环境变量恢复真实模型。
 
 ## 可观测性
 

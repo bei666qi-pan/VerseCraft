@@ -23,6 +23,8 @@ export async function register() {
     try {
       const { ensureRuntimeSchema } = await import("@/db/ensureSchema");
       await ensureRuntimeSchema();
+      const { startManagedAiSnapshotWatcher } = await import("@/lib/ai/managed/runtime");
+      startManagedAiSnapshotWatcher();
     } catch (e) {
       const { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } = await import("@/lib/db/postgresErrors");
       if (isPostgresUnavailableError(e)) {

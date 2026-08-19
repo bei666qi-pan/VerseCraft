@@ -17,6 +17,8 @@ import { buildPlayerExperienceSchoolCycleFactsForCanon } from "@/lib/registry/pl
 import { WORLD_ARC_BOOTSTRAP_SLICES } from "@/lib/registry/worldArcBootstrapSlices";
 import { MAJOR_NPC_IDS, type MajorNpcId } from "@/lib/registry/majorNpcDeepCanon";
 import { MAJOR_NPC_BRANCH_SEEDS } from "@/lib/registry/majorNpcBranchSeeds";
+import { QINGSHI_ENEMIES, QINGSHI_LOCATIONS, QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
+import { QINGSHI_ITEMS, QINGSHI_MAIN_STAGES, QINGSHI_NPC_PROFILES, QINGSHI_PRODUCTION_ENEMIES, QINGSHI_REPEATABLES } from "@/lib/worlds/xingni/qingshiProductionContent";
 
 /** 公寓生态分层标签：检索时区分消化住户 / 校源耦合辅锚 / 秩序节点 */
 function npcEcologyTags(npcId: string): string[] {
@@ -66,6 +68,8 @@ export interface SeedChunkDraft {
   visibilityScope: WorldScope;
   ownerUserId: string | null;
   retrievalKey: string;
+  worldId?: "dark_moon_prologue" | "xingni_taichu";
+  mapId?: "dark_moon_apartment" | "xingni_qingshi_county";
 }
 
 export interface RegistrySeedDraft {
@@ -646,6 +650,62 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
       relationLabel: "warehouse owner",
       strength: 80,
     });
+  }
+
+  for (const [locationId, location] of Object.entries(QINGSHI_LOCATIONS)) {
+    const code = `xingni:location:${locationId}`;
+    entities.push({
+      entityType: "location", code, canonicalName: locationId.toLowerCase(), title: location.name,
+      summary: location.description, detail: `${location.description}\n登记服务：${location.services.join("、") || "无"}`,
+      scope: "global", ownerUserId: null, status: "active", sourceType: "bootstrap",
+      sourceRef: "worlds/xingni/qingshiContent.ts:QINGSHI_LOCATIONS", importance: 85, version: 1,
+      tags: ["xingni_taichu", "qingshi_county", "location", locationId],
+    });
+    chunks.push({ entityCode: code, chunkIndex: 0, content: `青石县地点：${location.name}\n${location.description}\n登记服务：${location.services.join("、") || "无"}`, tokenEstimate: estTokens(location.description) + 12, importance: 85, visibilityScope: "global", ownerUserId: null, retrievalKey: `${code}:chunk:0`, worldId: "xingni_taichu", mapId: "xingni_qingshi_county" });
+  }
+
+  for (const npc of QINGSHI_NPCS) {
+    const code = `xingni:npc:${npc.id}`;
+    const profile = QINGSHI_NPC_PROFILES[npc.id as keyof typeof QINGSHI_NPC_PROFILES];
+    const publicFacts = profile.facts.filter((fact) => fact.tier === "public").map((fact) => `${fact.id}:${fact.text}`).join("；");
+    const detail = `${npc.name}（${npc.id}），${npc.role}，境界${npc.realm}。固定活动范围：${npc.allowedLocations.join("、")}。四时段日程：${Object.entries(profile.schedule).map(([slot, location]) => `${slot}=${location}`).join("、")}。公开事实：${publicFacts}。知识权限：${npc.knowledgeScope.join("、")}。`;
+    entities.push({ entityType: "npc", code, canonicalName: npc.id.toLowerCase(), title: npc.name, summary: `${npc.realm} · ${npc.role}`, detail, scope: "global", ownerUserId: null, status: "active", sourceType: "bootstrap", sourceRef: "worlds/xingni/qingshiContent.ts:QINGSHI_NPCS", importance: npc.id === "XQ-N001" ? 98 : 88, version: 1, tags: ["xingni_taichu", "qingshi_county", "npc", npc.id, npc.realm] });
+    chunks.push({ entityCode: code, chunkIndex: 0, content: detail, tokenEstimate: estTokens(detail), importance: npc.id === "XQ-N001" ? 98 : 88, visibilityScope: "global", ownerUserId: null, retrievalKey: `${code}:chunk:0`, worldId: "xingni_taichu", mapId: "xingni_qingshi_county" });
+  }
+
+  for (const enemy of QINGSHI_ENEMIES) {
+    const code = `xingni:enemy:${enemy.id}`;
+    const detail = `青石县登记目标：${enemy.name}（${enemy.id}），境界${enemy.realm}，固定结算地点${enemy.locationId}。`;
+    entities.push({ entityType: "anomaly", code, canonicalName: enemy.id.toLowerCase(), title: enemy.name, summary: `${enemy.realm}登记目标`, detail, scope: "global", ownerUserId: null, status: "active", sourceType: "bootstrap", sourceRef: "worlds/xingni/qingshiContent.ts:QINGSHI_ENEMIES", importance: 86, version: 1, tags: ["xingni_taichu", "qingshi_county", "enemy", enemy.id] });
+    chunks.push({ entityCode: code, chunkIndex: 0, content: detail, tokenEstimate: estTokens(detail), importance: 86, visibilityScope: "global", ownerUserId: null, retrievalKey: `${code}:chunk:0`, worldId: "xingni_taichu", mapId: "xingni_qingshi_county" });
+  }
+
+  for (const enemy of QINGSHI_PRODUCTION_ENEMIES) {
+    const code = `xingni:enemy:${enemy.id}`;
+    const detail = `青石县生产登记目标：${enemy.name}（${enemy.id}），境界${enemy.realm}，结算地点${enemy.locationId}。`;
+    entities.push({ entityType: "anomaly", code, canonicalName: enemy.id.toLowerCase(), title: enemy.name, summary: `${enemy.realm}登记目标`, detail, scope: "global", ownerUserId: null, status: "active", sourceType: "bootstrap", sourceRef: "worlds/xingni/qingshiProductionContent.ts:QINGSHI_PRODUCTION_ENEMIES", importance: 86, version: 2, tags: ["xingni_taichu", "qingshi_county", "enemy", enemy.id] });
+    chunks.push({ entityCode: code, chunkIndex: 0, content: detail, tokenEstimate: estTokens(detail), importance: 86, visibilityScope: "global", ownerUserId: null, retrievalKey: `${code}:chunk:0`, worldId: "xingni_taichu", mapId: "xingni_qingshi_county" });
+  }
+
+  for (const stage of QINGSHI_MAIN_STAGES) {
+    const code = `xingni:quest:${stage.id}`;
+    const detail = `青石县主线登记阶段${stage.id}：第${stage.chapter}章《${stage.title}》。公开目标：${stage.objective}。地点${stage.locationId}，关联NPC ${stage.npcId}。`;
+    entities.push({ entityType: "rule", code, canonicalName: stage.id.toLowerCase(), title: stage.title, summary: stage.objective, detail, scope: "global", ownerUserId: null, status: "active", sourceType: "bootstrap", sourceRef: "worlds/xingni/qingshiProductionContent.ts:QINGSHI_MAIN_STAGES", importance: 82, version: 2, tags: ["xingni_taichu", "qingshi_county", "quest", stage.id] });
+    chunks.push({ entityCode: code, chunkIndex: 0, content: detail, tokenEstimate: estTokens(detail), importance: 82, visibilityScope: "global", ownerUserId: null, retrievalKey: `${code}:chunk:0`, worldId: "xingni_taichu", mapId: "xingni_qingshi_county" });
+  }
+
+  for (const quest of QINGSHI_REPEATABLES) {
+    const code = `xingni:service:${quest.id}`;
+    const detail = `青石县重复委托${quest.id}《${quest.title}》，地点${quest.locationId}，每日上限${quest.dailyLimit}，登记奖励${quest.reward}枚灵石。`;
+    entities.push({ entityType: "rule", code, canonicalName: quest.id.toLowerCase(), title: quest.title, summary: detail, detail, scope: "global", ownerUserId: null, status: "active", sourceType: "bootstrap", sourceRef: "worlds/xingni/qingshiProductionContent.ts:QINGSHI_REPEATABLES", importance: 70, version: 2, tags: ["xingni_taichu", "qingshi_county", "service", quest.id] });
+    chunks.push({ entityCode: code, chunkIndex: 0, content: detail, tokenEstimate: estTokens(detail), importance: 70, visibilityScope: "global", ownerUserId: null, retrievalKey: `${code}:chunk:0`, worldId: "xingni_taichu", mapId: "xingni_qingshi_county" });
+  }
+
+  for (const [itemId, item] of Object.entries(QINGSHI_ITEMS)) {
+    const code = `xingni:item:${itemId}`;
+    const detail = `青石县登记物品${item.name}（${itemId}），类别${item.kind}，${item.protected ? "受保护且不可出售" : `买价${item.buy ?? "无"}、卖价${item.sell ?? "无"}`}。`;
+    entities.push({ entityType: "item", code, canonicalName: itemId, title: item.name, summary: detail, detail, scope: "global", ownerUserId: null, status: "active", sourceType: "bootstrap", sourceRef: "worlds/xingni/qingshiProductionContent.ts:QINGSHI_ITEMS", importance: item.protected ? 84 : 68, version: 2, tags: ["xingni_taichu", "qingshi_county", "item", itemId] });
+    chunks.push({ entityCode: code, chunkIndex: 0, content: detail, tokenEstimate: estTokens(detail), importance: item.protected ? 84 : 68, visibilityScope: "global", ownerUserId: null, retrievalKey: `${code}:chunk:0`, worldId: "xingni_taichu", mapId: "xingni_qingshi_county" });
   }
 
   return { entities, edges, chunks };

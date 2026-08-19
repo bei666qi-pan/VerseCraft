@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { unwrapPageDynamicOnServer } from "@/lib/next/pageDynamicProps";
+import { isXingniWorldEnabled } from "@/lib/worlds/catalog";
 import { IntroPageClient } from "./IntroPageClient";
 
 export const metadata: Metadata = {
@@ -10,5 +11,5 @@ export const metadata: Metadata = {
 
 export default async function IntroPage(props: AppPageDynamicProps) {
   await unwrapPageDynamicOnServer(props);
-  return <IntroPageClient />;
+  return <IntroPageClient xingniEnabled={isXingniWorldEnabled()} />;
 }

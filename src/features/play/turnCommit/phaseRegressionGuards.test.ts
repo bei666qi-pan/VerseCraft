@@ -9,6 +9,8 @@ import {
 
 test("phase4: narrative acquire semantics should be detectable", () => {
   assert.equal(hasStrongAcquireSemantics("你在暗格中获得了旧钥匙。"), true);
+  assert.equal(hasStrongAcquireSemantics("我站起来，把毽子塞进口袋。"), true);
+  assert.equal(hasStrongAcquireSemantics("我把手塞进口袋取暖。"), false);
   assert.equal(hasStrongAcquireSemantics("你环顾四周，没有发现异常。"), false);
 });
 

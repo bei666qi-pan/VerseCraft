@@ -9,6 +9,7 @@ import type {
   DirectorPrivateHook,
   DirectorRiskAssessment,
   RevealPolicy,
+  WorldRuntimeScope,
 } from "./contracts";
 import {
   findDeadNpcInPersistedAgendaItem,
@@ -98,6 +99,8 @@ async function raceTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
 }
 
 export async function insertDirectorAgendaItems(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   runId: number;
   sessionId: string;
   userId: string | null;
@@ -120,20 +123,22 @@ export async function insertDirectorAgendaItems(args: {
       const expiresTurn = Math.max(dueTurn + 1, dueTurn + ev.ttl_turns);
       const r = await client.query<{ id: number }>(
         `INSERT INTO world_engine_event_queue (
-           run_id, session_id, user_id, event_code, title, due_in_turns, priority,
+           world_id, map_id, run_id, session_id, user_id, event_code, title, due_in_turns, priority,
            payload, status, due_turn_index, ttl_turns, expires_turn_index,
            salience, agency_risk, continuity_risk, spoiler_risk, reveal_policy,
            injection_hint, agency_constraints, forbidden_outcomes, dedup_key
          )
          VALUES (
-           $1, $2, $3, $4, $5, $6, $7,
-           $8::jsonb, 'pending', $9, $10, $11,
-           $12, $13, $14, $15, $16,
-           $17, $18::jsonb, $19::jsonb, $20
+           $1, $2, $3, $4, $5, $6, $7, $8, $9,
+           $10::jsonb, 'pending', $11, $12, $13,
+           $14, $15, $16, $17, $18,
+           $19, $20::jsonb, $21::jsonb, $22
          )
-         ON CONFLICT (session_id, event_code, dedup_key) DO NOTHING
+         ON CONFLICT (world_id, map_id, session_id, event_code, dedup_key) DO NOTHING
          RETURNING id`,
         [
+          args.worldId,
+          args.mapId,
           args.runId,
           args.sessionId,
           args.userId,
@@ -166,6 +171,8 @@ export async function insertDirectorAgendaItems(args: {
 }
 
 export async function expireStaleDirectorAgenda(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   turnIndex: number;
 }): Promise<void> {
@@ -175,11 +182,11 @@ export async function expireStaleDirectorAgenda(args: {
     await client.query(
       `UPDATE world_engine_event_queue
        SET status = 'expired'
-       WHERE session_id = $1
+       WHERE world_id = $1 AND map_id = $2 AND session_id = $3
          AND status IN ('pending', 'due')
          AND expires_turn_index IS NOT NULL
-         AND expires_turn_index < $2`,
-      [args.sessionId, args.turnIndex]
+         AND expires_turn_index < $4`,
+      [args.worldId, args.mapId, args.sessionId, args.turnIndex]
     );
   } finally {
     client.release();
@@ -212,6 +219,8 @@ function normalizePacingFromJson(raw: unknown): { tension: number; mystery: numb
 }
 
 export async function loadDueDirectorAgenda(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   turnIndex: number;
   limit?: number;
@@ -230,20 +239,20 @@ export async function loadDueDirectorAgenda(args: {
       await client.query(
         `UPDATE world_engine_event_queue
          SET status = 'expired'
-         WHERE session_id = $1
+         WHERE world_id = $1 AND map_id = $2 AND session_id = $3
            AND status IN ('pending', 'due')
            AND expires_turn_index IS NOT NULL
-           AND expires_turn_index < $2`,
-        [args.sessionId, args.turnIndex]
+           AND expires_turn_index < $4`,
+        [args.worldId, args.mapId, args.sessionId, args.turnIndex]
       );
       await client.query(
         `UPDATE world_engine_event_queue
          SET status = 'due'
-         WHERE session_id = $1
+         WHERE world_id = $1 AND map_id = $2 AND session_id = $3
            AND status = 'pending'
-           AND COALESCE(due_turn_index, 999999) <= $2
-           AND COALESCE(expires_turn_index, 999999) >= $2`,
-        [args.sessionId, args.turnIndex]
+           AND COALESCE(due_turn_index, 999999) <= $4
+           AND COALESCE(expires_turn_index, 999999) >= $4`,
+        [args.worldId, args.mapId, args.sessionId, args.turnIndex]
       );
       const [agendaResult, directorResult] = await Promise.all([
         client.query<Record<string, unknown>>(
@@ -251,7 +260,7 @@ export async function loadDueDirectorAgenda(args: {
                   due_turn_index, expires_turn_index, salience, priority, reveal_policy,
                   injection_hint, agency_constraints, forbidden_outcomes, payload
            FROM world_engine_event_queue
-           WHERE session_id = $1
+           WHERE world_id = $1 AND map_id = $2 AND session_id = $3
              AND status = 'due'
              AND COALESCE(spoiler_risk, 'low') <> 'high'
              AND COALESCE(agency_risk, 'low') <> 'high'
@@ -260,15 +269,15 @@ export async function loadDueDirectorAgenda(args: {
                     CASE priority WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
                     due_turn_index ASC NULLS LAST,
                     id ASC
-           LIMIT $2`,
-          [args.sessionId, limit]
+           LIMIT $4`,
+          [args.worldId, args.mapId, args.sessionId, limit]
         ),
         client.query<{ phase: string; pacing_json: Record<string, unknown> | null; recent_director_intent: string | null }>(
           `SELECT phase, pacing_json, recent_director_intent
            FROM world_engine_director_state
-           WHERE session_id = $1
+           WHERE world_id = $1 AND map_id = $2 AND session_id = $3
            LIMIT 1`,
-          [args.sessionId]
+          [args.worldId, args.mapId, args.sessionId]
         ),
       ]);
       await client.query("COMMIT");
@@ -334,6 +343,8 @@ export async function loadDueDirectorAgenda(args: {
 }
 
 export async function markDirectorAgendaInjected(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   agendaIds: readonly number[];
   turnIndex: number;
@@ -345,12 +356,12 @@ export async function markDirectorAgendaInjected(args: {
     await client.query(
       `UPDATE world_engine_event_queue
        SET status = 'injected',
-           injected_turn_index = COALESCE(injected_turn_index, $3),
-           payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object('injected_request_id', $4::text)
-       WHERE session_id = $1
-         AND id = ANY($2::int[])
+           injected_turn_index = COALESCE(injected_turn_index, $5),
+           payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object('injected_request_id', $6::text)
+       WHERE world_id = $1 AND map_id = $2 AND session_id = $3
+         AND id = ANY($4::int[])
          AND status IN ('due', 'pending', 'injected')`,
-      [args.sessionId, [...args.agendaIds], args.turnIndex, args.requestId ?? null]
+      [args.worldId, args.mapId, args.sessionId, [...args.agendaIds], args.turnIndex, args.requestId ?? null]
     );
   } finally {
     client.release();
@@ -358,6 +369,8 @@ export async function markDirectorAgendaInjected(args: {
 }
 
 export async function markDirectorAgendaResolved(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   agendaIds: readonly number[];
   turnIndex: number;
@@ -368,11 +381,11 @@ export async function markDirectorAgendaResolved(args: {
     await client.query(
       `UPDATE world_engine_event_queue
        SET status = 'resolved',
-           resolved_turn_index = COALESCE(resolved_turn_index, $3)
-       WHERE session_id = $1
-         AND id = ANY($2::int[])
+           resolved_turn_index = COALESCE(resolved_turn_index, $5)
+       WHERE world_id = $1 AND map_id = $2 AND session_id = $3
+         AND id = ANY($4::int[])
          AND status IN ('injected', 'due', 'pending')`,
-      [args.sessionId, [...args.agendaIds], args.turnIndex]
+      [args.worldId, args.mapId, args.sessionId, [...args.agendaIds], args.turnIndex]
     );
   } finally {
     client.release();
@@ -380,6 +393,8 @@ export async function markDirectorAgendaResolved(args: {
 }
 
 export async function markDirectorAgendaExpired(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   agendaIds: readonly number[];
   turnIndex: number;
@@ -390,60 +405,13 @@ export async function markDirectorAgendaExpired(args: {
     await client.query(
       `UPDATE world_engine_event_queue
        SET status = 'expired'
-       WHERE session_id = $1
-         AND id = ANY($2::int[])
+       WHERE world_id = $1 AND map_id = $2 AND session_id = $3
+         AND id = ANY($4::int[])
          AND status IN ('pending', 'due', 'injected')`,
-      [args.sessionId, [...args.agendaIds]]
+      [args.worldId, args.mapId, args.sessionId, [...args.agendaIds]]
     );
   } finally {
     client.release();
-  }
-}
-
-/**
- * 从 world_engine_agenda_snapshots 中读取最近一条 snapshot 的 langgraph_hint_block。
- * LangGraph 路径生成的导演提示块比 promptAssembly 中独立重建的更丰富
- * （包含 phase, intent, pacing, key events, NPC actions, forbidden outcomes）。
- * 可用时优先使用该字段，否则回退到 promptAssembly 的独立重建逻辑。
- */
-export async function loadLanggraphHintBlock(args: {
-  sessionId: string;
-  timeoutMs?: number;
-}): Promise<string | null> {
-  if (!args.sessionId) return null;
-  const cfg = resolveWorldDirectorConfig();
-  const timeoutMs = args.timeoutMs ?? cfg.agendaQueryTimeoutMs;
-
-  const query = (async (): Promise<string | null> => {
-    const client = await pool.connect();
-    try {
-      const r = await client.query<{ snapshot_json: Record<string, unknown> }>(
-        `SELECT snapshot_json
-         FROM world_engine_agenda_snapshots
-         WHERE session_id = $1
-         ORDER BY agenda_revision DESC
-         LIMIT 1`,
-        [args.sessionId]
-      );
-      if (r.rows.length === 0) return null;
-      const raw = r.rows[0]?.snapshot_json?.langgraph_hint_block;
-      if (typeof raw !== "string" || !raw.trim()) return null;
-      return raw;
-    } finally {
-      client.release();
-    }
-  })();
-
-  try {
-    if (timeoutMs <= 0) return await query;
-    return await Promise.race([
-      query,
-      new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), timeoutMs)
-      ),
-    ]);
-  } catch {
-    return null;
   }
 }
 
@@ -452,6 +420,8 @@ export async function loadLanggraphHintBlock(args: {
  * 用于将世界引擎规划的 NPC 后台行动注入主笔 prompt，作为 DM 写作的行为指引。
  */
 export async function loadRecentNpcActions(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   timeoutMs?: number;
 }): Promise<DirectorNpcAction[]> {
@@ -465,10 +435,10 @@ export async function loadRecentNpcActions(args: {
       const r = await client.query<{ snapshot_json: Record<string, unknown> }>(
         `SELECT snapshot_json
          FROM world_engine_agenda_snapshots
-         WHERE session_id = $1
+         WHERE world_id = $1 AND map_id = $2 AND session_id = $3
          ORDER BY agenda_revision DESC
          LIMIT 1`,
-        [args.sessionId]
+        [args.worldId, args.mapId, args.sessionId]
       );
       if (r.rows.length === 0) return [];
       const raw = r.rows[0]?.snapshot_json?.npc_next_actions;
@@ -519,6 +489,8 @@ export async function loadRecentNpcActions(args: {
  *  - forbidden_reveal: 禁止揭露的内容
  */
 export async function loadRecentPlayerHooks(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   timeoutMs?: number;
 }): Promise<DirectorPrivateHook[]> {
@@ -532,10 +504,10 @@ export async function loadRecentPlayerHooks(args: {
       const r = await client.query<{ snapshot_json: Record<string, unknown> }>(
         `SELECT snapshot_json
          FROM world_engine_agenda_snapshots
-         WHERE session_id = $1
+         WHERE world_id = $1 AND map_id = $2 AND session_id = $3
          ORDER BY agenda_revision DESC
          LIMIT 1`,
-        [args.sessionId]
+        [args.worldId, args.mapId, args.sessionId]
       );
       if (r.rows.length === 0) return [];
       const raw = r.rows[0]?.snapshot_json?.player_private_hooks;
@@ -589,6 +561,8 @@ export type RecentBranchSeedsAndWarnings = {
  * 用于将世界引擎规划的分支提示和连续性警告注入主笔 prompt。
  */
 export async function loadRecentBranchSeedsAndWarnings(args: {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   timeoutMs?: number;
 }): Promise<RecentBranchSeedsAndWarnings> {
@@ -602,10 +576,10 @@ export async function loadRecentBranchSeedsAndWarnings(args: {
       const r = await client.query<{ snapshot_json: Record<string, unknown> }>(
         `SELECT snapshot_json
          FROM world_engine_agenda_snapshots
-         WHERE session_id = $1
+         WHERE world_id = $1 AND map_id = $2 AND session_id = $3
          ORDER BY agenda_revision DESC
          LIMIT 1`,
-        [args.sessionId]
+        [args.worldId, args.mapId, args.sessionId]
       );
       if (r.rows.length === 0) return { seeds: [], warnings: [] };
       const raw = r.rows[0]?.snapshot_json;

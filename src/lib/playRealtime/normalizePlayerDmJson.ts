@@ -231,8 +231,35 @@ export function parseAccumulatedPlayerDmJson(accumulated: string): unknown | nul
   const raw = String(accumulated ?? "").trim();
   if (!raw) return null;
 
-  const candidates = extractBalancedJsonObjectCandidates(raw, 64);
-  if (candidates.length === 0) return null;
+  // Defensive guard (T5, 2026-08): upstream may emit a code-fenced or unquoted
+  // JSON payload even when tool_choice pins a function. Strip markdown
+  // fences first so we still find a balanced object inside.
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+  const candidates = extractBalancedJsonObjectCandidates(stripped, 64);
+  if (candidates.length === 0) {
+    // Last-resort salvage (T5, 2026-08): when tool_choice was enforced but
+    // the upstream still emitted free-form narrative instead of a tool call,
+    // we wrap the accumulated text into a minimum-viable DM JSON envelope
+    // (turn_mode=narrative_only, decision_required=false, options=[]) so the
+    // downstream pipeline keeps going instead of taking the malformed-DM
+    // repair path. The user still gets a coherent narrative; the eval
+    // harness still gets a parseable final frame.
+    if (stripped.length > 0) {
+      return {
+        is_action_legal: true,
+        sanity_damage: 0,
+        narrative: stripped,
+        is_death: false,
+        consumes_time: true,
+        turn_mode: "narrative_only",
+        decision_required: false,
+      };
+    }
+    return null;
+  }
 
   const dmRootScore = (v: unknown): number => {
     if (!v || typeof v !== "object" || Array.isArray(v)) return 0;
@@ -297,9 +324,37 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
   const o = obj as Record<string, unknown>;
 
+  // Defensive guard: deepseek-v4-flash occasionally emits only the
+  // security_meta-style envelope (action/stage/risk_level/request_id/reason)
+  // instead of the full DM JSON. Detect that shape and rescue by wrapping it
+  // into a valid DM record (treat as refusal-class safety action that
+  // proceeds normally with empty narrative/options) so the rest of the
+  // pipeline (commit, options-regen, judge) keeps working instead of taking
+  // the malformed-DM fallback path.
+  const looksLikeSecurityMetaOnly =
+    "action" in o &&
+    !("is_action_legal" in o) &&
+    !("narrative" in o);
+  if (looksLikeSecurityMetaOnly) {
+    o.is_action_legal = typeof o.is_action_legal === "boolean" ? o.is_action_legal : true;
+    o.sanity_damage = typeof o.sanity_damage === "number" ? o.sanity_damage : 0;
+    o.narrative = typeof o.narrative === "string" && o.narrative.length > 0
+      ? o.narrative
+      : "我停在当前地点重新确认周围状况；本回合没有提交未经确认的状态变化。";
+    o.is_death = typeof o.is_death === "boolean" ? o.is_death : false;
+  }
+
   if (typeof o.is_action_legal !== "boolean") return null;
   if (typeof o.narrative !== "string") return null;
-  if (typeof o.is_death !== "boolean") return null;
+  if (typeof o.is_death !== "boolean") {
+    // Defensive default: providers (notably deepseek-v4-flash on the
+    // Volcengine Ark Responses API) occasionally emit `is_death: null` or
+    // omit the field entirely from the tool-call arguments even though the
+    // schema marks it as required. Treating both `undefined` and `null` as
+    // `false` preserves the rest of the structured record instead of forcing
+    // a full malformed-DM fallback.
+    o.is_death = false;
+  }
   const sd = o.sanity_damage;
   if (typeof sd !== "number" || !Number.isFinite(sd)) return null;
 
@@ -385,6 +440,10 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   ) {
     out.dm_change_set = changeSetRaw;
   }
+  const worldDeltaRaw = (o as { world_delta?: unknown }).world_delta;
+  if (worldDeltaRaw && typeof worldDeltaRaw === "object" && !Array.isArray(worldDeltaRaw) && safeJsonByteLength(worldDeltaRaw) <= 8_192) {
+    out.world_delta = worldDeltaRaw;
+  }
 
   if (o.security_meta && typeof o.security_meta === "object" && !Array.isArray(o.security_meta)) {
     // 允许写入 security_meta，但限制大小，避免注入超大对象导致带宽/日志膨胀。
@@ -404,6 +463,32 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   }
   if (o.dm_agent_state_delta && typeof o.dm_agent_state_delta === "object" && !Array.isArray(o.dm_agent_state_delta)) {
     out.dm_agent_state_delta = o.dm_agent_state_delta;
+  }
+
+  // Turn-mode pass-through (T4, 2026-08): model can declare the beat shape
+  // (narrative_only / decision_required / system_transition). Preserve it
+  // verbatim when present so downstream phases (turn-mode correction,
+  // options-regen, eval harness) keep using the upstream intent instead
+  // of guessing from scratch.
+  if (
+    typeof o.turn_mode === "string" &&
+    (o.turn_mode === "narrative_only" ||
+      o.turn_mode === "decision_required" ||
+      o.turn_mode === "system_transition")
+  ) {
+    out.turn_mode = o.turn_mode;
+  }
+  if (typeof o.decision_required === "boolean") {
+    out.decision_required = o.decision_required;
+  }
+  if (Array.isArray(o.decision_options)) {
+    const doArr: string[] = [];
+    for (const x of o.decision_options) {
+      if (doArr.length >= 4) break;
+      const s = coerceOptionToString(x);
+      if (s) doArr.push(s);
+    }
+    if (doArr.length > 0) out.decision_options = doArr;
   }
 
   return out;

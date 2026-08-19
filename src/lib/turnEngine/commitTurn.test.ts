@@ -394,6 +394,36 @@ test("commitTurn replaces an unregistered described NPC with an identity-unconfi
   assert.ok(result.summary.commitFlags.includes("structured_updates_stripped"));
 });
 
+test("commitTurn uses Xingni-scoped safety copy instead of apartment ambience", () => {
+  const result = commitTurn({
+    requestId: "req_xingni_described_unknown_person",
+    sessionId: "s_xingni",
+    turnIndex: 7,
+    worldId: "xingni_taichu",
+    candidateDmRecord: {
+      narrative: "一个未登记的陌生人突然报出姓名。",
+      options: ["追问"],
+      player_location: "QS_GUOYAN_INN",
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true, playerLocation: "QS_GUOYAN_INN" },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([
+      {
+        code: "unknown_entity_surface",
+        invariant: "unknown_entity_surface",
+        severity: "high",
+        source: "entityAudit",
+        detail: "kind=npc|surface=陌生人|context=generic_described_person",
+        anchor: "surface:npc:陌生人",
+      },
+    ], "block_commit"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /青石县/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /灯管|电梯|水管|楼道|墙皮|走廊/);
+  assert.ok(result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
+});
+
 test("commitTurn removes an uncommitted combat claim when hard safety blocks its state", () => {
   const result = commitTurn({
     requestId: "req_blocked_combat_claim",

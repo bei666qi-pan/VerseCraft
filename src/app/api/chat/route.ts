@@ -33,6 +33,7 @@ import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { PlayerChatStreamSuccess } from "@/lib/ai/router/execute";
 import type { AiRoutingReport } from "@/lib/ai/routing/types";
 import { anyAiProviderConfigured } from "@/lib/ai/service";
+import { ensureManagedAiSnapshot } from "@/lib/ai/managed/runtime";
 import {
   enhanceScene,
   expandNarrativeOnly,
@@ -71,6 +72,11 @@ import {
   parseAccumulatedPlayerDmJson,
 } from "@/lib/playRealtime/normalizePlayerDmJson";
 import {
+  buildMalformedDmSafeFallback,
+  buildValidatedPartialNarrativeCandidate,
+} from "@/lib/playRealtime/malformedDmSafeFallback";
+import { applyDurableNarrativeProgressGuard } from "@/lib/playRealtime/durableNarrativeProgressGuard";
+import {
   createVerseCraftRequestId,
   isSafeVerseCraftRequestId,
   VERSECRAFT_REQUEST_ID_HEADER,
@@ -88,12 +94,16 @@ import { CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
 import { isChatPurposeHeaderConsistent } from "@/lib/chatPurpose";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import { CHAT_LATENCY_BUDGET, OPTIONS_REGEN_LATENCY_BUDGET, VC_WAITING } from "@/lib/perf/waitingConfig";
+import {
+  CHAT_FINALIZATION_RESERVE_MS,
+  resolveChatStreamHardCapMs,
+  resolveChatTurnWatchdogMs,
+  resolveOptionalEnhanceBudgetMs,
+} from "@/lib/perf/chatFinalizationBudget";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import { buildPlayerChatMessages } from "@/lib/playRealtime/promptAssembly";
 import {
   loadVerseCraftEnvFilesOnce,
-  reloadVerseCraftProcessEnv,
-  resolveVerseCraftProjectRoot,
 } from "@/lib/config/loadVerseCraftEnv";
 import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
@@ -125,8 +135,12 @@ import { loadDirectorState } from "@/lib/worldEngine/directorState";
 import { applyB1SafetyGuard, extractPresentNpcIds, guessPlayerLocationFromContext } from "@/lib/playRealtime/b1Safety";
 import { buildDeterministicServiceTurn } from "@/lib/playRealtime/deterministicServiceTurn";
 import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
-import { markDirectorAgendaInjected, expireStaleDirectorAgenda } from "@/lib/worldEngine/agenda";
-import { detectDirectorHintAdoption } from "@/lib/storyDirector/serverHint";
+import { expireStaleDirectorAgenda } from "@/lib/worldEngine/agenda";
+import { validatePacingChapterDigest } from "@/lib/storyDirector/prompt";
+import {
+  normalizeDirectorHintReceipt,
+  stripDirectorHintReceipt,
+} from "@/lib/worldEngine/hintEnvelope";
 import { markSocialEventsProjected } from "@/lib/socialWorld/persistence";
 import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
 import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
@@ -142,6 +156,20 @@ import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
 import { buildNarrativeContinuityPacketBlock } from "@/lib/playRealtime/narrativeStylePackets";
 import { shapeUserActionForModelV2 } from "@/lib/playRealtime/actionIntent";
 import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
+import { buildThirdPersonLimitedPovPacketBlock } from "@/lib/playRealtime/povPackets";
+import { enforceToolCallShape } from "@/lib/playRealtime/turnModeToolInterceptor";
+import {
+  applyXingniNpcFactBoundary,
+  applyWorldNarrativeBoundary,
+  getXingniStablePlayerDmSystemPrefix,
+} from "@/lib/worlds/xingni/narrative";
+import {
+  DARK_MOON_MAP_ID,
+  DARK_MOON_WORLD_ID,
+  QINGSHI_MAP_ID,
+  XINGNI_WORLD_ID,
+} from "@/lib/worlds/types";
+import { applyQingshiTurnGuard } from "@/lib/worlds/xingni/qingshiTurnGuard";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
 import { buildOptionsOnlySystemPrompt, buildOptionsOnlyUserPacket } from "@/lib/playRealtime/optionsOnlyPackets";
 import { readPlayerEchoCanon } from "@/lib/playerEcho/repository";
@@ -218,7 +246,10 @@ import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGu
 import { applyItemGameplayOptionInjection, shouldSkipItemOptionInjection } from "@/lib/play/itemGameplay";
 import { shouldApplyDeferredOptionsStrip, stripPlayableOptionsForDeferredClientDelivery } from "@/lib/play/deferMainTurnOptionsDelivery";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
-import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
+import {
+  extractSafeNarrativePrefixBeforeProtocolLeak,
+  sanitizeNarrativeLeakageForFinal,
+} from "@/lib/playRealtime/protocolGuard";
 import { mergeAutoCapturedCodexUpdates } from "@/lib/registry/codexAutoCapture";
 import { auditDmOutputCandidateOnServer } from "@/lib/safety/output/pipeline";
 import { isGlobalCacheSafe } from "@/lib/kg/cacheGate";
@@ -383,7 +414,7 @@ async function resolveChatQueueGate(
   }
   if (validated.clientPurpose === "options_regen_only") return { queueId: null, response: null };
 
-  const queueGateStartedAt = Date.now();
+  const queueGateStartedAt = nowMs();
   const userId = await resolveAuthenticatedUserIdForQueue(req.headers);
   const queueGuestId = userId ? null : getGuestIdFromClientState(validated.clientState);
   const identity = buildChatQueueIdentity({
@@ -444,7 +475,7 @@ async function resolveChatQueueGate(
         queueReason: admission.reason,
         queueRetryAfterSeconds: admission.retryAfterSeconds,
         firstChunkLatencyMs: null,
-        totalLatencyMs: Date.now() - queueGateStartedAt,
+        totalLatencyMs: elapsedMs(queueGateStartedAt),
       },
     }).catch(() => {});
     return {
@@ -646,12 +677,12 @@ export async function POST(req: Request) {
       const isStreamingContentType =
         innerContentType.toLowerCase().includes("text/event-stream");
 
-      // one-api 对流式响应也返回 Content-Type: application/json，
+      // 部分 OpenAI 兼容服务对流式响应也返回 Content-Type: application/json，
       // 但 body 是 ReadableStream 且 status=200。仅在此兼容条件下放行。
       if (!isStreamingContentType) {
         if (inner.ok && inner.body) {
           console.warn(
-            "[api/chat][early_status_wrapper] non-streaming content-type with 2xx + body stream — forwarding (one-api compat)",
+            "[api/chat][early_status_wrapper] non-streaming content-type with 2xx + body stream — forwarding (OpenAI-compatible)",
             { contentType: innerContentType, status: inner.status, requestId }
           );
         } else {
@@ -676,6 +707,17 @@ export async function POST(req: Request) {
                 })}`
               )
             );
+            if (process.env.NODE_ENV !== "production") {
+              console.error(
+                `\x1b[31m[api/chat][site_service_msg]\x1b[0m`,
+                {
+                  requestId,
+                  origin: "early_status_invalid_content_type",
+                  reason,
+                  phase: "before_finalize",
+                }
+              );
+            }
           }
           return;
         }
@@ -778,6 +820,7 @@ async function postChatInternal(req: Request) {
   const messages = validated.messages;
   const playerContext = validated.playerContext;
   const clientState = validated.clientState;
+  const isXingniTurn = clientState?.worldId === XINGNI_WORLD_ID;
   const chatGuestId = getGuestIdFromClientState(clientState);
   let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
@@ -852,7 +895,7 @@ async function postChatInternal(req: Request) {
         })
       : reason;
     // Bounded server deadline; the UI may retry, but this path must not become a long story turn.
-    const optionsRegenStartedAt = Date.now();
+    const optionsRegenStartedAt = nowMs();
     const optionsServerBudgetMs = Math.max(
       1_000,
       Math.min(
@@ -871,7 +914,7 @@ async function postChatInternal(req: Request) {
       signal: undefined,
     });
     if (!regen.ok) {
-      const retryBudgetMs = Math.max(0, optionsServerBudgetMs - (Date.now() - optionsRegenStartedAt));
+      const retryBudgetMs = Math.max(0, optionsServerBudgetMs - elapsedMs(optionsRegenStartedAt));
       if (retryBudgetMs >= 1_200) {
         regen = await generateOptionsOnlyFallback({
           narrative: lastAssistant,
@@ -893,7 +936,7 @@ async function postChatInternal(req: Request) {
         ? (regen.repairUsed ? ["repair_pass_used"] : [])
         : (regen.debugReasonCodes ?? ["parse_failed"]),
     });
-    const optionsRegenLatencyMs = Date.now() - optionsRegenStartedAt;
+    const optionsRegenLatencyMs = elapsedMs(optionsRegenStartedAt);
     const optionsRegenDebugReasonCodes = shaped.debug_reason_codes ?? [];
     const optionsRegenTimedOut =
       optionsRegenDebugReasonCodes.some((code) => /timeout|abort/i.test(code)) ||
@@ -1179,7 +1222,7 @@ async function postChatInternal(req: Request) {
   // Authoritative B1 forge services do not need a generative DM turn. This
   // branch intentionally sits after input safety / anti-cheat / lane policy,
   // but before KG, lore, control preflight and every model call.
-  if (clientPurpose === "normal") {
+  if (clientPurpose === "normal" && !isXingniTurn) {
     const deterministicServiceTurn = buildDeterministicServiceTurn({
       latestUserInput,
       playerContext,
@@ -1244,6 +1287,9 @@ async function postChatInternal(req: Request) {
         sessionId,
         latestUserInput,
         playerContext,
+        worldId: clientState?.worldId,
+        mapId: clientState?.mapId,
+        playerLocation: clientState?.playerLocation,
       }).then((result) => {
         runtimeLoreCompact = result.runtimeLoreCompact;
         loreRetrievalLatencyMs = result.loreRetrievalLatencyMs;
@@ -1360,8 +1406,12 @@ async function postChatInternal(req: Request) {
   await runControlPreflightP;
   ttftProfile.controlPreflightMs =
     typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
-  const playerLocEarly = guessPlayerLocationFromContext(playerContext);
-  const presentNpcIdsEarly = extractPresentNpcIds(playerContext, playerLocEarly);
+  const playerLocEarly = isXingniTurn
+    ? String(clientState?.playerLocation ?? "QS_GUOYAN_INN")
+    : guessPlayerLocationFromContext(playerContext);
+  const presentNpcIdsEarly = isXingniTurn
+    ? (clientState?.presentNpcIds ?? [])
+    : extractPresentNpcIds(playerContext, playerLocEarly);
   const focusNpcEarly =
     !shouldApplyFirstActionConstraint
       ? resolveEpistemicTargetNpcId({
@@ -1380,12 +1430,13 @@ async function postChatInternal(req: Request) {
     shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
     clientPurpose,
   });
-  const directorDigest =
+  const directorDigestRaw =
     clientState && typeof clientState === "object" && !Array.isArray(clientState)
-      ? ((clientState as unknown as { directorDigest?: { beatModeHint?: unknown; tension?: unknown } }).directorDigest ?? null)
+      ? ((clientState as unknown as { directorDigest?: unknown }).directorDigest ?? null)
       : null;
-  const directorBeatHint = typeof directorDigest?.beatModeHint === "string" ? directorDigest.beatModeHint : null;
-  const directorTension = typeof directorDigest?.tension === "number" ? directorDigest.tension : null;
+  const directorDigest = validatePacingChapterDigest(directorDigestRaw);
+  const directorBeatHint = directorDigest?.beatModeHint ?? null;
+  const directorTension = directorDigest?.tension ?? null;
   const turnLaneDecision: TurnLaneDecision = routeTurnLane({
     intent: normalizedIntent,
     riskLane,
@@ -1405,9 +1456,11 @@ async function postChatInternal(req: Request) {
     turnLane: turnLaneDecision.lane,
     standardCompactEnabled: envBoolean("AI_CHAT_STANDARD_COMPACT_STABLE_PROMPT", false),
   });
-  const playerDmStablePrefix = useFastLaneCompactStablePrompt
-    ? getCompactStablePlayerDmSystemPrefix()
-    : getStablePlayerDmSystemPrefix();
+  const playerDmStablePrefix = isXingniTurn
+    ? getXingniStablePlayerDmSystemPrefix()
+    : useFastLaneCompactStablePrompt
+      ? getCompactStablePlayerDmSystemPrefix()
+      : getStablePlayerDmSystemPrefix();
   const useFastLaneCompactDynamicPackets =
     contextMode === "minimal" && envBoolean("AI_CHAT_FASTLANE_COMPACT_DYNAMIC_PACKETS", true);
   const memoryCapsEarly =
@@ -1459,7 +1512,9 @@ async function postChatInternal(req: Request) {
     dice: turnDice,
     maxChars: contextMode === "minimal" ? 300 : 900,
   });
-  const povBlockEarly = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
+  const povBlockEarly = isXingniTurn
+    ? buildThirdPersonLimitedPovPacketBlock({ maxChars: contextMode === "minimal" ? 220 : 420 })
+    : buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
   const npcGenderPronounBlockEarly = buildNpcGenderPronounPacketBlock({
     focusNpcId: focusNpcEarly,
     presentNpcIds: presentNpcIdsEarly,
@@ -1523,7 +1578,7 @@ async function postChatInternal(req: Request) {
             quotaBonusTokens: quotaResult.bonusTokens,
             quotaSurveyBonus: quotaResult.hasSurveyBonus,
             firstChunkLatencyMs: null,
-            totalLatencyMs: Date.now() - requestStartedAt,
+            totalLatencyMs: elapsedMs(requestStartedAt),
           },
         }).catch(() => {});
         return createSseResponse({
@@ -1715,22 +1770,43 @@ async function postChatInternal(req: Request) {
     epistemicPromptMetrics,
     epistemicResiduePlan,
     socialProjectionTelemetry,
-    injectedDirectorAgendaIds,
+    directorHintIdsForReceipt,
     injectedSocialEventIds,
-    dueDirectorAgendaForPrompt,
     playerEchoFirstEncounterPlan,
     allEpistemicFactsForPrompt,
     presentNpcIdsForEpistemic,
     nowIsoForEpistemic,
     maxRevealRankForMemory,
     epistemicProfileForPrompt,
-    directorDigestForPrompt,
     socialWorldConfig,
     worldDirectorConfig,
     totalSystemPromptChars,
   } = promptAssemblyResult;
   // NOTE: let — epistemicAnomalyResult is mutated after post-generation detection.
   let { epistemicAnomalyResult } = promptAssemblyResult;
+
+  const consumeInternalDirectorHintReceipt = (record: Record<string, unknown>): Record<string, unknown> => {
+    const rawReceipt = record.director_hint_receipt ?? record.directorHintReceipt;
+    const receipt = normalizeDirectorHintReceipt(rawReceipt, new Set(directorHintIdsForReceipt));
+    if (receipt && sessionId) {
+      void recordGenericAnalyticsEvent({
+        eventId: `${requestId}:director_hint_receipt:${receipt.hintId}`,
+        idempotencyKey: `${requestId}:director_hint_receipt:${receipt.hintId}`,
+        userId,
+        guestId: userId ? null : chatGuestId,
+        sessionId,
+        eventName: "director_hint_receipt",
+        eventTime: new Date(),
+        page: "/play",
+        source: "chat",
+        platform,
+        tokenCost: 0,
+        playDurationDeltaSec: 0,
+        payload: { requestId, hintId: receipt.hintId, status: receipt.status, reasonCode: receipt.reasonCode ?? null },
+      }).catch(() => {});
+    }
+    return stripDirectorHintReceipt(record);
+  };
 
   ttftProfile.promptBuildMs = elapsedMs(promptBuildStartAt);
 
@@ -1783,7 +1859,7 @@ async function postChatInternal(req: Request) {
     logAiTelemetry({
       requestId,
       task: "PLAYER_CHAT",
-      providerId: "oneapi",
+      providerId: "openai_compatible",
       logicalRole: "control",
       phase: "preflight_budget",
       message: `kg_cache_early_budget_hit budget_ms=${KG_CACHE_EARLY_BUDGET_MS}`,
@@ -1791,29 +1867,22 @@ async function postChatInternal(req: Request) {
     });
   }
 
-  if (!anyAiProviderConfigured()) {
-    reloadVerseCraftProcessEnv();
-  }
-  if (!anyAiProviderConfigured()) {
-    if (process.env.NODE_ENV === "development") {
-      const ai = resolveAiEnv();
-      console.warn("[api/chat] AI gateway still missing after env reload", {
-        cwd: process.cwd(),
-        projectRoot: resolveVerseCraftProjectRoot(),
-        gatewayConfigured: Boolean(ai.gatewayBaseUrl && ai.gatewayApiKey),
-        gatewayKeyLen: ai.gatewayApiKey.length,
-        mainModelConfigured: ai.modelsByRole.main.length > 0,
-      });
-    }
-    console.warn(
-      `[api/chat] No AI gateway configured (AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_MAIN). See .env.example. Returning degraded SSE with 200.`
-    );
-    const degradedPayloadAscii = buildVisibleSiteFailureDmJson({
+  if (!isMockAiProviderEnv()) await ensureManagedAiSnapshot();
+  if (!isMockAiProviderEnv() && !anyAiProviderConfigured("PLAYER_CHAT")) {
+    console.warn("[api/chat] No managed story model is ready. Returning degraded SSE with 200.");
+    const degradedPayloadBase = buildVisibleSiteFailureDmJson({
       kind: "auth_or_config",
       requestId,
       reason: "keys_missing",
       language: validated.language,
     });
+    const degradedPayloadAscii = isXingniTurn
+      ? JSON.stringify({
+          ...(JSON.parse(degradedPayloadBase) as Record<string, unknown>),
+          worldId: "xingni_taichu",
+          mapId: clientState?.mapId ?? "xingni_qingshi_county",
+        })
+      : degradedPayloadBase;
     return new Response(
       `${sseText(
         buildStatusFramePayload({
@@ -1844,6 +1913,18 @@ async function postChatInternal(req: Request) {
     reason: "server_internal_generation_failed",
     language: validated.language,
   });
+  // Telemetry: every closeWithFallback() call must record the origin so
+  // dev-log + analytics can grep the trigger source. Acceptable origins:
+  //   stream_pipe: provider pipe threw / aborted
+  //   stream_empty_exhausted: upstream stream produced no usable content
+  //   stream_done_empty_exhausted: stream.done event but no DM JSON
+  //   final_hooks_failed: runStreamFinalHooks threw (most often our middleware)
+  //   background_task_crashed: outermost async catch (line ~5836) — usually
+  //                            caused by middleware throwing
+  //   options_regen_only_crashed: post-resolve options regen crashed
+  //   turn_watchdog_timeout: per-turn watchdog fired
+  let fallbackOrigin = "unknown";
+  let fallbackException: Error | null = null;
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
@@ -1942,7 +2023,30 @@ async function postChatInternal(req: Request) {
     statusFrameCount += 1;
     return writeControlToStream(buildStatusFramePayload({ stage, message, requestId, flushPaddingBytes }));
   };
-  const closeWithFallback = async () => {
+  const closeWithFallback = async (origin?: string, exception?: unknown) => {
+    if (origin) fallbackOrigin = origin;
+    if (exception !== undefined) {
+      fallbackException = exception instanceof Error
+        ? exception
+        : new Error(typeof exception === "string" ? exception : JSON.stringify(exception).slice(0, 200));
+    }
+    // Always log + emit analytics on every fallback close so dev-log can grep
+    // the exact trigger source. Without this, a transient site_service_msg
+    // appears in the SSE stream with no dev-log breadcrumb.
+    if (process.env.NODE_ENV !== "production") {
+      const exMsg = fallbackException?.message ?? "no_exception_captured";
+      const exStack = fallbackException?.stack?.split("\n").slice(0, 3).join(" | ").slice(0, 240) ?? "";
+      console.error(
+        `\x1b[31m[api/chat][site_service_msg]\x1b[0m`,
+        {
+          requestId,
+          origin: fallbackOrigin,
+          exception_message: exMsg,
+          exception_stack_head: exStack,
+          phase: "final_close",
+        }
+      );
+    }
     try {
       await writeControlToStream(`${VERSECRAFT_FINAL_PREFIX}${fallbackPayload}`);
     } catch {
@@ -1970,24 +2074,25 @@ async function postChatInternal(req: Request) {
    * fallback final frame, and closes the writer so the response body ends and
    * the queue ticket is released. Cleared when the background task settles.
    */
-  const turnWatchdogMs = Math.max(
-    60_000,
-    Math.min(900_000, envNumber("VC_CHAT_TURN_WATCHDOG_MS", 300_000))
+  const turnWatchdogMs = resolveChatTurnWatchdogMs(
+    envNumber("VC_CHAT_TURN_WATCHDOG_MS", CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms),
   );
   let activeStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let readerAlreadyCancelled = false;
+  const pipelineAbort = new AbortController();
   const turnWatchdog = setTimeout(() => {
     console.error("[api/chat] turn watchdog fired", { requestId, turnWatchdogMs });
+    pipelineAbort.abort("turn_watchdog");
     void (async () => {
       if (!readerAlreadyCancelled) {
         readerAlreadyCancelled = true;
-        try {
-          await activeStreamReader?.cancel();
-        } catch {
+        // A wedged upstream reader can also wedge cancel(). FINAL delivery must
+        // never wait for provider cleanup; release it independently.
+        void activeStreamReader?.cancel().catch(() => {
           /* best effort: reader may already be closed */
-        }
+        });
       }
-      await closeWithFallback();
+      await closeWithFallback("turn_watchdog_timeout");
     })();
   }, turnWatchdogMs);
   turnWatchdog.unref?.();
@@ -2005,18 +2110,27 @@ async function postChatInternal(req: Request) {
    * with the parseable site-failure fallback final frame.
    */
   const streamIdleTimeoutMs = Math.max(
-    10_000,
-    Math.min(300_000, envNumber("VC_CHAT_STREAM_IDLE_TIMEOUT_MS", 45_000))
+    1_000,
+    Math.min(
+      CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
+      // firstVisibleTextP95Ms is a statistical target, not a per-request
+      // cancellation threshold. Use the shared normal-turn p50 as the hard
+      // idle ceiling so slower samples remain measurable instead of becoming
+      // artificial site failures; the absolute watchdog still closes at 19s.
+      envNumber("VC_CHAT_STREAM_IDLE_TIMEOUT_MS", CHAT_LATENCY_BUDGET.normalTurnFinalP50Ms),
+    )
   );
-  const streamHardCapMs = Math.max(
-    30_000,
-    Math.min(600_000, envNumber("VC_CHAT_STREAM_HARD_CAP_MS", 90_000))
+  const streamHardCapMs = resolveChatStreamHardCapMs(
+    envNumber("VC_CHAT_STREAM_HARD_CAP_MS", CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms),
   );
+  // Every reconnect shares one request-level stream deadline. Granting each
+  // round a fresh cap can exceed the 20s public final budget before fallback.
+  const streamAbsoluteDeadlineAt = requestStartedAt + streamHardCapMs;
   const readUpstreamBounded = (
     streamReader: ReadableStreamDefaultReader<Uint8Array>,
     deadlineAt: number
   ): Promise<ReadableStreamReadResult<Uint8Array>> => {
-    const remainingMs = deadlineAt - Date.now();
+    const remainingMs = deadlineAt - nowMs();
     if (remainingMs <= 0) {
       return Promise.reject(new Error(`stream_hard_cap_${streamHardCapMs}ms`));
     }
@@ -2048,7 +2162,6 @@ async function postChatInternal(req: Request) {
    * - Upstream `generateMainReply()` uses per-attempt AbortControllers with strict TIMEOUT_MS.
    * - Everything else shares this signal so we can still cancel best-effort steps if needed later.
    */
-  const pipelineAbort = new AbortController();
   const routingReport: AiRoutingReport = {
     requestId,
     task: "PLAYER_CHAT",
@@ -2080,11 +2193,6 @@ async function postChatInternal(req: Request) {
   let fallbackUsedTelemetry = false;
   let epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null = null;
   let narrativeLengthTelemetry: NarrativeLengthTelemetry | null = null;
-  let directorAdoptionTelemetry: {
-    adoptedCount: number;
-    adoptionRate: number;
-    directorAgendaCount: number;
-  } | null = null;
   let narrativeExpansionTelemetry: NarrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry();
   let provenanceVerifierTelemetry: any = null;
 
@@ -2094,7 +2202,7 @@ async function postChatInternal(req: Request) {
 
     // ── DM Agent 路径（Feature Flag 控制：VERSECRAFT_ENABLE_DM_AGENT=true）──
     const _dmAgentRollout = getVerseCraftRolloutFlags();
-    if (_dmAgentRollout.enableDmAgent && shouldAttemptDmAgent(latestUserInput)) {
+    if (!isXingniTurn && _dmAgentRollout.enableDmAgent && shouldAttemptDmAgent(latestUserInput)) {
       const { tryRunDmAgentTurn, buildDmAgentDmJson } = await import(
         "@/lib/ai/tools/dmAgentRouteIntegration"
       );
@@ -2165,7 +2273,7 @@ async function postChatInternal(req: Request) {
           const _postConsistency = _npcConsistencyResult.dmRecord;
 
           // Phase 7: resolve
-          const _dmResolved = resolveDmTurn(_postConsistency);
+          const _dmResolved = resolveDmTurn(consumeInternalDirectorHintReceipt(_postConsistency));
 
           // Phase 8.5: post-generation validator
           const _agentStateDelta = {
@@ -2193,6 +2301,7 @@ async function postChatInternal(req: Request) {
             delta: _agentStateDelta,
             validatorReport: _validatorReport,
             gameLanguage: validated.language,
+            worldId: isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID,
           });
           const _committed = _commitResult.committedDmRecord;
           const _commitControlledFields = [
@@ -2219,10 +2328,14 @@ async function postChatInternal(req: Request) {
 
           // Non-blocking background world tick
           if (sessionId) {
+            const backgroundWorldId = isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID;
+            const backgroundMapId = isXingniTurn ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID;
             const _bgTick = scheduleBackgroundWorldTick({
               requestId: requestId,
               userId: userId,
               sessionId: sessionId,
+              worldId: backgroundWorldId,
+              mapId: backgroundMapId,
               turnIndex: totalRounds,
               latestUserInput: latestUserInput,
               dmRecord: _dmResolved as Record<string, unknown>,
@@ -2234,6 +2347,7 @@ async function postChatInternal(req: Request) {
               maxPendingAgenda: 99,
               preflightRiskTags: pipelineControl?.risk_tags ?? [],
               dmNarrativePreview: String((_dmResolved as any).narrative ?? ""),
+              pacingControllerDigest: directorDigest,
               commitSummary: _commitResult.summary,
               enqueueFn: enqueueWorldEngineTick,
               onSettled: ({ result: _tickResult }) => {
@@ -2246,7 +2360,12 @@ async function postChatInternal(req: Request) {
                   eventName: "world_engine_enqueued",
                   eventTime: new Date(), page: "/play", source: "chat", platform,
                   tokenCost: 0, playDurationDeltaSec: 0,
-                  payload: { requestId, source: "dm_agent" },
+                  payload: {
+                    requestId,
+                    source: "dm_agent",
+                    worldId: backgroundWorldId,
+                    mapId: backgroundMapId,
+                  },
                 }).catch(() => {});
               },
             });
@@ -2377,7 +2496,7 @@ async function postChatInternal(req: Request) {
           upstreamStatus: first.lastHttpStatus ?? null,
           rateLimited: isUpstreamRateLimited,
           firstChunkLatencyMs: null,
-          totalLatencyMs: Date.now() - requestStartedAt,
+          totalLatencyMs: elapsedMs(requestStartedAt),
           riskLane: riskLane === "fast" ? "fast" : "slow",
           aiFallbackCount: first.httpAttempts?.filter((a) => a.failureKind !== undefined).length ?? 0,
           streamReconnectCount,
@@ -2418,12 +2537,41 @@ async function postChatInternal(req: Request) {
       const attemptsForHint = first.httpAttempts ?? [];
       const lastWithBody = [...attemptsForHint].reverse().find((a) => typeof a.httpStatus === "number" && a.message);
       const hintFields = parseUpstreamErrorFields(lastWithBody?.message);
+      // Telemetry: log this site_service_msg path with full ai_router reason
+      // so dev-log can grep the exact trigger (CHAIN_EXHAUSTED / 429 / 5xx /
+      // parse timeout). Without this, players see "网站暂时无法完成本次生成"
+      // with no breadcrumb on the server side.
+      const siteKind = isUpstreamRateLimited ? "site_busy" : isTimeout ? "network_or_gateway" : "site_unavailable";
+      const siteReason = hintFields.upstreamCode
+        ? `ai_router:${first.code}:${hintFields.upstreamCode}`
+        : `ai_router:${first.code}:${upstreamStatus || "unknown"}`;
+      if (process.env.NODE_ENV !== "production" || process.env.VC_LOG_SITE_FALLBACK === "1") {
+        console.error(
+          `\x1b[31m[api/chat][site_service_msg]\x1b[0m`,
+          {
+            requestId,
+            origin: "player_chat_stream_failure",
+            kind: siteKind,
+            ai_router_code: first.code,
+            ai_router_reason: siteReason,
+            upstream_status: upstreamStatus,
+            attempts: attemptsForHint.map((a) => ({
+              logicalRole: a.logicalRole,
+              providerId: a.providerId,
+              gatewayModel: a.gatewayModel,
+              phase: a.phase,
+              failureKind: a.failureKind,
+              httpStatus: a.httpStatus,
+              message: typeof a.message === "string" ? a.message.slice(0, 160) : "",
+            })),
+            phase: "before_finalize",
+          }
+        );
+      }
       const degraded = buildVisibleSiteFailureDmJson({
-        kind: isUpstreamRateLimited ? "site_busy" : isTimeout ? "network_or_gateway" : "site_unavailable",
+        kind: siteKind,
         requestId,
-        reason: hintFields.upstreamCode
-          ? `ai_router:${first.code}:${hintFields.upstreamCode}`
-          : `ai_router:${first.code}:${upstreamStatus || "unknown"}`,
+        reason: siteReason,
         language: validated.language,
       });
       try {
@@ -2454,7 +2602,7 @@ async function postChatInternal(req: Request) {
         if (kind === "STREAM_INTERRUPTED" && streamInterruptedCount >= 1) return false;
         if (kind === "EMPTY_CONTENT" && streamEmptyCount >= 1) return false;
         // Do not reconnect after long wall time; prefer fallback to avoid dragging minutes.
-        if (Date.now() - requestStartedAt > streamReconnectWallMs) return false;
+        if (elapsedMs(requestStartedAt) > streamReconnectWallMs) return false;
       }
       streamReconnectCount += 1;
       if (kind === "STREAM_INTERRUPTED") streamInterruptedCount += 1;
@@ -2462,7 +2610,7 @@ async function postChatInternal(req: Request) {
       const envSnap = resolveAiEnv();
       routingReport.attempts.push({
         logicalRole: failedRole,
-        providerId: "oneapi",
+        providerId: "openai_compatible",
         gatewayModel: envSnap.modelsByRole[failedRole],
         phase: "stream_body",
         failureKind: kind,
@@ -2555,7 +2703,7 @@ async function postChatInternal(req: Request) {
         },
       }).catch(() => {});
 
-      const finishedAt = Date.now();
+      const finishedAt = nowMs();
       // 缁堝抚闃舵锛堥瀛楀悗锛夎€楁椂鐢诲儚锛氱敤浜庝笌棣栧瓧鍓嶉樆濉炴媶鍒嗭紝閬垮厤璇妸鍚庡鐞嗗綋 TTFT 闂銆?      emitTtftProfileSummary("stream_end", finishedAt);
       void recordGenericAnalyticsEvent({
         eventId: `${requestId}:chat_request_finished`,
@@ -2797,6 +2945,20 @@ async function postChatInternal(req: Request) {
         stream: true,
         userId,
       });
+      if (streamSource.managedBinding) {
+        const { buildManagedUsageRecord, enqueueManagedUsage } = await import("@/lib/ai/managed/usage");
+        enqueueManagedUsage(buildManagedUsageRecord({
+          requestId,
+          task: "PLAYER_CHAT",
+          binding: streamSource.managedBinding,
+          phase: "stream_complete",
+          usage: args.latestUsage,
+          inputText: safeMessages.map((message) => message.content).join("\n"),
+          outputText: args.accumulated,
+          latencyMs: finishedAt - requestStartedAt,
+          outcome: "success",
+        }));
+      }
 
       // Also record usage to Langfuse generation observation
       recordAiGenerationMetric({
@@ -2838,19 +3000,49 @@ async function postChatInternal(req: Request) {
       const verseRolloutSnapshot = getVerseCraftRolloutFlags();
       // mock scenario 不做 options defer（eval probe 只读一次 final frame，不做 options_regen 请求）
       const isMockScenario = /\[mock_scenario:[a-z0-9_]+\]/i.test(latestUserInput);
+      // Missing/invalid options are optional presentation work and must never
+      // hold the authoritative main-turn FINAL open. The play client and live
+      // evaluator already use the dedicated, bounded options_regen_only path.
+      // Keep mock scenarios inline so deterministic contract probes can still
+      // assert their option payload in a single response.
       const deferPlayableOptsToSeparateRequest =
-        verseRolloutSnapshot.deferMainTurnOptionsToClient && clientPurpose !== "options_regen_only" && !isMockScenario;
+        clientPurpose !== "options_regen_only" && !isMockScenario;
 
       let commitSummaryForAnalytics: TurnCommitSummary | null = null;
-      const finalRepairBudgetMs = Math.max(
+      const configuredFinalRepairBudgetMs = Math.max(
         1_000,
         Math.min(12_000, envNumber("VC_FINAL_REPAIR_BUDGET_MS", 6_000))
       );
-      const finalRepairDeadlineAt = Date.now() + finalRepairBudgetMs;
-      const remainingFinalRepairBudgetMs = () => Math.max(0, finalRepairDeadlineAt - Date.now());
+      const finalRepairBudgetMs = Math.max(0, Math.min(
+        configuredFinalRepairBudgetMs,
+        CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms - elapsedMs(requestStartedAt) - 500,
+      ));
+      const finalRepairDeadlineAt = nowMs() + finalRepairBudgetMs;
+      const remainingFinalRepairBudgetMs = () => Math.max(0, finalRepairDeadlineAt - nowMs());
       const nextFinalRepairBudgetMs = (requestedMs: number) =>
         Math.max(0, Math.min(requestedMs, remainingFinalRepairBudgetMs()));
+      const nextOptionalFinalHookBudgetMs = (requestedMs: number, minMs = 500) => {
+        const availableMs = Math.max(
+          0,
+          remainingFinalRepairBudgetMs() - CHAT_FINALIZATION_RESERVE_MS,
+        );
+        const budgetMs = Math.max(0, Math.min(requestedMs, availableMs));
+        return budgetMs >= minMs ? budgetMs : 0;
+      };
       const canRunFinalRepair = (minMs = 500) => remainingFinalRepairBudgetMs() >= minMs;
+      let narrativeRepairAttempts = 0;
+      let malformedCandidateFinalized = false;
+      const inlineFinalModelRepairEnabled =
+        isMockScenario || envBoolean("VERSECRAFT_ENABLE_INLINE_FINAL_MODEL_REPAIR", false);
+      const reserveNarrativeRepair = (minMs = 500) => {
+        if (
+          !inlineFinalModelRepairEnabled ||
+          narrativeRepairAttempts >= 1 ||
+          !canRunFinalRepair(minMs)
+        ) return false;
+        narrativeRepairAttempts += 1;
+        return true;
+      };
 
       // Stashed condition values for the unified options regen decision.
       // Each value is set at the original trigger point; the LLM call happens once later.
@@ -2897,12 +3089,57 @@ async function postChatInternal(req: Request) {
       };
 
       const phaseRepairMalformedCandidate = async (): Promise<Record<string, unknown> | null> => {
-        if (!canRunFinalRepair()) return null;
+        malformedCandidateFinalized = true;
+        const deterministicFallback = (repairFailureReason = "repair_unavailable"): Record<string, unknown> => {
+          fallbackUsedTelemetry = true;
+          const safeFallback = buildMalformedDmSafeFallback({
+            requestId,
+            language: validated.language,
+            repairFailureReason,
+          });
+          const normalizedFallback = normalizePlayerDmJson(safeFallback);
+          return normalizedFallback
+            ? applyDmChangeSetToDmRecord(normalizedFallback, { clientState, requestId })
+            : safeFallback;
+        };
         const partialNarrative = extractPartialNarrativeForRepair(accumulatedText);
+        const sanitizedPartialNarrative = sanitizeNarrativeLeakageForFinal(partialNarrative);
+        const repairSeedNarrative = sanitizedPartialNarrative.degraded
+          ? extractSafeNarrativePrefixBeforeProtocolLeak(partialNarrative)
+          : sanitizedPartialNarrative.narrative;
+        // A closed narrative field can be salvaged without trusting any other
+        // malformed structure. This path is intentionally disabled for the
+        // mock malformed fixture so the dedicated live probe continues to
+        // exercise the real Writer-only repair branch.
+        if (!isMockScenario) {
+          const partialCandidate = buildValidatedPartialNarrativeCandidate({
+            requestId,
+            narrative: repairSeedNarrative,
+          });
+          if (partialCandidate) {
+            if (process.env.NODE_ENV !== "production") {
+              console.debug("[api/chat][malformed_dm_partial_narrative_salvaged]", {
+                requestId,
+                narrativeChars: Array.from(repairSeedNarrative).length,
+                remainingFinalRepairBudgetMs: remainingFinalRepairBudgetMs(),
+              });
+            }
+            return applyDmChangeSetToDmRecord(partialCandidate, { clientState, requestId });
+          }
+          if (partialNarrative && process.env.NODE_ENV !== "production") {
+            console.debug("[api/chat][malformed_dm_partial_narrative_rejected]", {
+              requestId,
+              protocolFlags: sanitizedPartialNarrative.flags,
+              narrativeChars: Array.from(partialNarrative).length,
+              remainingFinalRepairBudgetMs: remainingFinalRepairBudgetMs(),
+            });
+          }
+        }
+        if (!reserveNarrativeRepair()) return deterministicFallback("repair_budget_unavailable");
         const seedRecord: Record<string, unknown> = {
           is_action_legal: true,
           sanity_damage: 0,
-          narrative: partialNarrative,
+          narrative: repairSeedNarrative,
           is_death: false,
           consumes_time: true,
           consumed_items: [],
@@ -2913,8 +3150,10 @@ async function postChatInternal(req: Request) {
           },
         };
         try {
+          const repairBudgetMs = nextFinalRepairBudgetMs(4_000);
+          const repairStartedAt = nowMs();
           const repaired = await repairNarrativeOnly({
-            originalNarrative: partialNarrative || latestUserInput,
+            originalNarrative: repairSeedNarrative || latestUserInput,
             originalDmRecord: seedRecord,
             latestUserInput: latestUserInput,
             playerContextSnapshot: playerContext,
@@ -2938,13 +3177,30 @@ async function postChatInternal(req: Request) {
               tags: { phase: "final_hooks", purpose: "malformed_dm_repair" },
             },
             signal: pipelineAbort.signal,
-            budgetMs: nextFinalRepairBudgetMs(4_000),
+            budgetMs: repairBudgetMs,
             maxChars: narrativeBudget.maxChars,
+            structureSnapshotMode: "omit",
           });
-          if (!repaired.ok) return null;
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("[api/chat][malformed_dm_repair_metrics]", {
+              requestId,
+              ok: repaired.ok,
+              reason: repaired.ok ? null : repaired.reason,
+              configuredBudgetMs: repairBudgetMs,
+              wallMs: elapsedMs(repairStartedAt),
+              reportedLatencyMs: repaired.latencyMs,
+              remainingFinalRepairBudgetMs: remainingFinalRepairBudgetMs(),
+            });
+          }
+          if (!repaired.ok) return deterministicFallback(`repair_${repaired.reason}`);
           let repairedOptions: string[] = [];
-          if (!deferPlayableOptsToSeparateRequest) {
-            const optionsRepairStartedAt = Date.now();
+          const malformedOptionsMinimumBudgetMs =
+            OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs + CHAT_FINALIZATION_RESERVE_MS;
+          if (
+            !deferPlayableOptsToSeparateRequest &&
+            canRunFinalRepair(malformedOptionsMinimumBudgetMs)
+          ) {
+            const optionsRepairStartedAt = nowMs();
             const regen = await generateOptionsOnlyFallback({
               narrative: repaired.narrative,
               latestUserInput: latestUserInput,
@@ -2961,21 +3217,82 @@ async function postChatInternal(req: Request) {
               budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
             });
             optionsRepairUsedTelemetry = true;
-            optionsRepairMsTelemetry = Math.max(0, Date.now() - optionsRepairStartedAt);
+            optionsRepairMsTelemetry = elapsedMs(optionsRepairStartedAt);
             repairedOptions = regen.ok ? regen.options : [];
+          } else if (process.env.NODE_ENV !== "production") {
+            console.debug("[api/chat][malformed_dm_options_repair_skipped]", {
+              requestId,
+              reason: deferPlayableOptsToSeparateRequest
+                ? "deferred_to_client"
+                : "finalization_reserve_protected",
+              requiredBudgetMs: malformedOptionsMinimumBudgetMs,
+              remainingFinalRepairBudgetMs: remainingFinalRepairBudgetMs(),
+            });
           }
           const repairedRecord = normalizePlayerDmJson({
             ...seedRecord,
             narrative: repaired.narrative,
             options: repairedOptions,
           });
-          if (!repairedRecord) return null;
+          if (!repairedRecord) return deterministicFallback("repair_normalization_rejected");
           fallbackUsedTelemetry = true;
           return applyDmChangeSetToDmRecord(repairedRecord, { clientState: clientState, requestId: requestId });
         } catch (e) {
           console.warn("[api/chat] malformed DM model repair skipped", e);
-          return null;
+          return deterministicFallback("repair_exception");
         }
+      };
+
+      // --- Phase 1.5: Human-in-the-Loop Middleware (turn_mode interceptor) ---
+      //
+      // Provider 约束解码层只在 strict function-call 工具结构层面生效，对
+      // schema 字段 const / enum（turn_mode / decision_required / options 长度）
+      // 不强制 —— deepseek-v4-flash 在 long structured prompt 下偶尔仍声明
+      // turn_mode:"narrative_only" 或给出 < 4 options。这里在
+      // phaseParseAndNormalizeCandidate / phaseRepairMalformedCandidate 之后、
+      // phaseApplyStructuralGuards 之前插入一个确定性中间件，等价于 provider
+      // 约束解码层的二次把关：把 turn_mode 钉到 decision_required，options 钉
+      // 到 4 条（缺失项优先用 INTENT_PARSE / control 角色做 LLM 二次推理 +
+      // 60s LRU cache，再降级到 anchor-模板，最后兜底占位），**不引入新事实**。
+      // telemetry 通过 _commit_flags + internal_meta 标记
+      // `hitl_turn_mode_interceptor_v2`，让 eval harness 能区分模型层硬约束
+      // 命中 vs 中间件修正命中。
+      const phaseApplyTurnModeInterceptor = async (
+        rec: Record<string, unknown>
+      ): Promise<Record<string, unknown>> => {
+        const hitlResult = await enforceToolCallShape({
+          record: rec,
+          narrative: typeof rec.narrative === "string" ? (rec.narrative as string) : undefined,
+          requestId: requestId,
+          playerContext: playerContext ?? null,
+          ctx: {
+            requestId: requestId,
+            userId: userId,
+            sessionId: sessionId,
+          },
+          signal: pipelineAbort.signal,
+          playerState: clientState
+            ? {
+                playerLocation: clientState.playerLocation ?? "未知",
+                inventoryItemIds: clientState.inventoryItemIds ?? [],
+              }
+            : null,
+        });
+        if (hitlResult.flags.length > 0 && process.env.NODE_ENV !== "production") {
+          console.debug("[api/chat][hitl_turn_mode_interceptor]", {
+            requestId,
+            flags: hitlResult.flags,
+            correctedTurnMode: hitlResult.correctedTurnMode,
+            correctedOptionsLength: hitlResult.correctedOptionsLength,
+            appendedOptionsCount: hitlResult.appendedOptionsCount,
+            llmRefillUsed: hitlResult.llmRefillUsed,
+            turnMode: (hitlResult.record.turn_mode as string | undefined) ?? null,
+            optionsLen: Array.isArray(hitlResult.record.options)
+              ? (hitlResult.record.options as unknown[]).length
+              : null,
+          });
+        }
+        return hitlResult.record;
       };
 
       // --- Phase 2: structural guards (pre-enhance) ---
@@ -2983,6 +3300,16 @@ async function postChatInternal(req: Request) {
         dm: Record<string, unknown>
       ): Record<string, unknown> => {
         let rec = dm;
+        if (isXingniTurn && clientState) {
+          rec = applyQingshiTurnGuard({ dmRecord: rec, clientState });
+          rec = applyXingniNpcFactBoundary(rec, {
+            latestUserInput,
+            presentNpcIds: clientState.presentNpcIds,
+            worldStateDigest: clientState.worldStateDigest,
+          });
+          rec = applyWorldNarrativeBoundary({ worldId: "xingni_taichu", dmRecord: rec });
+          return rec;
+        }
         rec = applyB1ServiceExecutionGuard({
           dmRecord: rec,
           latestUserInput: latestUserInput,
@@ -3038,8 +3365,21 @@ async function postChatInternal(req: Request) {
         dm: Record<string, unknown>
       ): Promise<Record<string, unknown>> => {
         let rec = dm;
+        if (isXingniTurn) return rec;
         enhancePathDmParsed = true;
-        const enhanceWallStart = Date.now();
+        const enhanceWallStart = nowMs();
+        const enhanceBudgetMs = resolveOptionalEnhanceBudgetMs({
+          configuredMs: preflightEnv.narrativeEnhanceBudgetMs,
+          elapsedMs: elapsedMs(requestStartedAt),
+        });
+        if (enhanceBudgetMs <= 0) {
+          lastEnhanceAnalytics = {
+            kind: "skipped",
+            reason: "finalization_budget_reserved",
+            wallMs: 0,
+          };
+          return applyStage2SettlementGuard(rec);
+        }
         try {
           lastEnhanceAnalytics = await enhanceScene({
             accumulatedJsonText: accumulatedText,
@@ -3051,7 +3391,7 @@ async function postChatInternal(req: Request) {
             isFirstAction: isFirstAction,
             playerContext: playerContext,
             latestUserInput: latestUserInput,
-            enhanceBudgetMs: preflightEnv.narrativeEnhanceBudgetMs,
+            enhanceBudgetMs,
           });
           if (lastEnhanceAnalytics.kind === "applied") {
             const next = normalizePlayerDmJson(lastEnhanceAnalytics.dm);
@@ -3062,7 +3402,7 @@ async function postChatInternal(req: Request) {
           lastEnhanceAnalytics = {
             kind: "skipped",
             reason: "exception",
-            wallMs: Math.max(0, Date.now() - enhanceWallStart),
+            wallMs: elapsedMs(enhanceWallStart),
           };
         }
         return applyStage2SettlementGuard(rec);
@@ -3071,6 +3411,12 @@ async function postChatInternal(req: Request) {
       let dmRecord = phaseParseAndNormalizeCandidate();
       if (!dmRecord) {
         dmRecord = await phaseRepairMalformedCandidate();
+      }
+      if (dmRecord) {
+        // 编排硬路由：在 parse/normalize/repair 之后立即拦截，把
+        // turn_mode 钉到 decision_required + options 钉到 4 条。
+        // 这是 provider 约束解码层无法 100% 强制时的运行时兜底。
+        dmRecord = await phaseApplyTurnModeInterceptor(dmRecord);
       }
 
       let capturedBeatForLedger: string | null = null;
@@ -3083,9 +3429,12 @@ async function postChatInternal(req: Request) {
         // Enhancement may replace candidate prose after the structural phase;
         // re-apply this pure narrative/state consistency guard at the final
         // post-generation boundary.
-        dmRecord = applyPhysicalInjuryNarrativeGuard(dmRecord);
-        dmRecord = applyEquipmentNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
-        dmRecord = applyPresentNpcNarrativeBoundaryGuard({ dmRecord, clientState: clientState });
+        if (!isXingniTurn) {
+          dmRecord = applyPhysicalInjuryNarrativeGuard(dmRecord);
+          dmRecord = applyEquipmentNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
+          dmRecord = applyPresentNpcNarrativeBoundaryGuard({ dmRecord, clientState: clientState });
+          dmRecord = applyDurableNarrativeProgressGuard({ dmRecord, latestUserInput, clientState: clientState });
+        }
         // --- Parallel: compose non-overlapping narrative regex guards ---
         // applyInternalIdNarrativeGuard, applyProfessionNarrativeCoherenceGuard, and
         // applyAnonymizationArtifactGuard are pure CPU-only regex transforms. Each
@@ -3099,7 +3448,7 @@ async function postChatInternal(req: Request) {
         // to sequential application. The reduce below chains narrative modifications
         // (any guard that didn't change the text returns the original dnRecord ref)
         // and merges all _commit_flags into a deduplicated set.
-        const [postInternalId, postProfession, postAnonymization] = await Promise.all([
+        const [postInternalId, postProfession, postAnonymization] = isXingniTurn ? [dmRecord, dmRecord, dmRecord] : await Promise.all([
           Promise.resolve().then(() => applyInternalIdNarrativeGuard(dmRecord)),
           Promise.resolve().then(() => applyProfessionNarrativeCoherenceGuard(dmRecord)),
           Promise.resolve().then(() => applyAnonymizationArtifactGuard(dmRecord)),
@@ -3117,7 +3466,7 @@ async function postChatInternal(req: Request) {
             ],
           };
         }, dmRecord);
-        dmRecord = applyLocationNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
+        if (!isXingniTurn) dmRecord = applyLocationNarrativeConsistencyGuard({ dmRecord, clientState: clientState });
 
         // --- Phase 4: protocol validator (narrative contamination) ---
         /**
@@ -3249,7 +3598,7 @@ async function postChatInternal(req: Request) {
           epistemicPostValidatorTelemetry = telemetry;
           return next;
         };
-        if (laneSideEffectPlan.requireNpcConsistency) {
+        if (laneSideEffectPlan.requireNpcConsistency && !isXingniTurn) {
           dmRecord = runEpistemicPostGuard(dmRecord);
         }
         try {
@@ -3304,6 +3653,16 @@ async function postChatInternal(req: Request) {
         }
 
         // --- Phase 8: resolve DM turn envelope + decision quality gate + post-resolve regen ---
+        if (isXingniTurn) dmRecord = applyXingniNpcFactBoundary(dmRecord, {
+          latestUserInput,
+          presentNpcIds: clientState?.presentNpcIds,
+          worldStateDigest: clientState?.worldStateDigest,
+        });
+        dmRecord = applyWorldNarrativeBoundary({
+          worldId: isXingniTurn ? "xingni_taichu" : "dark_moon_prologue",
+          dmRecord,
+        });
+        dmRecord = consumeInternalDirectorHintReceipt(dmRecord);
         let resolved = resolveDmTurn(dmRecord);
         // Phase-2 hook: enrich the post-narrative state delta from the resolved envelope.
         // Today this is observer-only; used by analytics and by future phases that will
@@ -3476,13 +3835,26 @@ async function postChatInternal(req: Request) {
             !Array.isArray((resolved as any).security_meta)
               ? ((resolved as any).security_meta as Record<string, unknown>)
               : null;
+          const internalMeta =
+            (resolved as any).internal_meta &&
+            typeof (resolved as any).internal_meta === "object" &&
+            !Array.isArray((resolved as any).internal_meta)
+              ? ((resolved as any).internal_meta as Record<string, unknown>)
+              : null;
+          const recoveredFromMalformedDm =
+            internalMeta?.action === "model_repair_after_malformed_dm" ||
+            internalMeta?.action === "validated_partial_narrative_after_malformed_dm";
           const hasProtocolOrSafetyDegrade =
+            recoveredFromMalformedDm ||
             securityMeta?.action === "degrade" ||
             typeof securityMeta?.protocol_guard === "string" ||
             String(securityMeta?.stage ?? "").includes("safety") ||
             String(securityMeta?.stage ?? "").includes("final_output") ||
             String(securityMeta?.riskLevel ?? "").toLowerCase() === "black";
-          const performanceBudgetMs = Math.max(0, 56_000 - (Date.now() - requestStartedAt));
+          const performanceBudgetMs = Math.max(
+            0,
+            CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms - elapsedMs(requestStartedAt),
+          );
           const expansionDecision = shouldTriggerNarrativeExpansion({
             enabled: aiEnvForSystem.enableNarrativeExpansion,
             budget: narrativeBudget ?? null,
@@ -3515,7 +3887,7 @@ async function postChatInternal(req: Request) {
                 payload: {
                   skippedReason: expansionDecision.skippedReason,
                   performanceBudgetMs: Math.max(0, Math.trunc(performanceBudgetMs)),
-                  elapsedMs: requestStartedAt ? Date.now() - requestStartedAt : null,
+                  elapsedMs: elapsedMs(requestStartedAt),
                 },
               });
             }
@@ -3533,7 +3905,7 @@ async function postChatInternal(req: Request) {
             // inside the 20s p95 budget.
             const finalP95RemainingMs = Math.max(
               0,
-              CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms - (Date.now() - requestStartedAt) - 500
+              CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms - elapsedMs(requestStartedAt) - 500
             );
             const ABSOLUTE_EXPANSION_CAP_MS = 8_000;
             const expansionBudgetMs = Math.max(
@@ -3564,7 +3936,7 @@ async function postChatInternal(req: Request) {
                   skippedReason: "performance_budget_exhausted",
                   expansionBudgetMs: Math.max(0, Math.trunc(expansionBudgetMs)),
                   performanceBudgetMs: Math.max(0, Math.trunc(performanceBudgetMs)),
-                  elapsedMs: requestStartedAt ? Date.now() - requestStartedAt : null,
+                  elapsedMs: elapsedMs(requestStartedAt),
                 },
               });
             } else {
@@ -3670,13 +4042,13 @@ async function postChatInternal(req: Request) {
               sceneNpcIds: presentNpcIdsForEpistemic ?? [],
               riskTags: pipelineControl?.risk_tags ?? [],
               npcConsistencyIssueCount,
-              narrativeStyleValidationEnabled: verseRollout.enableNarrativeStyleValidator,
+              narrativeStyleValidationEnabled: !isXingniTurn && verseRollout.enableNarrativeStyleValidator,
               narrativeStyleFocus: normalizedIntent.kind,
               npcKnowledgeValidationEnabled: verseRollout.enableNpcKnowledgeValidator,
               npcKnowledgePacket: npcKnowledgePacketForValidator,
               speakerNpcId: focusNpcForPrompt,
               npcKnowledgeMaxRevealRank: maxRevealRankForMemory,
-              unsupportedFactDetectionEnabled: verseRollout.enableWorldFactRegistry,
+              unsupportedFactDetectionEnabled: !isXingniTurn && verseRollout.enableWorldFactRegistry,
               allowedFactIds: allowedWorldFactIdsForValidator,
               scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
               actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
@@ -3695,8 +4067,8 @@ async function postChatInternal(req: Request) {
               ? (clientState as Record<string, unknown>)
               : {};
           const directorDigestRecordForPacing =
-            directorDigestForPrompt && typeof directorDigestForPrompt === "object" && !Array.isArray(directorDigestForPrompt)
-              ? (directorDigestForPrompt as Record<string, unknown>)
+            directorDigest && typeof directorDigest === "object" && !Array.isArray(directorDigest)
+              ? (directorDigest as Record<string, unknown>)
               : null;
           const directorChapterForPacing =
             directorDigestRecordForPacing?.chapter &&
@@ -3742,11 +4114,7 @@ async function postChatInternal(req: Request) {
             (directorTension ?? 0) >= 85 || directorPressureFlagsForPacing.includes("high_threat")
               ? Math.max(1, directorStallCountForPacing)
               : 0;
-          const directorDueAgendaHintForPacing =
-            dueDirectorAgendaForPrompt
-              .map((item) => `${item.eventCode}:${item.priority}:${item.revealPolicy}`)
-              .filter(Boolean)
-              .join("|") || null;
+          const directorDueAgendaHintForPacing = null;
           const pacingReport = narrativeSafetyRuntime.pacingValidatorEnabled
             ? validatePacing({
                 lane: turnLaneDecision.lane,
@@ -3913,7 +4281,7 @@ async function postChatInternal(req: Request) {
               narrativeSafetyEnforcement.shouldBlockCommit
             ) &&
             !narrativeSafetyEnforcement.promptInjectionBlocked;
-          if (repairableNarrativeFailure && canRunFinalRepair()) {
+          if (repairableNarrativeFailure && reserveNarrativeRepair()) {
             try {
               const repairIssues = [
                 ...validatorReport.issues.map((issue) => ({
@@ -4059,6 +4427,7 @@ async function postChatInternal(req: Request) {
             },
             factCommitGateResult,
             gameLanguage: validated.language,
+            worldId: isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID,
           });
           const committedRecord = commitResult.committedDmRecord;
           const commitControlledFields = [
@@ -4077,7 +4446,9 @@ async function postChatInternal(req: Request) {
           // Reassert only authored, structured mechanics after that decision so
           // a registered task delivery or registered combat action cannot become
           // randomly non-playable because the model prose was repaired/blocked.
-          resolved = applyRegisteredMechanicsGuard({ dmRecord: resolved, latestUserInput: latestUserInput, clientState: clientState });
+          resolved = isXingniTurn && clientState
+            ? resolveDmTurn(applyQingshiTurnGuard({ dmRecord: resolved, clientState }))
+            : applyRegisteredMechanicsGuard({ dmRecord: resolved, latestUserInput: latestUserInput, clientState: clientState });
           recordNarrativeGovernanceOutcome(commitResult.summary.narrativeGovernanceTelemetry);
           commitSummaryForAnalytics = commitResult.summary;
           void commitSummaryForAnalytics; // signal usage across try/catch for eslint dataflow
@@ -4119,15 +4490,16 @@ async function postChatInternal(req: Request) {
               validatorOverriddenOptCount: optsRegenState.validatorOverriddenOptCount,
               canRunFinalRepair: true,
               deferPlayableOptsToSeparateRequest: false,
-              budgetPreResolveMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
-              budgetDecisionFixMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
-              budgetQualityGateMs: nextFinalRepairBudgetMs(1_800),
-              budgetPostResolveMs: nextFinalRepairBudgetMs(4_500),
-              budgetValidatorMs: nextFinalRepairBudgetMs(4_500),
+              malformedCandidateFinalized,
+              budgetPreResolveMs: nextOptionalFinalHookBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
+              budgetDecisionFixMs: nextOptionalFinalHookBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
+              budgetQualityGateMs: nextOptionalFinalHookBudgetMs(1_800),
+              budgetPostResolveMs: nextOptionalFinalHookBudgetMs(4_500),
+              budgetValidatorMs: nextOptionalFinalHookBudgetMs(4_500),
             });
 
-            if (regenDecision.shouldRegen) {
-              const repairStartedAt = Date.now();
+            if (regenDecision.shouldRegen && regenDecision.budgetMs > 0) {
+              const repairStartedAt = nowMs();
               try {
                 if (regenDecision.regenType === "decision_options") {
                   const regen = await generateDecisionOptionsOnlyFallback({
@@ -4143,7 +4515,7 @@ async function postChatInternal(req: Request) {
                     budgetMs: regenDecision.budgetMs,
                   });
                   optionsRepairUsedTelemetry = true;
-                  optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
+                  optionsRepairMsTelemetry = elapsedMs(repairStartedAt);
                   if (regen.ok) {
                     recordDecisionOptionsFixOutcome(true);
                     (resolved as any).decision_options = regen.decision_options;
@@ -4167,7 +4539,8 @@ async function postChatInternal(req: Request) {
                     outputLanguage: validated.language,
                     budgetMs: regenDecision.budgetMs,
                   });
-                  if (!regen.ok && canRunFinalRepair()) {
+                  const retryBudgetMs = nextOptionalFinalHookBudgetMs(3_500);
+                  if (!regen.ok && retryBudgetMs > 0) {
                     regen = await generateOptionsOnlyFallback({
                       narrative: String((resolved as any).narrative ?? ""),
                       latestUserInput: latestUserInput,
@@ -4181,11 +4554,11 @@ async function postChatInternal(req: Request) {
                         ? buildOptionsOnlySystemPrompt()
                         : "",
                       outputLanguage: validated.language,
-                      budgetMs: nextFinalRepairBudgetMs(3_500),
+                      budgetMs: retryBudgetMs,
                     });
                   }
                   optionsRepairUsedTelemetry = true;
-                  optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
+                  optionsRepairMsTelemetry = elapsedMs(repairStartedAt);
                   if (regen.ok) {
                     (resolved as any).options = regen.options;
                     if (Array.isArray((resolved as any).decision_options)) {
@@ -4492,7 +4865,7 @@ async function postChatInternal(req: Request) {
         }
         resolvedForClient = mergeAutoCapturedCodexUpdates(
           resolvedForClient as unknown as Record<string, unknown>,
-          { maxMatches: 12 }
+          { maxMatches: 12, worldId: isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID }
         ) as unknown as ResolvedDmTurn;
         // mock scenario 请求保留选项字段（benchmark/eval 需要检查 optionsCount）
         const isStreamFinalMockRequest = /\[mock_scenario:[a-z0-9_]+\]/i.test(String(latestUserInput ?? ""));
@@ -4519,6 +4892,7 @@ async function postChatInternal(req: Request) {
         const dmObj: Record<string, unknown> = JSON.parse(finalizePayload) as Record<string, unknown>;
 
         try {
+          const authoritativeWorldDelta = isXingniTurn ? dmObj.world_delta : undefined;
           const outputAudit = await auditDmOutputCandidateOnServer({
             dmRecord: dmObj,
             sceneKind: "private_story_output",
@@ -4532,16 +4906,35 @@ async function postChatInternal(req: Request) {
           });
 
           dmRecord = outputAudit.updatedDmRecord;
+          if (authoritativeWorldDelta !== undefined && dmRecord.world_delta === undefined) {
+            dmRecord.world_delta = authoritativeWorldDelta;
+          }
+          if (!isXingniTurn) {
+            dmRecord = applyPresentNpcNarrativeBoundaryGuard({ dmRecord, clientState });
+            dmRecord = applyDurableNarrativeProgressGuard({ dmRecord, latestUserInput, clientState });
+            dmRecord = applyLocationNarrativeConsistencyGuard({ dmRecord, clientState });
+          }
           // Output auditing reconstructs a resolved DM envelope. Reapply
           // authored mechanics afterwards: otherwise the audit round-trip can
           // erase a deterministic state transition that was already
           // adjudicated (for example, consuming the registered letter while
           // completing its delivery task).
+          const auditedGuarded = isXingniTurn && clientState
+            ? applyQingshiTurnGuard({ dmRecord, clientState })
+            : applyRegisteredMechanicsGuard({
+                dmRecord,
+                latestUserInput: latestUserInput,
+                clientState: clientState,
+              });
+          const auditedFactGuarded = isXingniTurn ? applyXingniNpcFactBoundary(auditedGuarded, {
+            latestUserInput,
+            presentNpcIds: clientState?.presentNpcIds,
+            worldStateDigest: clientState?.worldStateDigest,
+          }) : auditedGuarded;
           let auditedResolved = resolveDmTurn(
-            applyRegisteredMechanicsGuard({
-              dmRecord,
-              latestUserInput: latestUserInput,
-              clientState: clientState,
+            applyWorldNarrativeBoundary({
+              worldId: isXingniTurn ? "xingni_taichu" : "dark_moon_prologue",
+              dmRecord: auditedFactGuarded,
             })
           );
           if (!shouldSkipItemOptionInjection({ resolved: auditedResolved, clientPurpose: validated.clientPurpose })) {
@@ -4549,7 +4942,7 @@ async function postChatInternal(req: Request) {
           }
           auditedResolved = mergeAutoCapturedCodexUpdates(
             auditedResolved as unknown as Record<string, unknown>,
-            { maxMatches: 12 }
+            { maxMatches: 12, worldId: isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID }
           ) as unknown as ResolvedDmTurn;
           // mock scenario 请求保留选项字段（benchmark/eval 需要检查 optionsCount）
           const isAuditMockRequest = /\[mock_scenario:[a-z0-9_]+\]/i.test(String(latestUserInput ?? ""));
@@ -4567,7 +4960,7 @@ async function postChatInternal(req: Request) {
           // v4 全链路人名白名单 — Phase-N final guard：
           // 二次扫 narrative 残留未注册人名；高置信命中仅匿名化姓名。
           // mock scenario 请求跳过此 guard（mock 叙事不含注册人名，可能触发姓氏误报如"张泛黄"）。
-          if (!isAuditMockRequest) {
+          if (!isAuditMockRequest && !isXingniTurn) {
             const residualText = String(auditedResolved.narrative ?? "");
             if (residualText) {
               const residual = extractChineseNames(residualText, {
@@ -4824,11 +5217,15 @@ async function postChatInternal(req: Request) {
         // server's computed pacing signals.
         if (sessionId && worldDirectorConfig.enabled) {
           try {
-            const serverDirector = await loadDirectorState(sessionId);
+            const serverDirector = await loadDirectorState({
+              worldId: isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID,
+              mapId: isXingniTurn ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID,
+              sessionId,
+            });
             if (serverDirector) {
               const payloadObj = JSON.parse(finalizePayload) as Record<string, unknown>;
               payloadObj.server_director_state = {
-                directorIntent: serverDirector.recentDirectorIntent,
+                directorIntent: isXingniTurn ? null : serverDirector.recentDirectorIntent,
                 currentPhase: serverDirector.phase,
                 pacingSummary: {
                   tension: serverDirector.pacing.tension,
@@ -4839,6 +5236,7 @@ async function postChatInternal(req: Request) {
                   reveal_pressure: serverDirector.pacing.reveal_pressure,
                 },
                 turnIndex: serverDirector.turnIndex,
+                authority: isXingniTurn ? "capability_gated_soft" : "dark_moon_director_plan",
               };
               finalizePayload = JSON.stringify(payloadObj);
             }
@@ -4846,6 +5244,7 @@ async function postChatInternal(req: Request) {
             // best-effort: never block the online turn on a director-state read
           }
         }
+        if (pipelineAbort.signal.aborted || finalFrameWritten) return true;
         await writer.write(sse(`${VERSECRAFT_FINAL_PREFIX}${finalizePayload}`));
         finalFrameWritten = true;
         const playerEchoFlags = getVerseCraftRolloutFlags();
@@ -4860,71 +5259,6 @@ async function postChatInternal(req: Request) {
             latestUserInput: latestUserInput,
             nowIso: new Date().toISOString(),
           });
-        }
-        if (sessionId && injectedDirectorAgendaIds.length > 0) {
-          const capturedAgendaIds = [...injectedDirectorAgendaIds];
-          void markDirectorAgendaInjected({
-            sessionId: sessionId,
-            agendaIds: capturedAgendaIds,
-            turnIndex: totalRounds,
-            requestId: requestId,
-          })
-            .then(() =>
-              recordGenericAnalyticsEvent({
-                eventId: `${requestId}:director_agenda_injected`,
-                idempotencyKey: `${requestId}:director_agenda_injected`,
-                userId: userId,
-                guestId: userId ? null : chatGuestId,
-                sessionId: sessionId,
-                eventName: "director_agenda_injected",
-                eventTime: new Date(),
-                page: "/play",
-                source: "chat",
-                platform: platform,
-                tokenCost: 0,
-                playDurationDeltaSec: 0,
-                payload: {
-                  requestId: requestId,
-                  agendaIds: capturedAgendaIds,
-                  agendaCount: capturedAgendaIds.length,
-                  directorMode: worldDirectorConfig.mode,
-                },
-              })
-            )
-            .catch(() => {});
-        }
-        if (sessionId && dueDirectorAgendaForPrompt.length > 0 && typeof dmRecord.narrative === "string") {
-          const adoption = detectDirectorHintAdoption(
-            String(dmRecord.narrative),
-            dueDirectorAgendaForPrompt
-          );
-          directorAdoptionTelemetry = {
-            adoptedCount: adoption.adoptedCount,
-            adoptionRate: adoption.adoptionRate,
-            directorAgendaCount: dueDirectorAgendaForPrompt.length,
-          };
-          void recordGenericAnalyticsEvent({
-            eventId: `${requestId}:director_hint_adoption`,
-            idempotencyKey: `${requestId}:director_hint_adoption`,
-            userId: userId,
-            guestId: userId ? null : chatGuestId,
-            sessionId: sessionId,
-            eventName: "director_hint_adoption",
-            eventTime: new Date(),
-            page: "/play",
-            source: "chat",
-            platform: platform,
-            tokenCost: 0,
-            playDurationDeltaSec: 0,
-            payload: {
-              requestId: requestId,
-              agendaCount: dueDirectorAgendaForPrompt.length,
-              adoptedCount: adoption.adoptedCount,
-              adoptionRate: adoption.adoptionRate,
-              missedItems: adoption.missedItems,
-              directorMode: worldDirectorConfig.mode,
-            },
-          }).catch(() => {});
         }
         if (sessionId && injectedSocialEventIds.length > 0) {
           const capturedSocialEventIds = [...injectedSocialEventIds];
@@ -4959,7 +5293,12 @@ async function postChatInternal(req: Request) {
             .catch(() => {});
         }
         if (sessionId && worldDirectorConfig.enabled) {
-          void expireStaleDirectorAgenda({ sessionId: sessionId, turnIndex: totalRounds }).catch(() => {});
+          void expireStaleDirectorAgenda({
+            worldId: isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID,
+            mapId: isXingniTurn ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID,
+            sessionId,
+            turnIndex: totalRounds,
+          }).catch(() => {});
         }
         if (
           epistemicResiduePlan.persistEntry &&
@@ -5028,7 +5367,7 @@ async function postChatInternal(req: Request) {
               logAiTelemetry({
                 requestId: requestId,
                 task: "PLAYER_CHAT",
-                providerId: "oneapi",
+                providerId: "openai_compatible",
                 logicalRole: "control",
                 phase: "success",
                 userId: userId,
@@ -5050,10 +5389,14 @@ async function postChatInternal(req: Request) {
           // Phase-4: non-blocking background world tick. The wrapper decides
           // triggers + enqueue and NEVER awaits inside the hot path.
           const capturedSessionId = sessionId;
+          const backgroundWorldId = isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID;
+          const backgroundMapId = isXingniTurn ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID;
           const { pending } = scheduleBackgroundWorldTick({
             requestId: requestId,
             userId: userId,
             sessionId: sessionId,
+            worldId: backgroundWorldId,
+            mapId: backgroundMapId,
             turnIndex: totalRounds,
             latestUserInput: latestUserInput,
             dmRecord,
@@ -5067,6 +5410,7 @@ async function postChatInternal(req: Request) {
             maxPendingAgenda: worldDirectorConfig.maxPendingAgendaPerSession,
             preflightRiskTags: pipelineControl?.risk_tags ?? [],
             dmNarrativePreview: String(dmRecord.narrative ?? ""),
+            pacingControllerDigest: directorDigest,
             commitSummary: commitSummaryForAnalytics,
             enqueueFn: enqueueWorldEngineTick,
             onSettled: ({ decision, result }) => {
@@ -5090,7 +5434,9 @@ async function postChatInternal(req: Request) {
                   triggers: [...decision.triggers],
                   directorMode: worldDirectorConfig.mode,
                   socialWorldMode: socialWorldConfig.mode,
-                  socialTickEligible: socialWorldConfig.backgroundEnabled,
+                  socialTickEligible: !isXingniTurn && socialWorldConfig.backgroundEnabled,
+                  worldId: backgroundWorldId,
+                  mapId: backgroundMapId,
                 },
               }).catch(() => {});
             },
@@ -5169,6 +5515,12 @@ async function postChatInternal(req: Request) {
             .catch(() => {});
         }
       }
+      // A handled final hook must also terminate the SSE body. Both callers
+      // interpret `true` as "already closed"; leaving the writer open after
+      // the authoritative FINAL frame made clients wait for the watchdog.
+      if (finalFrameWritten) {
+        await writer.close();
+      }
       return true;
     };
 
@@ -5185,7 +5537,7 @@ async function postChatInternal(req: Request) {
       latestStreamFinishReason = null;
       const reader = streamSource.response.body!.getReader();
       activeStreamReader = reader;
-      const streamRoundDeadlineAt = Date.now() + streamHardCapMs;
+      const streamRoundDeadlineAt = streamAbsoluteDeadlineAt;
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let accumulated = "";
@@ -5199,7 +5551,7 @@ async function postChatInternal(req: Request) {
           ttftProfile.firstValidStreamChunkAt = nowMs();
         }
         if (firstChunkAt !== 0) return;
-        firstChunkAt = Date.now();
+        firstChunkAt = nowMs();
         if (!streamStatusSent) {
           streamStatusSent = true;
           await writeStatusFrame("streaming", "正文流动中");
@@ -5209,7 +5561,7 @@ async function postChatInternal(req: Request) {
           logAiTelemetry({
             requestId,
             task: "PLAYER_CHAT",
-            providerId: "oneapi",
+            providerId: "openai_compatible",
             logicalRole: streamSource.logicalRole,
             gatewayModel: streamSource.gatewayModel,
             phase: "stream_first_token",
@@ -5242,8 +5594,7 @@ async function postChatInternal(req: Request) {
         // setTimeout callbacks can be starved, so the timer-based bound alone
         // is not sufficient. Cancelling here throws into the stream catch
         // path, which reconnects once or closes with the fallback final.
-        if (Date.now() > streamRoundDeadlineAt) {
-          try { await reader.cancel(); } catch { /* best effort */ }
+        if (nowMs() > streamRoundDeadlineAt) {
           throw new Error(`stream_hard_cap_${streamHardCapMs}ms`);
         }
         if (done) {
@@ -5261,12 +5612,24 @@ async function postChatInternal(req: Request) {
             routingReport.lastFailureSummary = "stream_empty_exhausted";
             pushAiRoutingReport(routingReport);
             await flushThisRound();
-            await closeWithFallback();
+            await closeWithFallback("stream_empty_exhausted");
             return;
           }
           let closedByFinalHooks = false;
           if (!streamBlocked) {
-            closedByFinalHooks = await runStreamFinalHooks(accumulated, "blocked_after_stream_done");
+            try {
+              closedByFinalHooks = await runStreamFinalHooks(accumulated, "blocked_after_stream_done");
+            } catch (hooksErr) {
+              // Telemetry: capture exact origin + exception for dev-log.
+              // Without this, runStreamFinalHooks → phaseApplyTurnModeInterceptor
+              // → generateOptionsOnlyFallback async errors are swallowed.
+              routingReport.finalStatus = "fallback_sse_payload";
+              routingReport.lastFailureSummary = `final_hooks_failed:${(hooksErr as Error)?.message?.slice(0, 120) ?? "unknown"}`;
+              pushAiRoutingReport(routingReport);
+              await flushThisRound();
+              await closeWithFallback("final_hooks_failed", hooksErr);
+              return;
+            }
           }
           pushAiRoutingReport(routingReport);
           await flushThisRound();
@@ -5274,7 +5637,7 @@ async function postChatInternal(req: Request) {
             if (finalFrameWritten) {
               await writer.close();
             } else {
-              await closeWithFallback();
+              await closeWithFallback("final_hooks_no_final_frame");
             }
           }
           return;
@@ -5296,7 +5659,7 @@ async function postChatInternal(req: Request) {
             // 绗竴鏉℃湁鏁?chunk 鍒拌揪锛氬彲鐢ㄤ簬鍒ゆ柇涓婃父杩炴帴/鎺掗槦鏄惁鏄?TTFT 涓诲洜銆?            ttftProfile.firstValidStreamChunkAt = nowMs();
           }
           if (data.length < 0 && firstChunkAt === 0) {
-            firstChunkAt = Date.now();
+            firstChunkAt = nowMs();
             if (!streamStatusSent) {
               streamStatusSent = true;
               await writeStatusFrame("streaming", "正文流动中");
@@ -5306,7 +5669,7 @@ async function postChatInternal(req: Request) {
               logAiTelemetry({
                 requestId,
                 task: "PLAYER_CHAT",
-                providerId: "oneapi",
+                providerId: "openai_compatible",
                 logicalRole: streamSource.logicalRole,
                 gatewayModel: streamSource.gatewayModel,
                 phase: "stream_first_token",
@@ -5333,12 +5696,21 @@ async function postChatInternal(req: Request) {
               routingReport.lastFailureSummary = "stream_done_empty_exhausted";
               pushAiRoutingReport(routingReport);
               await flushThisRound();
-              await closeWithFallback();
+              await closeWithFallback("stream_done_empty_exhausted");
               return;
             }
             let closedByFinalHooksDone = false;
             if (!streamBlocked) {
-              closedByFinalHooksDone = await runStreamFinalHooks(accumulated, "blocked_on_done_event");
+              try {
+                closedByFinalHooksDone = await runStreamFinalHooks(accumulated, "blocked_on_done_event");
+              } catch (hooksErr) {
+                routingReport.finalStatus = "fallback_sse_payload";
+                routingReport.lastFailureSummary = `final_hooks_failed:${(hooksErr as Error)?.message?.slice(0, 120) ?? "unknown"}`;
+                pushAiRoutingReport(routingReport);
+                await flushThisRound();
+                await closeWithFallback("final_hooks_failed", hooksErr);
+                return;
+              }
             }
             pushAiRoutingReport(routingReport);
             await flushThisRound();
@@ -5346,7 +5718,7 @@ async function postChatInternal(req: Request) {
               if (finalFrameWritten) {
                 await writer.close();
               } else {
-                await closeWithFallback();
+                await closeWithFallback("final_hooks_no_final_frame");
               }
             }
             return;
@@ -5420,20 +5792,38 @@ async function postChatInternal(req: Request) {
 
           const deltaContent =
             json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.message?.content ?? "";
+          // When the Responses-API transport forwards an upstream
+          // `function_call_arguments.delta` as a Chat-Completions
+          // `delta.tool_calls[*].function.arguments` chunk, the structured
+          // DM JSON lives there instead of in `delta.content`. We append it
+          // to the same `accumulated` buffer the DM JSON parser reads from.
+          let toolArgsDelta = "";
+          const toolCalls = json?.choices?.[0]?.delta?.tool_calls;
+          if (Array.isArray(toolCalls)) {
+            for (const tc of toolCalls) {
+              const fn = (tc && typeof tc === "object" ? (tc as Record<string, unknown>).function : null) as
+                | Record<string, unknown>
+                | null;
+              const args = fn && typeof fn.arguments === "string" ? fn.arguments : "";
+              if (args) toolArgsDelta += args;
+            }
+          }
+          const effectiveDelta =
+            deltaContent.length > 0 ? deltaContent : toolArgsDelta;
 
-          if (typeof deltaContent === "string" && deltaContent.length > 0) {
-            const nowMod = Date.now();
+          if (typeof effectiveDelta === "string" && effectiveDelta.length > 0) {
+            const nowMod = nowMs();
             const shouldRunDeltaMod =
               streamModThrottleMs <= 0 || nowMod - lastStreamDeltaModAt >= streamModThrottleMs;
             if (shouldRunDeltaMod) {
               const postChunkModeration = await postModelModeration({
-                input: deltaContent,
+                input: effectiveDelta,
                 userId,
                 ip: clientIp,
                 path: "/api/chat",
                 requestId,
               });
-              lastStreamDeltaModAt = Date.now();
+              lastStreamDeltaModAt = nowMs();
               if (
                 postChunkModeration.policy.blocked &&
                 isVisibleSafetyDegradeReason(postChunkModeration.result.reason)
@@ -5475,9 +5865,17 @@ async function postChatInternal(req: Request) {
                 });
               }
             }
-            accumulated += deltaContent;
+            accumulated += effectiveDelta;
             await markFirstVisibleStreamChunk();
-            await writeToStream(deltaContent);
+            // Tool-call arguments are structured DM JSON; do not stream them
+            // to the player as visible text. The final narrative (resolved by
+            // the DM JSON parser downstream) is the only thing the client
+            // should see on this round.
+            if (toolArgsDelta.length === 0) {
+              await writeToStream(effectiveDelta);
+            } else {
+              await writeToStream("");
+            }
           }
 
           const finishReason = normalizeFinishReason(json);
@@ -5508,11 +5906,11 @@ async function postChatInternal(req: Request) {
       );
       if (!readerAlreadyCancelled) {
         readerAlreadyCancelled = true;
-        try {
-          await reader.cancel();
-        } catch {
-          // ignore
-        }
+        // Provider cleanup is best-effort. A wedged cancel() must not delay the
+        // protocol-valid infrastructure fallback FINAL frame.
+        void reader.cancel().catch(() => {
+          /* ignore */
+        });
       }
       if (
         accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
@@ -5527,7 +5925,7 @@ async function postChatInternal(req: Request) {
       routingReport.lastFailureSummary = `stream_catch:${err?.message?.slice(0, 120) ?? "unknown"}`;
       pushAiRoutingReport(routingReport);
       await flushThisRound();
-      await closeWithFallback();
+      await closeWithFallback("stream_pipe", err);
       return;
     }
     }
@@ -5544,7 +5942,7 @@ async function postChatInternal(req: Request) {
         error,
       }
     );
-    await closeWithFallback();
+    await closeWithFallback("background_task_crashed", error);
   }).finally(() => {
     clearTimeout(turnWatchdog);
   });
@@ -5601,8 +5999,8 @@ async function postChatInternal(req: Request) {
         : undefined,
       gameLanguage: validated.language,
       taskType: "PLAYER_CHAT",
-      directorAgendaCount: directorAdoptionTelemetry?.directorAgendaCount ?? injectedDirectorAgendaIds.length,
-      directorAgendaAdoptedCount: directorAdoptionTelemetry?.adoptedCount ?? 0,
+      directorAgendaCount: directorHintIdsForReceipt.length,
+      directorAgendaAdoptedCount: 0,
       promptMetrics: totalSystemPromptChars != null
         ? { totalSystemPromptChars }
         : undefined,

@@ -61,6 +61,7 @@ export function MobileBottomNav({
   onOpenCodex,
   onOpenSettings,
   onOpenTasks,
+  onOpenMap,
   hasUnreadCodex,
   hasUnviewedTaskUpdates,
   language,
@@ -83,6 +84,14 @@ export function MobileBottomNav({
       active: activeItem === "story",
       onClick: onFocusStory,
     },
+    ...(onOpenMap ? [{
+      label: isEnglish ? "Map" : "地图",
+      ariaLabel: isEnglish ? "Open map" : "打开确定性地图",
+      icon: MobileReadingIcons.Map,
+      testId: "bottom-nav-map",
+      active: activeItem === "map",
+      onClick: onOpenMap,
+    } satisfies DockItem] : []),
     {
       label: isEnglish ? "Quests" : "任务",
       ariaLabel: isEnglish ? "Open quests" : "打开任务",
@@ -112,7 +121,7 @@ export function MobileBottomNav({
 
   return (
     <nav data-testid="mobile-bottom-nav" aria-label={isEnglish ? "Reading navigation" : "阅读导航"} className={mobileReadingTheme.bottomNav}>
-      <div className={mobileReadingTheme.bottomNavGrid}>
+      <div className={`${mobileReadingTheme.bottomNavGrid} ${items.length === 6 ? "grid-cols-6" : "grid-cols-5"}`}>
         {items.map((item) => (
           <DockButton key={item.label} item={item} />
         ))}

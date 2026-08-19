@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   classifyPlayTurnFailure,
   getPlayTurnFailureMessage,
+  isPersistedTurnFailureMessage,
   shouldShowFailureAsNarrative,
 } from "@/features/play/turnFailurePolicy";
 
@@ -10,6 +11,13 @@ test("classifyPlayTurnFailure only labels real timeout/gateway failures as netwo
   assert.equal(classifyPlayTurnFailure({ deadlineHit: true }), "network_or_gateway");
   assert.equal(classifyPlayTurnFailure({ status: 504 }), "network_or_gateway");
   assert.equal(classifyPlayTurnFailure({ errorMessage: "fetch failed: ECONNRESET" }), "network_or_gateway");
+});
+
+test("persisted technical failures are identifiable and excluded from story canon", () => {
+  assert.equal(isPersistedTurnFailureMessage("网站暂时无法完成本次生成，请稍后再试。"), true);
+  assert.equal(isPersistedTurnFailureMessage("网站生成服务暂时不可用，请稍后再试。"), true);
+  assert.equal(isPersistedTurnFailureMessage("陆沉推开客栈木门。"), false);
+  assert.equal(isPersistedTurnFailureMessage({ narrative: "网站暂时无法完成本次生成，请稍后再试。" }), false);
 });
 
 test("classifyPlayTurnFailure separates busy, auth, and internal failures", () => {

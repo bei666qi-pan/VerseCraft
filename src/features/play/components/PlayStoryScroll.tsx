@@ -15,6 +15,7 @@ import {
 } from "../render/userNarrative";
 import { PlaySemanticWaitingHint, type PlaySemanticWaitingKind } from "./PlaySemanticWaitingHint";
 import { VcSpinner } from "./VcSpinner";
+import { isPersistedTurnFailureMessage } from "@/features/play/turnFailurePolicy";
 
 export type PlayStoryDisplayEntry = { role: "assistant" | "user"; content: string; logIndex: number };
 
@@ -52,6 +53,7 @@ const StoryHistory = memo(function StoryHistory({
   plainOnlyNewTurn: boolean;
   plainOnlyLogIndexMin: number;
 }) {
+  const language = useGameStore((state) => state.language);
   const visibleEntries = useMemo(
     () => filterDisplayEntriesForUserQuoteDedup(displayEntries),
     [displayEntries]
@@ -59,8 +61,35 @@ const StoryHistory = memo(function StoryHistory({
   if (visibleEntries.length === 0) return null;
   return (
     <div className="text-[#174d46]">
-      {visibleEntries.map((entry) => {
+      {visibleEntries.map((entry, entryIndex) => {
         const safeContent = typeof entry.content === "string" ? entry.content : "";
+        if (entry.role === "assistant" && isPersistedTurnFailureMessage(safeContent)) {
+          const serviceRecovered = visibleEntries
+            .slice(entryIndex + 1)
+            .some((later) => later.role === "assistant" && !isPersistedTurnFailureMessage(later.content));
+          const english = language === "en-US";
+          return (
+            <div
+              key={entry.logIndex}
+              role="status"
+              data-testid="historical-turn-failure"
+              className="mb-6 rounded-[8px] border border-[#d7d1bd] bg-[#fffdf8]/90 px-4 py-3 text-[13px] leading-relaxed text-[#5f756f]"
+            >
+              <p className="font-semibold text-[#174d46]">
+                {english ? "This earlier turn was not generated" : "此前回合未完成生成"}
+              </p>
+              <p className="mt-1">
+                {serviceRecovered
+                  ? english
+                    ? "No game state was advanced. The generation service has since recovered."
+                    : "该回合没有推进游戏状态；后续生成已恢复。"
+                  : english
+                    ? "No game state was advanced. You can submit the action again."
+                    : "该回合没有推进游戏状态，可以重新提交动作。"}
+              </p>
+            </div>
+          );
+        }
         return safeContent.includes("获得了新物品，已放入书包") ? (
           <p
             key={entry.logIndex}

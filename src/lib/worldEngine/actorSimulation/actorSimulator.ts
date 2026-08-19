@@ -26,6 +26,7 @@ import type {
   ActorSimulationInput,
   ActorProjection,
   ActorSimulationTelemetry,
+  ActorSimulationFlags,
 } from "./types";
 
 // ============================================================
@@ -43,8 +44,14 @@ export interface RunActorSimulationArgs {
   registeredNpcIds?: Set<string>;
   /** 注册的位置 ID 集合 */
   registeredLocationIds?: Set<string>;
+  /** 该世界允许的行动编码 */
+  registeredActionCodes?: Set<string>;
   /** telemetry（用于写入结果） */
   telemetry: ActorSimulationTelemetry;
+  /** Test seam: one batch runner for the entire selected cast. */
+  runBatchTask?: typeof runOfflineReasonerTask;
+  /** Test seam for deterministic budget verification. */
+  flagsOverride?: ActorSimulationFlags;
 }
 
 export interface ActorSimulationResult {
@@ -263,6 +270,42 @@ function clampConfidence(v: unknown): number {
   return 0.5;
 }
 
+function createActorBatchBudget(parent: AbortSignal | undefined, timeoutMs: number): {
+  signal: AbortSignal;
+  aborted: Promise<never>;
+  cleanup: () => void;
+} {
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    timeoutController.abort(new DOMException("actor simulation budget exceeded", "AbortError"));
+  }, Math.max(1, Math.trunc(timeoutMs)));
+  const signal =
+    typeof AbortSignal !== "undefined" && "any" in AbortSignal
+      ? AbortSignal.any(parent ? [parent, timeoutController.signal] : [timeoutController.signal])
+      : timeoutController.signal;
+  let onAbort: (() => void) | null = null;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => {
+      const reason = signal.reason;
+      reject(
+        reason instanceof Error
+          ? reason
+          : new DOMException("actor simulation aborted", "AbortError"),
+      );
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  return {
+    signal,
+    aborted,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
 // ============================================================
 // Main API
 // ============================================================
@@ -282,10 +325,11 @@ export async function runActorSimulation(args: RunActorSimulationArgs): Promise<
     signal,
     registeredNpcIds = new Set(),
     registeredLocationIds = new Set(),
+    registeredActionCodes = new Set(),
     telemetry,
   } = args;
 
-  const flags = resolveActorSimulationFlags();
+  const flags = args.flagsOverride ?? resolveActorSimulationFlags();
   const isShadow = isActorSimulationShadow(flags);
 
   telemetry.simulationRequested = inputs.length;
@@ -325,23 +369,31 @@ export async function runActorSimulation(args: RunActorSimulationArgs): Promise<
   ];
 
   const simStartMs = Date.now();
+  const batchBudgetMs = Math.min(
+    flags.totalTickBudgetMs,
+    flags.perActorTimeoutMs * inputs.length,
+  );
+  const batchBudget = createActorBatchBudget(signal, batchBudgetMs);
 
   // 调用 STORYLINE_SIMULATION
   let result: AIResponse | AIErrorResponse;
   try {
-    result = await runOfflineReasonerTask({
-      kind: "storyline",
-      messages,
-      ctx,
-      signal,
-      requestTimeoutMs: Math.min(flags.totalTickBudgetMs, flags.perActorTimeoutMs * inputs.length),
-      skipCache: true,
-      devOverrides: {
-        responseFormatJsonObject: true,
-        temperature: 0.2,
-        maxTokens: 2048,
-      },
-    });
+    result = await Promise.race([
+      (args.runBatchTask ?? runOfflineReasonerTask)({
+        kind: "storyline",
+        messages,
+        ctx,
+        signal: batchBudget.signal,
+        requestTimeoutMs: batchBudgetMs,
+        skipCache: true,
+        devOverrides: {
+          responseFormatJsonObject: true,
+          temperature: 0.2,
+          maxTokens: 2048,
+        },
+      }),
+      batchBudget.aborted,
+    ]);
   } catch (err) {
     // 超时或网络错误
     telemetry.simulationTimedOut = inputs.length;
@@ -357,6 +409,8 @@ export async function runActorSimulation(args: RunActorSimulationArgs): Promise<
       telemetry,
       synthesisContextHint: null,
     };
+  } finally {
+    batchBudget.cleanup();
   }
 
   telemetry.actorSimulationLatencyMs = Date.now() - simStartMs;
@@ -403,6 +457,7 @@ export async function runActorSimulation(args: RunActorSimulationArgs): Promise<
       allowedKnownFactIds: allowedFacts,
       forbiddenFactIds: forbiddenFacts,
       registeredLocationIds,
+      registeredActionCodes,
     });
 
     if (validation.accepted) {

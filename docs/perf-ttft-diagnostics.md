@@ -106,11 +106,7 @@ non-zero when the live budget fails.
 
 ### 2026-05 upstream TTFT probe
 
-当 `/api/chat` 的 `firstStatusMs` 正常但 `firstTokenMs` 超预算时，先不要裁剪叙事内容，也不要把 DB / lore / safety 直接判为根因。使用独立 gateway probe 直接请求 `AI_GATEWAY_BASE_URL` 的 OpenAI-compatible stream：
-
-```powershell
-pnpm probe:ai-gateway -- --runs 10 --prompt-profile app-sized --json-out .runtime-data\gateway-ttft-probe-app-sized.json
-```
+当 `/api/chat` 的 `firstStatusMs` 正常但 `firstTokenMs` 超预算时，先不要裁剪叙事内容，也不要把 DB / lore / safety 直接判为根因。先在后台“AI 管理”测试当前主用模型，再用 `pnpm benchmark:chat-metrics` 对应用链路复测。
 
 关键输出：
 
@@ -144,4 +140,4 @@ AI_PLAYER_CHAT_MERGE_EXTRA_BODY=0
 # 或删除 AI_PLAYER_CHAT_EXTRA_BODY_JSON
 ```
 
-注意：这是 PLAYER_CHAT 专用网关 body hint，不改变 `/api/chat` SSE 契约，不改变 `__VERSECRAFT_FINAL__` 收口，不让 `reasoner` 进入主链路，也不通过缩短 narrative 伪造达标。若 provider 不支持这些字段并返回 4xx，应回滚该 env，改在 one-api 渠道或模型配置层选择默认关闭 thinking 的在线叙事模型。
+注意：这是 PLAYER_CHAT 专用上游 body hint，不改变 `/api/chat` SSE 契约，不改变 `__VERSECRAFT_FINAL__` 收口，不让 `reasoner` 进入主链路，也不通过缩短 narrative 伪造达标。若服务不支持这些字段并返回 4xx，应回滚该 env，并在后台选择默认关闭 thinking 的在线叙事模型。

@@ -1,46 +1,34 @@
-# 多模型架构总览（与代码对齐）
+# AI 多服务与多模型总览
 
-本文档是 **`docs/ai-architecture.md`** 的导航页；**网关与切模型**以 **`docs/ai-gateway.md`** 为准。
+VerseCraft 支持多个 OpenAI 兼容服务，以及知识检索用的火山多模态向量服务。配置入口是 `/saiduhsa` → “AI 管理”。
 
 ## 必读索引
 
 | 主题 | 文档 |
 |------|------|
-| **one-api 网关、环境变量、切模型** | **`docs/ai-gateway.md`** |
-| 目录职责、入口 API | `docs/ai-architecture.md` |
-| 熔断 / fallback 状态机 | `docs/ai-fallback.md` |
-| 成本、缓存、门控、预算 | `docs/ai-governance.md` |
-| 环境变量约定 | `docs/environment.md` |
-| 本地运行 | `docs/local-development.md` |
-| Coolify 部署 | `docs/deployment-coolify.md` |
-| 人工回归步骤 | `docs/archive/2026-07/regression-checklist.md` |
-| 上线前验收结论 | `docs/ACCEPTANCE-PRE-RELEASE.md` |
-| AI 故障排查 | `docs/troubleshooting-ai.md` |
-| 扩展任务 | `docs/ai-extensibility.md` |
+| 服务、Key、模型、用途主备 | [`ai-gateway.md`](ai-gateway.md) |
+| 运行时架构 | [`ai-architecture.md`](ai-architecture.md) |
+| 熔断与降级 | [`ai-fallback.md`](ai-fallback.md) |
+| 成本、缓存与观测 | [`ai-governance.md`](ai-governance.md) |
+| 环境变量 | [`environment.md`](environment.md) |
+| 故障排查 | [`troubleshooting-ai.md`](troubleshooting-ai.md) |
 
-## 逻辑角色分工（摘要）
+## 关键边界
 
-真实上游由 **one-api** + 环境变量 `AI_MODEL_*` 决定；应用内只使用下列 **角色**：
-
-> 稳态配置：生产建议保留 `vc-main` / `vc-control` / `vc-enhance` / `vc-reasoner`；`enhance` 逻辑角色默认指向 `vc-enhance`，叙事增强默认开启但只作为 post-stream 可选增强，受门控与 `AI_NARRATIVE_ENHANCE_BUDGET_MS` 预算限制，失败/超时跳过。
-
-| 逻辑角色 | 典型任务 |
-|----------|----------|
-| `main` | 玩家主叙事 `PLAYER_CHAT`、规则/战斗 JSON 类 |
-| `control` | 控制面预检、意图、安全预筛；玩家链 fallback |
-| `enhance` | **仅** `SCENE_ENHANCEMENT` / `NPC_EMOTION_POLISH`（门控 + 预算） |
-| `reasoner` | **仅**离线/后台：`WORLDBUILD_OFFLINE`、`STORYLINE_SIMULATION`、`DEV_ASSIST` 等；**禁止**进入 `PLAYER_CHAT` 链 |
-
-权威映射由 `tasks/taskPolicy.ts` 的 `TASK_POLICY` / `TASK_ROLE_FORBIDDEN` 定义；可运行 `exportTaskModelMatrixMarkdown()` 导出 Markdown。
+- 后台用途名称面向运营人员；内部 `main/control/enhance/reasoner/writer` 仅作为安全和兼容字段。
+- 每个用途可配置一个主用和多个备用。认证失败或服务级限流跳过该服务，模型不兼容只跳过当前模型。
+- 玩家故事生成不会路由到 `reasoner` / `enhance`。
+- 费用来自管理员填写的人民币单价和调用时快照，未填写单价时只显示 Token。
+- 已保存 Key 永不回显，只展示末四位；Key 为空表示保留原值。
+- 配置切换不重启，新请求五秒内可见；进行中的请求固定原快照。
 
 ## 自动化测试
 
 ```bash
 pnpm test:unit
-pnpm verify:ai-gateway
-pnpm test:e2e:chat
+pnpm test:admin:api
+pnpm test:e2e:contract
+pnpm benchmark:chat:mock
 ```
 
-覆盖：网关 env 解析、`taskPolicy` 链路与禁止表、OpenAI 形态流式、**503 玩家流式 fallback**、**网关契约**（链耗尽、`AI_MODEL_MAIN` 注入请求体、本地/生产 URL 归一化）；E2E 校验 `/api/chat` SSE 契约（需可访问网关）。
-
-扩展约定见 **`docs/ai-extensibility.md`**。
+真实服务连通和向量维度通过后台“测试”动作验证；测试失败不会覆盖当前配置。

@@ -89,6 +89,16 @@ function AudioOffIcon(props: MobileReadingIconProps): ReactElement {
   );
 }
 
+function MapIcon(props: MobileReadingIconProps): ReactElement {
+  return (
+    <IconSvg {...props}>
+      <path d="m3.5 6.5 5-2.2 7 2.2 5-2v13l-5 2-7-2.2-5 2.2z" />
+      <path d="M8.5 4.3v13M15.5 6.5v13" />
+      <circle cx="12" cy="11.4" r="1.3" fill="currentColor" fillOpacity=".18" />
+    </IconSvg>
+  );
+}
+
 function BrandMarkIcon(props: MobileReadingIconProps): ReactElement {
   const { className, size, style, title } = props;
   const dimensionStyle =
@@ -273,9 +283,8 @@ function OptionsPanelIcon(props: MobileReadingIconProps): ReactElement {
 function SendActionIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M4 5.7 20.2 12 4 18.3l3.8-6.3z" fill="currentColor" fillOpacity="0.18" />
-      <path d="M4 5.7 20.2 12 4 18.3l3.8-6.3z" />
-      <path d="M7.8 12h8.5" />
+      <path d="M4.5 12h14.2" strokeLinecap="round" />
+      <path d="m13.2 6.5 5.5 5.5-5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
     </IconSvg>
   );
 }
@@ -526,6 +535,7 @@ export const MobileReadingIcons = {
   AudioOn: AudioOnIcon,
   BrandMark: BrandMarkIcon,
   Character: CharacterIcon,
+  Map: MapIcon,
   Codex: CodexIcon,
   CodexBook: StoryIcon,
   CodexEye: CodexDetailEyeIcon,

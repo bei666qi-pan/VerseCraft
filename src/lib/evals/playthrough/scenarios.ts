@@ -45,9 +45,16 @@ export interface Scenario {
     playerLocation: string;
     activeTaskIds: string[];
     completedTaskIds: string[];
+    inventoryItemIds: string[];
+    inventoryItemCount: number;
     presentNpcIds: string[];
     activeThreatIds: string[];
+    aliveNpcIds: string[];
+    deadNpcIds: string[];
+    journalClueIds: string[];
   }>;
+  /** Eval-only client state fields used to select a world/map without changing save schemas. */
+  clientStateOverride?: Record<string, unknown>;
   /** 自定义预期行动序列（可选，覆盖 persona 默认行为） */
   scriptedActions?: string[];
   /** 场景关键不变量（用于跨场景失败聚类） */
@@ -135,7 +142,7 @@ export const SCENARIOS: Scenario[] = [
     name: "NPC 关系推进",
     description: "玩家与多个 NPC 多次对话，测试 relationship 系统",
     category: "happy",
-    personas: ["explorer", "speedrunner"],
+    personas: ["social", "explorer", "speedrunner"],
     expectedTerminations: ["max_steps", "reached_ending"],
     criticalInvariants: ["npc_alive_consistency"],
     scriptedActions: [
@@ -849,7 +856,7 @@ export const SCENARIOS: Scenario[] = [
     id: "profession-trial-missing-evidence",
     name: "职业试炼缺证拒绝",
     description: "在正确签发地点交付无专属可验证记录的试炼，验证前置不足时不完成也不认证",
-    category: "edge",
+    category: "refusal",
     personas: ["rulebreaker"],
     expectedTerminations: ["max_steps"],
     initialStateOverride: {
@@ -890,7 +897,7 @@ export const SCENARIOS: Scenario[] = [
     id: "quest-delivery-missing-item",
     name: "交付任务缺件拒绝",
     description: "玩家试图在交付地点完成挂号信委托但行囊没有登记信件，验证任务不得凭文本声明完成",
-    category: "edge",
+    category: "refusal",
     personas: ["rulebreaker"],
     expectedTerminations: ["max_steps"],
     initialStateOverride: {
@@ -934,6 +941,42 @@ export const SCENARIOS: Scenario[] = [
     expectedTerminations: ["max_steps"],
     criticalInvariants: ["inventory_slots", "inventory_jump"],
   },
+
+  // ─────────── boundary system test ───────────
+  {
+    id: "boundary-system-test",
+    name: "边界系统测试",
+    description: "边界测试者画像：测试非法动作拒绝、物品幻觉检测、跨层跳跃、安全区收敛、位置边界",
+    category: "refusal",
+    personas: ["boundary_tester"],
+    expectedTerminations: ["max_steps", "death", "softlock"],
+    initialStateOverride: { playerLocation: "B1_PowerRoom" },
+    criticalInvariants: ["hp_non_negative", "sanity_non_negative", "inventory_slots"],
+    requiredFeatureOutcomes: ["combat", "location"],
+  },
+  {
+    id: "multi-world-isolation",
+    name: "多世界事实隔离",
+    description: "在星逆·太初青石县会话中验证暗月公寓地点、NPC、物品和任务不会跨世界泄漏",
+    category: "refusal",
+    personas: ["boundary_tester"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: { playerLocation: "QS_GUOYAN_INN", profession: null },
+    clientStateOverride: {
+      worldId: "xingni_taichu",
+      mapId: "xingni_qingshi_county",
+      playerLocation: "QS_GUOYAN_INN",
+      player_location: "QS_GUOYAN_INN",
+    },
+    criticalInvariants: ["hp_non_negative", "sanity_non_negative"],
+    forbiddenFeatureOutcomes: ["ending"],
+    scriptedActions: [
+      "确认我正在星逆·太初的青石县归雁客栈，只描述这个世界已登记的地点与人物。",
+      "我要直接前往暗月公寓的302室；如果它不属于当前世界，明确拒绝且不要改变位置。",
+      "召唤暗月公寓的老李并使用消防铁管；若这些事实不属于当前世界，不得生成关系、物品或战斗状态。",
+      "继续查看青石县当前相邻地点和已登记人物，确保没有暗月任务或图鉴混入。",
+    ],
+  },
 ];
 
 // === 场景检索工具 ===
@@ -965,7 +1008,7 @@ export function getScenarioLibraryStats(): ScenarioLibraryStats {
     happy: 0, recovery: 0, refusal: 0, abandonment: 0,
   };
   const personaCoverage: Record<PersonaType, number> = {
-    speedrunner: 0, explorer: 0, rulebreaker: 0, confused: 0, collector: 0,
+    speedrunner: 0, explorer: 0, rulebreaker: 0, confused: 0, collector: 0, boundary_tester: 0, social: 0,
   };
   for (const s of SCENARIOS) {
     byCategory[s.category]++;

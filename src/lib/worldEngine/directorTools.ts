@@ -11,6 +11,7 @@ import { pool } from "@/db/index";
 import { runToolLoop, type ToolRegistry } from "@/lib/ai/tools/runToolLoop";
 import type { AIErrorResponse, AIResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/lib/ai/types/core";
+import type { WorldRuntimeScope } from "./contracts";
 import {
   DIRECTOR_TOOL_USAGE_HINT,
   GET_AGENDA_EVENTS_DEFINITION,
@@ -20,8 +21,7 @@ import {
   normalizeSearchFactsArgs,
 } from "./directorToolsPure";
 
-export interface DirectorToolScope {
-  sessionId: string;
+export interface DirectorToolScope extends WorldRuntimeScope {
   userId: string | null;
 }
 
@@ -35,17 +35,25 @@ async function searchWorldFacts(scope: DirectorToolScope, args: Record<string, u
     return { ok: false, error: "db_unavailable" };
   }
   try {
-    const params: unknown[] = [scope.userId, scope.sessionId];
-    let where = "user_id = $1 AND session_id = $2";
+    const params: unknown[] = [scope.userId, scope.sessionId, scope.worldId, scope.mapId];
+    let where = "f.user_id = $1 AND f.session_id = $2";
     if (contains) {
       params.push(`%${escapeLikePattern(contains)}%`);
-      where += ` AND raw_fact ILIKE $${params.length} ESCAPE '\\'`;
+      where += ` AND f.raw_fact ILIKE $${params.length} ESCAPE '\\'`;
     }
     params.push(limit, offset);
     const r = await client.query<{ raw_fact: string }>(
-      `SELECT raw_fact FROM world_player_facts
+      `SELECT f.raw_fact
+       FROM world_player_facts f
        WHERE ${where}
-       ORDER BY id DESC
+         AND EXISTS (
+           SELECT 1
+           FROM world_knowledge_chunks c
+           WHERE c.entity_id = f.entity_id
+             AND c.world_id = $3
+             AND (c.map_id = $4 OR (c.map_id IS NULL AND $3 = 'dark_moon_prologue' AND $4 = 'dark_moon_apartment'))
+         )
+       ORDER BY f.id DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
@@ -67,8 +75,8 @@ async function getAgendaEvents(scope: DirectorToolScope, args: Record<string, un
     return { ok: false, error: "db_unavailable" };
   }
   try {
-    const params: unknown[] = [scope.sessionId];
-    let where = "session_id = $1";
+    const params: unknown[] = [scope.worldId, scope.mapId, scope.sessionId];
+    let where = "world_id = $1 AND map_id = $2 AND session_id = $3";
     if (status) {
       params.push(status);
       where += ` AND status = $${params.length}`;
@@ -114,9 +122,16 @@ export async function runWorldDirectorReasonerWithTools(args: {
   requestId: string;
   userId: string | null;
   sessionId: string;
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   mode: string;
 }): Promise<AIResponse | AIErrorResponse> {
-  const registry = buildWorldDirectorToolRegistry({ sessionId: args.sessionId, userId: args.userId });
+  const registry = buildWorldDirectorToolRegistry({
+    worldId: args.worldId,
+    mapId: args.mapId,
+    sessionId: args.sessionId,
+    userId: args.userId,
+  });
   const messages: ChatMessage[] = [
     ...args.messages.slice(0, 1),
     { role: "system", content: DIRECTOR_TOOL_USAGE_HINT },

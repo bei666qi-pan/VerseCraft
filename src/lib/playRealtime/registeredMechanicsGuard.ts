@@ -3,8 +3,12 @@ type RecordLike = Record<string, unknown>;
 import { createStageOneStarterTasks } from "@/lib/tasks/taskV2";
 import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
 import { getAnomalyCombatStat } from "@/lib/registry/combatCanon";
+import { ANOMALIES } from "@/lib/registry/anomalies";
 import { findRegisteredItemById } from "@/lib/registry/itemLookup";
+import { NPC_CANONICAL_IDENTITY_BY_ID } from "@/lib/registry/npcCanon";
+import { NPCS } from "@/lib/registry/npcs";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
+import { QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
 import { enrichOptionsFromNarrative } from "./legalTurnOptionsFallback";
 
 const REGISTERED_WAREHOUSE_ITEM_IDS = new Set(WAREHOUSE_ITEMS.map((item) => item.id));
@@ -115,6 +119,129 @@ const EXPLICIT_NEVER_OWNED_ITEM_RE =
   /(?:从未|从来没|并未|没有)(?:真正)?(?:拥有|获得|拿到|持有|捡到|买到|得到).{0,12}(?:钥匙|物品|道具|卡|票|药|符|工具|武器)|(?:钥匙|物品|道具|卡|票|药|符|工具|武器).{0,12}(?:从未|从来没|并未|没有)(?:真正)?(?:拥有|获得|拿到|持有|捡到|买到|得到)/u;
 const EXPLICIT_ITEM_USE_RE =
   /(?:拿出|取出|掏出|使用|用|插入|递出|交出|装备|服用|打开|解锁|挥动)/u;
+const BODY_OR_ABSTRACT_TOOL_TERMS = new Set(["双手", "单手", "左手", "右手", "眼睛", "目光", "力气", "身体", "声音"]);
+
+function extractExplicitUsedItem(action: string): string | null {
+  const match = action.match(
+    /(?:拿出|取出|掏出|使用|用|装备|服用|挥动|点燃)\s*(?:了|着)?\s*(?:我的|自己(?:的)?|这(?:一)?把|那(?:一)?把|一把|一柄|一根|一支|一枚|一瓶|一件|一个)?\s*([\p{Script=Han}A-Za-z0-9_-]{2,24}?)(?=(?:来|去)?(?:试(?:着)?|尝试)?(?:砍|劈|刺|攻击|射击|敲|砸|撬|开|解锁|点燃|照|服用|挥动|插入|递出|交出)|[，。！？,.!?]|$)/u,
+  );
+  const term = match?.[1]?.trim() ?? "";
+  if (!term || BODY_OR_ABSTRACT_TOOL_TERMS.has(term)) return null;
+  return term;
+}
+
+function ownsExplicitItem(args: {
+  term: string;
+  inventoryItemIds: Set<string>;
+  equippedWeapon?: RecordLike | null;
+}): boolean {
+  const normalized = args.term.toLowerCase();
+  const equippedId = typeof args.equippedWeapon?.id === "string" ? args.equippedWeapon.id : "";
+  const equippedName = typeof args.equippedWeapon?.name === "string" ? args.equippedWeapon.name : "";
+  if (
+    (equippedId && equippedId.toLowerCase() === normalized) ||
+    (equippedName && (equippedName.includes(args.term) || args.term.includes(equippedName))) ||
+    (equippedId && /IRON[-_]?PIPE/i.test(equippedId) && args.term.includes("铁管")) ||
+    (args.term === "武器" && Boolean(equippedId))
+  ) return true;
+  for (const id of args.inventoryItemIds) {
+    const registered = findRegisteredItemById(id);
+    const name = typeof registered?.name === "string" ? registered.name : "";
+    if (id.toLowerCase() === normalized || (name && (name.includes(args.term) || args.term.includes(name)))) return true;
+  }
+  return false;
+}
+
+function npcAuthorityIds(worldId: string, presentNpcIds: string[]): Set<string> {
+  const registered = worldId === "xingni_taichu"
+    ? QINGSHI_NPCS.map((npc) => npc.id)
+    : Object.keys(NPC_CANONICAL_IDENTITY_BY_ID);
+  return new Set([...registered, ...presentNpcIds].map((id) => id.trim()).filter(Boolean));
+}
+
+function npcIdFromRow(row: RecordLike): string {
+  for (const key of ["npcId", "npc_id", "targetNpcId", "target_npc_id", "actorNpcId", "actor_npc_id", "id"]) {
+    if (typeof row[key] === "string" && String(row[key]).trim()) return String(row[key]).trim();
+  }
+  return "";
+}
+
+function filterNpcWrites(record: RecordLike, allowedNpcIds: Set<string>, worldId: string): RecordLike {
+  const next = { ...record };
+  let pruned = false;
+  let codexIdentityPruned = false;
+  const canonicalCodexById = new Map<string, { id: string; name: string; type: "npc" | "anomaly" }>(
+    (worldId === "xingni_taichu"
+      ? QINGSHI_NPCS.map((npc) => ({ id: npc.id, name: npc.name, type: "npc" as const }))
+      : [
+          ...NPCS.map((npc) => ({ id: npc.id, name: npc.name, type: "npc" as const })),
+          ...ANOMALIES.map((anomaly) => ({ id: anomaly.id, name: anomaly.name, type: "anomaly" as const })),
+        ]
+    ).map((entry) => [entry.id.toUpperCase(), entry]),
+  );
+  const filterRows = (value: unknown, inherentlyNpc: boolean): unknown[] => {
+    if (!Array.isArray(value)) return [];
+    return value.filter((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        if (inherentlyNpc) pruned = true;
+        return !inherentlyNpc;
+      }
+      const row = raw as RecordLike;
+      const id = npcIdFromRow(row);
+      const type = String(row.type ?? row.kind ?? "").toLowerCase();
+      const looksNpc = inherentlyNpc || type === "npc" || "npcId" in row || "npc_id" in row || /^N-\d+$/i.test(id);
+      if (!looksNpc) return true;
+      const keep = id.length > 0 && allowedNpcIds.has(id);
+      if (!keep) pruned = true;
+      return keep;
+    });
+  };
+
+  for (const field of ["relationship_updates", "npc_location_updates", "npc_memory_updates"]) {
+    if (Array.isArray(record[field])) next[field] = filterRows(record[field], true);
+  }
+  if (Array.isArray(record.codex_updates)) {
+    const npcFiltered = filterRows(record.codex_updates, false);
+    next.codex_updates = npcFiltered.flatMap((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [raw];
+      const row = raw as RecordLike;
+      const id = npcIdFromRow(row).toUpperCase();
+      const suppliedType = typeof row.type === "string" ? row.type.trim().toLowerCase() : "";
+      const looksCanonicalEntityId = /^(?:N-\d{3}|XQ-N\d{3}|A-\d{3})$/i.test(id);
+      const requiresCanonicalEntity = looksCanonicalEntityId || suppliedType === "npc" || suppliedType === "anomaly";
+      if (!requiresCanonicalEntity) return [raw];
+      const canonical = canonicalCodexById.get(id);
+      const suppliedName = typeof row.name === "string" ? row.name.trim() : "";
+      if (!canonical || (suppliedName && suppliedName !== canonical.name) || (suppliedType && suppliedType !== canonical.type)) {
+        codexIdentityPruned = true;
+        return [];
+      }
+      return [{ ...row, id: canonical.id, name: canonical.name, type: canonical.type }];
+    });
+  }
+
+  if (record.relation_changes && typeof record.relation_changes === "object" && !Array.isArray(record.relation_changes)) {
+    const nested = record.relation_changes as RecordLike;
+    next.relation_changes = {
+      ...nested,
+      ...(Array.isArray(nested.relationship_updates)
+        ? { relationship_updates: filterRows(nested.relationship_updates, true) }
+        : {}),
+    };
+  }
+  if (record.world_state_changes && typeof record.world_state_changes === "object" && !Array.isArray(record.world_state_changes)) {
+    const nested = record.world_state_changes as RecordLike;
+    next.world_state_changes = {
+      ...nested,
+      ...(Array.isArray(nested.npc_location_updates)
+        ? { npc_location_updates: filterRows(nested.npc_location_updates, true) }
+        : {}),
+    };
+  }
+  if (pruned) next._commit_flags = [...strings(next._commit_flags), "unregistered_npc_state_pruned_v1"];
+  if (codexIdentityPruned) next._commit_flags = [...strings(next._commit_flags), "canonical_codex_identity_mismatch_pruned_v1"];
+  return next;
+}
 
 function rejectExplicitPhantomItem(record: RecordLike): RecordLike {
   const next = { ...record };
@@ -128,6 +255,7 @@ function rejectExplicitPhantomItem(record: RecordLike): RecordLike {
     "clue_changes",
     "world_state_changes",
     "main_threat_updates",
+    "conflict_outcome",
     "weapon_updates",
     "weapon_bag_updates",
     "task_updates",
@@ -146,6 +274,7 @@ function rejectExplicitPhantomItem(record: RecordLike): RecordLike {
     consumes_time: false,
     time_cost: "none",
     sanity_damage: 0,
+    is_death: false,
     consumed_items: [],
     consumed_warehouse_items: [],
     awarded_items: [],
@@ -307,9 +436,19 @@ export function applyRegisteredMechanicsGuard(args: {
     activeThreatIds?: string[];
     journalClueIds?: string[];
     inventoryItemIds?: string[];
+    presentNpcIds?: string[];
+    worldId?: string;
   } | null;
 }): RecordLike {
-  const record = { ...args.dmRecord };
+  const allowedNpcIds = npcAuthorityIds(
+    String(args.clientState?.worldId ?? "dark_moon_prologue"),
+    strings(args.clientState?.presentNpcIds),
+  );
+  const record = filterNpcWrites(
+    args.dmRecord,
+    allowedNpcIds,
+    String(args.clientState?.worldId ?? "dark_moon_prologue"),
+  );
   const action = String(args.latestUserInput ?? "");
   const location = String(args.clientState?.playerLocation ?? "");
   const active = new Set(strings(args.clientState?.activeTaskIds));
@@ -324,6 +463,17 @@ export function applyRegisteredMechanicsGuard(args: {
 
   if (EXPLICIT_NEVER_OWNED_ITEM_RE.test(action) && EXPLICIT_ITEM_USE_RE.test(action)) {
     return rejectExplicitPhantomItem(record);
+  }
+  const explicitUsedItem = extractExplicitUsedItem(action);
+  if (explicitUsedItem && !ownsExplicitItem({
+    term: explicitUsedItem,
+    inventoryItemIds,
+    equippedWeapon: args.clientState?.equippedWeapon,
+  })) {
+    return rejectExplicitPhantomItem({
+      ...record,
+      _commit_flags: [...strings(record._commit_flags), "unowned_explicit_item_use_blocked_v2"],
+    });
   }
 
   // 状态真相源门禁：假物品不得经 award 字段进入最终 inventory/warehouse。
@@ -467,10 +617,35 @@ export function applyRegisteredMechanicsGuard(args: {
   const weaponMutationAction = explicitCombat || /(?:装备|修理|修复|锻造|强化|净化).{0,18}(?:武器|铁管|刀|棍)/.test(action);
   if (!weaponMutationAction) delete record.weapon_updates;
 
+  const riskSource = typeof record.risk_source === "string" && record.risk_source !== "unknown"
+    ? record.risk_source
+    : typeof record.damage_source === "string" && record.damage_source !== "unknown"
+      ? record.damage_source
+      : "";
+  const registeredThreatEvidence = registeredActiveThreatIds.length > 0 && Array.isArray(record.main_threat_updates)
+    && (record.main_threat_updates as unknown[]).some((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+      const threatId = String((raw as RecordLike).threatId ?? "");
+      return registeredActiveThreatIds.includes(threatId) && getAnomalyCombatStat(threatId) !== null;
+    });
+  const deterministicMechanicsEvidence = strings(record._commit_flags).some((flag) =>
+    flag === "authoritative_combat_settlement_v1" || flag.startsWith("weapon_tactical_")
+  );
+  const groundedMechanics = Boolean(riskSource) || registeredThreatEvidence || deterministicMechanicsEvidence;
+  if (Number(record.sanity_damage ?? 0) > 0 && !groundedMechanics) {
+    record.sanity_damage = 0;
+    record._commit_flags = [...strings(record._commit_flags), "ungrounded_sanity_damage_pruned_v1"];
+  }
+  if (record.conflict_outcome && !registeredThreatEvidence && !deterministicMechanicsEvidence) {
+    delete record.conflict_outcome;
+    record._commit_flags = [...strings(record._commit_flags), "ungrounded_conflict_outcome_pruned_v1"];
+  }
   if (explicitCombat && registeredActiveThreatIds.length === 0) {
     delete record.weapon_updates;
     delete record.main_threat_updates;
     delete record.conflict_outcome;
+    record.sanity_damage = 0;
+    record.is_death = false;
     record.narrative = "我检查了当前地点与异常战斗登记。这里没有可结算的已登记攻击目标，因此没有发生战斗，也没有产生武器损耗。";
     record.consumes_time = false;
     record._commit_flags = [...strings(record._commit_flags), "combat_without_registered_threat_blocked_v1"];

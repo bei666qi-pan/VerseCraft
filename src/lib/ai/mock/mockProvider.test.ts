@@ -62,3 +62,23 @@ test("mock provider supports valid and invalid options-only completions", async 
     assert.ok(options.includes("查看背包"));
   });
 });
+
+test("mock malformed-stream repair returns bounded narrative without new state facts", async () => {
+  await withMockEnv(async () => {
+    const res = await executeChatCompletion({
+      task: "NARRATIVE_EXPANSION",
+      messages: [{
+        role: "user",
+        content: "[mock_scenario:malformed_json] 只修复当前动作的短正文，不新增状态事实。",
+      }],
+      ctx: { requestId: "mock_malformed_repair", task: "NARRATIVE_EXPANSION" },
+    });
+
+    assert.equal(res.ok, true);
+    const parsed = JSON.parse(res.ok ? res.content : "{}") as { narrative?: string };
+    assert.ok(typeof parsed.narrative === "string" && parsed.narrative.length > 0);
+    assert.ok(parsed.narrative!.length < 180);
+    assert.equal(parsed.narrative!.includes("进入"), false);
+    assert.equal(parsed.narrative!.includes("受伤"), false);
+  });
+});

@@ -34,10 +34,10 @@ export {
 } from "@/lib/ai/tools/runToolLoop";
 export {
   resolveAiEnv,
-  anyAiProviderConfigured,
   resolveGatewayPrimaryBinding,
   resolveDeepSeekLegacyConfig,
 } from "@/lib/ai/config/env";
+export { managedAiConfiguredForTask as anyAiProviderConfigured } from "@/lib/ai/managed/state";
 export { sanitizeMessagesForUpstream } from "@/lib/ai/stream/sanitize";
 export {
   AI_LOGICAL_ROLES,

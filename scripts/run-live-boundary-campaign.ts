@@ -12,6 +12,7 @@ import {
 } from "../src/lib/endings";
 import type { EndingEvaluationInput, EndingFinalChoice } from "../src/lib/endings/types";
 import { resolveCampaignExecution } from "./liveExecutionMode";
+import { CHAT_LATENCY_BUDGET } from "../src/lib/perf/waitingConfig";
 
 const baseUrl = process.env.LIVEPLAY_BASE_URL ?? "http://127.0.0.1:666";
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -42,7 +43,7 @@ async function main() {
     useLivePlayerAgent: false,
     runNarrativeJudge: false,
     softlockThreshold: 10,
-    stepTimeoutMs: 30000,
+    stepTimeoutMs: CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
     traceOutputDir: outDir,
     enableFailureClustering: true,
   });
@@ -60,7 +61,7 @@ async function main() {
     currencyBounded: (byScenario.get("refusal-numeric-overflow")?.transcript.finalState.originium ?? -1) >= 0 && (byScenario.get("refusal-numeric-overflow")?.transcript.finalState.originium ?? 999999) <= 1000,
   };
 
-  const sut = new HttpSutAdapter({ baseUrl: execution.baseUrl, sessionId: `ending-boundary-${stamp}`, frameTimeoutMs: 30000 });
+  const sut = new HttpSutAdapter({ baseUrl: execution.baseUrl, sessionId: `ending-boundary-${stamp}`, frameTimeoutMs: CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms });
   const normal = await sut.step({ playerAction: "停在原地确认当前状况", persona: "explorer", stepIndex: 0, clientState: { v: 1, turnIndex: 0, playerLocation: "3F", stats: { sanity: 30, agility: 10, luck: 10, charm: 10, background: 10 }, originium: 3, inventoryItemIds: [], warehouseItemIds: [], equippedWeapon: null, weaponBag: [], currentProfession: null, worldFlags: [] } });
   const ordinary = evaluateEndingEligibility(endingInput({ resolvedTurn: normal.dmJson }));
   const deathInput = endingInput({ stats: { sanity: 0 }, resolvedTurn: normal.dmJson });

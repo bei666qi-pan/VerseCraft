@@ -1,87 +1,39 @@
 ## Context
 
-当前测试体系在 mock 模式下存在闭环自洽：mock provider 将 eval 关键词注入叙事 → eval 检测到关键词 → 高分通过。离线评分器（`evaluateOffline`）默认所有维度 3 分（及格），作为 AI 失败/预算耗尽/模拟模式的静默回退。`benchmark-run.mjs` 在子测试失败时回退到 `passRate: 1`。若干测试文件包含 `assert.ok(true)` 或无等待异步的哑弹测试。叙事验证器对 low-signal 事实无声放行。
-
-改动范围限于测试文件、mock 基础设施、eval 管道、rubric 配置和 1 个验证器函数，不碰 `/api/chat` 主链路。
+当前 `scripts/eval-playthrough-live.ts` 对错误或零步骤运行仍构造 judge 结果，并在报告中渲染数值评分。mock 与 live judge 的 provenance 不足以阻止其污染 live 汇总；默认输出位于长期文档目录。近期报告因此同时出现“运行 error/零回合”和“5/5 无问题”。
 
 ## Goals / Non-Goals
 
 **Goals:**
-- 消除所有无实际断言的哑弹测试
-- 切断 mock 关键词注入闭环
-- 离线评分器输出保守默认分 + 显式置信度标注
-- benchmark 聚合不在子测试失败时假装满分
-- 叙事验证器 low-signal 路径可审计
+- 让每个结论都可追溯到 SUT profile、judge profile、完整 transcript 和协议完整性。
+- 让错误、降级和不完整证据不可评分、不可通过、不可污染统计。
+- 让场景覆盖与产物生命周期可复现、可审计。
 
 **Non-Goals:**
-- 不新增 AI 调用或改变 AI gateway 配置
-- 不修改 `/api/chat` SSE 契约、DM JSON 形状、turn resolve 逻辑
-- 不改变 mock provider 的核心叙事选择逻辑（仅删除关键词注入）
-- 不改变 `evaluateOffline` 的已知缺陷检测规则（仅调整默认分和置信度）
-- 不修改 CI 流水线 YAML 结构
+- 不以 mock 替代 live。
+- 不删除测试输入、rubric、benchmark history 或手写文档。
+- 不修改线上回合裁决；由运行时 change 负责。
 
 ## Decisions
 
-### D1: 离线评分默认分从 3 降为 2
+### D1: 证据与质量结论分离
 
-**选择：** `evaluateOffline` 对未触发已知缺陷的维度默认分数从 3 降为 2。
+每次运行先分类 evidence status，再决定是否可调用 judge。`judgeResult` 为 nullable；只有 transcript 非空、步骤完成、SSE/DM 完整且未降级的运行可评分。基础设施错误记录诊断，但不转译成剧情缺陷。
 
-**理由：** 3 = 及格，不应是"我不知道"的默认答案。2 更接近"未验证，保守估计"的语义。同时 verdict 的 `confidence` 字段设为 `"offline_heuristic"`——该字段在现有 `JudgeVerdict` 类型中已存在，scorecard 中的 `narrative_judge_confidence_sample_missing` blocker 已会降低其权重。
+### D2: Live 汇总使用严格资格谓词
 
-**替代方案：**
-- 默认 1（完全失败）：过于激进，mock eval 仍有结构性验证价值
-- 保持 3 但仅标记 confidence：不解决"假高分"问题，分数仍会污染聚合
+进入 live pass rate/average 的结果必须同时满足：`sutProfile=live_full`、`judgeProfile=live`、状态为 `pass|fail`、存在完整 transcript 和真实 judge result。mock、inconclusive、infrastructure failure 分栏展示，不进入分母。
 
-**影响：** 依赖 mock eval 分数的现存测试和 CI gate 可能需要调整预期值。需在实施后运行 `pnpm test:gate:quick` 验证。
+### D3: 显式场景矩阵
 
-### D2: benchmark-run.mjs 子测试失败时的处理
+deep/holdout 不再对选择结果做隐式 `slice`。CLI 接受显式 scenario ids；默认 deep 集合固定包含所有规定能力，未知或遗漏 id 直接失败。
 
-**选择：** 子测试不可用时从聚合中排除，输出 `not_run` 而非硬编码满分。
+### D4: 生成产物隔离与门控清理
 
-**理由：** 现有 `{ passRate: 1, total: 28, pass: 28 }` fallback 在进程崩溃时给出完全不反映现实的满分，比不报告更危险。
-
-**替代方案：**
-- passRate: 0：虽然保守，但会拉低总分，且不区分"测试失败"与"测试未跑"
-- 直接 exit 1：过于粗暴，可能阻断其他子项的聚合
-
-**实现：** 解析子测试结果失败时，不在 `combinedTotal`/`combinedPass` 中计入该项，输出 warning 并标注 `not_run`。
-
-### D3: Mock 叙事关键词注入的删除
-
-**选择：** 删除 `mockScenarios.ts` 中 `buildKeywordAppendSentence` 及 `（相关关键词：` 检测，删除 `eval-chat-quality.ts` 中拼接关键词提示的代码。
-
-**理由：** 关键词注入形成了 eval → mock → eval 的闭合回路：eval 要求某关键词 → 注入到用户输入 → mock 回显到叙事 → eval 检测到关键词 → 通过。这不是测试，而是循环论证。
-
-**影响：** mock 模式下的某些 eval 用例可能因叙事中缺少 `mustContainAny` 关键词而失败。这些失败是**真实的**——它们暴露了 mock 叙事对特定场景覆盖不足。应通过补充 mock 叙事或用 `live` 模式处理，而非注入关键词绕过。
-
-### D4: low-signal fact 的 telemetry flag 而非拦截
-
-**选择：** `extractFactKeywords` 对 low-signal 事实返回 `dmOnlyFactsPresent: true` 标记，但不改变拦截行为（`leakedFactCount` 仍为 0）。
-
-**理由：** 直接拦截 low-signal 事实会导致大量误报（如"走廊尽头传来刮擦声"既是正常叙事也可能夹带世界观暗示），与现有 `"ignores low-signal scene overlap"` 测试用例的设计意图一致。telemetry flag 使运维可审计 low-signal 路径的通过率，在积累数据后再决定是否收紧。
-
-**替代方案：**
-- 直接拦截所有 DM-only 事实：误报率过高，已验证场景会被阻断
-- 不做任何改动：low-signal 路径完全不可见，无法判断是否存在系统性绕过
-
-### D5: 永久 skip 测试的处理
-
-**选择：** `online-status.spec.ts:117` 和 `codex-browser-playthrough.spec.ts:18` 的 `test.skip(true)` 改为条件 skip 或删除。
-
-**理由：** 永久 skip 的测试是死代码，不产生价值但会在代码搜索、重构和新人理解时造成混淆。
-
-**实现：**
-- `online-status.spec.ts` 的第 117 行测试标记为"后台不可用"——若后台功能已规划但未实现，改为 `test.skip(!process.env.ADMIN_PASSWORD)` 等条件 skip；若无规划，删除测试用例
-- `codex-browser-playthrough.spec.ts` 的第 18 行——检查是否与 `codex-browser-playthrough.spec.ts` 整体功能重复，如果是则删除该 skip 测试
+默认 run id 由 UTC 时间和 profile 构成，输出到 `.runtime-data/eval/<run-id>`。清理器只读取版本化 manifest 中的允许 glob，拒绝越出仓库、拒绝匹配保留清单；默认 dry-run，只有显式 `--delete --terminal-success` 才删除。
 
 ## Risks / Trade-offs
 
-- **[Risk] mock eval 分数整体下降 → CI gate 可能不通过** → Mitigation: 先本地跑 `pnpm test:gate:quick` 确认影响面，必要时微调 gate 阈值而非回退默认分
-- **[Risk] `narrative_quality_v2.json` hardFloor 提升导致 live 模式中更多 case 触发硬失败** → Mitigation: hardFloor 2 对 score=2 的拦截是合理的（"明显冲突"本应失败），若产生过多误报可在 1 个迭代后回顾数据
-- **[Risk] 删除 `profession-rules.test.ts` 存根测试可能遗漏对 prompt 行为的审计点** → Mitigation: 存根测试不验证任何行为，其存在本身不提供保护。真正需要审计的 prompt 行为应在 promptfoo live 模式或 `benchmarks/llm-evals/cases.json` 中覆盖
-- **[Risk] `foreshadowLedger` 的 fire-and-forget 测试改为真实异步断言后可能暴露隐性的 DB 依赖** → Mitigation: 新断言只验证内存行为（返回空数组），不访问真实 DB
-
-## Open Questions
-
-- `online-status.spec.ts` 中跳过的"后台不可用"测试，对应的后台功能是否仍有实现计划？若无，建议删除整个测试用例而不仅是修改 skip 条件
-- `codex-browser-playthrough.spec.ts:18` 跳过的测试与同文件其他测试的关系——是否是冗余？
+- 真实通过率会低于旧报告；这是去除假绿后的预期结果。
+- live judge 不可用会使终轮保持 `infrastructure_failure`，并阻止清理，确保失败证据不丢失。
+- 历史生成产物中少量命名不规则文件需要在 manifest 中逐类列出，禁止使用宽泛的 `**/*report*`。

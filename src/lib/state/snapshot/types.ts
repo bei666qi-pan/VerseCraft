@@ -5,6 +5,8 @@ import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type { JournalState } from "@/lib/domain/narrativeDomain";
 import type { ChapterState } from "@/lib/chapters/types";
 import type { EndingSettlementSnapshot, EndingState } from "@/lib/endings/types";
+import type { MapId, WorldId } from "@/lib/worlds/types";
+import type { XingniTaichuState } from "@/lib/worlds/xingni/progression";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
 
@@ -149,6 +151,11 @@ export interface SnapshotCompatibility {
 
 export interface RunSnapshotV2 {
   schemaVersion: typeof RUN_SNAPSHOT_V2_VERSION;
+  /** Explicit scope. Missing legacy values normalize to Dark Moon. */
+  worldId?: WorldId;
+  mapId?: MapId;
+  unlockedMapIds?: MapId[];
+  worldState?: XingniTaichuState | null;
   meta: SnapshotMeta;
   player: SnapshotPlayer;
   time: SnapshotTime;
@@ -197,6 +204,10 @@ export interface RunSnapshotV2 {
  * Keep it intentionally partial to prevent hard crashes on old saves.
  */
 export interface LegacySaveSurface {
+  worldId?: WorldId;
+  mapId?: MapId;
+  unlockedMapIds?: MapId[];
+  worldState?: XingniTaichuState | null;
   stats?: Record<StatType, number>;
   inventory?: Item[];
   warehouse?: WarehouseItem[];

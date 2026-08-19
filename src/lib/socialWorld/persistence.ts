@@ -6,9 +6,11 @@ import type {
   SocialWorldWriteResult,
 } from "@/lib/socialWorld/types";
 import type { MemorySpineEntry } from "@/lib/memorySpine/types";
+import type { PoolClient } from "pg";
 
 export type SocialWorldPersistenceOptions = {
   userId?: string | null;
+  client?: PoolClient;
 };
 
 export type SocialWorldInsertEventsOptions = SocialWorldPersistenceOptions & {
@@ -398,21 +400,21 @@ export function createInMemorySocialWorldPersistence(): SocialWorldPersistence {
   return createSocialWorldPersistence(adapter, { warn: () => undefined });
 }
 
-type PgQueryClient = {
-  query: <T extends Record<string, unknown> = Record<string, unknown>>(
-    sql: string,
-    params?: unknown[]
-  ) => Promise<{ rows: T[]; rowCount?: number | null }>;
-};
-
-async function withPgClient<T>(fn: (client: PgQueryClient) => Promise<T>): Promise<T> {
+async function withPgClient<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const { pool } = await import("@/db");
   const client = await pool.connect();
   try {
-    return await fn(client as PgQueryClient);
+    return await fn(client);
   } finally {
     client.release();
   }
+}
+
+async function withOptionalPgClient<T>(
+  client: PoolClient | undefined,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  return client ? fn(client) : withPgClient(fn);
 }
 
 export const SOCIAL_MEMORY_SPINE_EMBED_KEY = "__vc_social_memory_spine_v1";
@@ -421,9 +423,11 @@ const pgAdapter: SocialWorldPersistenceAdapter = {
   async loadNpcAgentStates(sessionId) {
     const rows = await withPgClient(async (client) => {
       const result = await client.query(
-        `SELECT state_json
+         `SELECT state_json
          FROM npc_agent_state
-         WHERE session_id = $1
+         WHERE world_id = 'dark_moon_prologue'
+           AND map_id = 'dark_moon_apartment'
+           AND session_id = $1
          ORDER BY npc_id ASC`,
         [sessionId]
       );
@@ -435,16 +439,16 @@ const pgAdapter: SocialWorldPersistenceAdapter = {
     const userId = normalizeUserId(opts?.userId);
     let inserted = 0;
     let updated = 0;
-    await withPgClient(async (client) => {
+    await withOptionalPgClient(opts?.client, async (client) => {
       for (const raw of states) {
         const state = normalizeNpcAgentState(raw, raw.lastActiveTurn);
         if (!state.npcId) continue;
         const result = await client.query<{ inserted: boolean }>(
           `INSERT INTO npc_agent_state (
-             session_id, user_id, npc_id, state_json, status, last_active_turn, next_eligible_turn, updated_at
+             world_id, map_id, session_id, user_id, npc_id, state_json, status, last_active_turn, next_eligible_turn, updated_at
            )
-           VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, CURRENT_TIMESTAMP)
-           ON CONFLICT (session_id, npc_id) DO UPDATE SET
+           VALUES ('dark_moon_prologue', 'dark_moon_apartment', $1, $2, $3, $4::jsonb, $5, $6, $7, CURRENT_TIMESTAMP)
+           ON CONFLICT (world_id, map_id, session_id, npc_id) DO UPDATE SET
              user_id = COALESCE(EXCLUDED.user_id, npc_agent_state.user_id),
              state_json = EXCLUDED.state_json,
              status = EXCLUDED.status,
@@ -486,7 +490,7 @@ const pgAdapter: SocialWorldPersistenceAdapter = {
     const userId = normalizeUserId(opts?.userId);
     let inserted = 0;
     let updated = 0;
-    await withPgClient(async (client) => {
+    await withOptionalPgClient(opts?.client, async (client) => {
       for (const raw of edges) {
         const edge = normalizeNpcRelationEdge(raw);
         if (!edge.fromNpcId || !edge.toNpcId) continue;
@@ -513,7 +517,7 @@ const pgAdapter: SocialWorldPersistenceAdapter = {
     const userId = normalizeUserId(opts?.userId);
     let inserted = 0;
     let skipped = 0;
-    await withPgClient(async (client) => {
+    await withOptionalPgClient(opts?.client, async (client) => {
       for (const raw of events) {
         const event = normalizeSocialEvent(raw);
         const actorKey = canonicalNpcKey(event.actorNpcIds);
@@ -659,7 +663,7 @@ const pgAdapter: SocialWorldPersistenceAdapter = {
   async upsertMemorySpineEntries(_sessionId, entries, opts) {
     const userId = normalizeUserId(opts?.userId);
     if (!userId || entries.length === 0) return { inserted: 0, updated: 0, skipped: entries.length };
-    const rows = await withPgClient(async (client) => {
+    const rows = await withOptionalPgClient(opts?.client, async (client) => {
       const existing = await client.query<{ player_status: Record<string, unknown> | null }>(
         `SELECT player_status
          FROM game_session_memory

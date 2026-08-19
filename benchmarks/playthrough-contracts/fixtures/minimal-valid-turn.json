@@ -1,0 +1,21 @@
+{
+  "scenarioId": "contract-fixture",
+  "persona": "explorer",
+  "runId": "fixture-minimal-valid-turn-v1",
+  "steps": [
+    {
+      "step": 0,
+      "playerInput": "观察当前位置",
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我留在当前位置观察，没有提交未经确认的状态变化。",
+        "is_death": false,
+        "currency_change": 0,
+        "awarded_items": [],
+        "npc_location_updates": []
+      },
+      "rawModelOutput": "__VERSECRAFT_FINAL__:{\"is_action_legal\":true,\"sanity_damage\":0,\"narrative\":\"我留在当前位置观察，没有提交未经确认的状态变化。\",\"is_death\":false}"
+    }
+  ]
+}

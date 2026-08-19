@@ -2,7 +2,7 @@
  * 世界知识向量化 batch worker（T4，2026-07）。
  *
  * 扫描 `world_knowledge_chunks` 里 `embedding_status = 'pending'` 的 chunk，调用
- * embeddings 网关（`src/lib/ai/embeddings/embedText.ts`，复用 AI_GATEWAY_* 凭证）生成向量，
+ * 后台 AI 管理中配置的知识检索服务生成向量，
  * 写回 `embedding_vector` + `embedding_status='ready'`（失败则标记 `embedding_status='error'`，
  * 不阻塞下一轮，不重试风暴）。
  *
@@ -16,7 +16,8 @@
 import { ensureRuntimeSchema } from "@/db/ensureSchema";
 import { pool } from "@/db/index";
 import { embedText } from "@/lib/ai/embeddings/embedText";
-import { resolveEmbeddingBinding } from "@/lib/ai/config/env";
+import { reloadManagedAiSnapshot } from "@/lib/ai/managed/runtime";
+import { getManagedEmbeddingBindings } from "@/lib/ai/managed/state";
 
 const BATCH_SIZE = 20;
 
@@ -86,14 +87,14 @@ async function main(): Promise<void> {
   const once = process.argv.includes("--once");
   const dryRun = process.argv.includes("--dry-run");
 
-  const binding = resolveEmbeddingBinding();
-  if (!binding.configured) {
+  await reloadManagedAiSnapshot();
+  const binding = getManagedEmbeddingBindings()[0];
+  if (!binding) {
     console.error(
       JSON.stringify({
         ts: new Date().toISOString(),
         stage: "embedding-backfill:not-configured",
-        message:
-          "AI_MODEL_EMBEDDING / AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY 未齐全，无法生成向量。见 .env.example 的 embeddings 段落。",
+        message: "后台“AI 管理”尚未配置可用的知识检索模型。",
       })
     );
     process.exitCode = 1;
@@ -108,8 +109,8 @@ async function main(): Promise<void> {
       stage: "embedding-backfill:start",
       once,
       dryRun,
-      model: binding.model,
-      dimension: binding.dimension,
+      model: binding.modelName,
+      dimension: binding.embeddingDimension,
     })
   );
 

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseControlPlaneJson } from "@/lib/playRealtime/controlPlaneParse";
+import { buildControlPreflightSystemPrompt } from "@/lib/playRealtime/controlPreflightPrompt";
 
 test("parseControlPlaneJson rejects think pollution", () => {
   const raw = `<think>chain</think>{"intent":"explore","confidence":0.9,"extracted_slots":{},"risk_tags":[],"risk_level":"low","dm_hints":"","block_dm":false,"block_reason":""}`;
@@ -16,3 +17,9 @@ test("parseControlPlaneJson extracts first JSON object from prose wrapper", () =
   assert.ok(parsed!.dm_hints.length <= 120);
 });
 
+test("control prompt distinguishes ambient survey and combat-avoidant retreat from targeted investigation", () => {
+  const prompt = buildControlPreflightSystemPrompt(true);
+  assert.match(prompt, /查看当前可见环境.*explore/);
+  assert.match(prompt, /明确对象、痕迹或证据.*investigate/);
+  assert.match(prompt, /不攻击\/别开战\/先后撤.*explore/);
+});

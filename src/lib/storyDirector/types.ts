@@ -91,16 +91,27 @@ export type StoryDirectorState = {
   chapter: ChapterDirectorState;
 };
 
-export type DirectorPlan = {
+/**
+ * Preferred product name. `StoryDirectorState` remains as a storage-compatible
+ * alias because existing saves persist under the `storyDirector` key.
+ */
+export type PacingChapterControllerState = StoryDirectorState;
+export type PacingChapterControllerSignals = Pick<
+  StoryDirectorState,
+  "beatIndex" | "tension" | "stallCount" | "openHookCodes" | "escapePressureBand" | "chapter"
+>;
+
+export type PacingChapterControllerPlan = {
   beatMode: BeatMode;
   mustAdvance: boolean;
   mustRecallHookCodes: string[];
   preferredIncidentCode: string | null;
-  softPressureHint: string | null;
-  hardConstraint: string | null;
   suppressions: string[]; // incident codes to suppress this turn
   pressureFlags: DirectorPressureFlag[];
 };
+
+/** @deprecated Compatibility alias for existing chapter/incident internals. */
+export type DirectorPlan = PacingChapterControllerPlan;
 
 export type IncidentKind =
   | "pressure"
@@ -222,4 +233,3 @@ export function createEmptyDirectorState(nowTurn: number): StoryDirectorState {
 export function createEmptyIncidentQueue(): IncidentQueueState {
   return { v: 1, items: [] };
 }
-

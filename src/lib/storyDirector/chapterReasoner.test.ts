@@ -59,8 +59,6 @@ function mkPlan(overrides: Record<string, unknown> = {}) {
     mustAdvance: false,
     mustRecallHookCodes: [],
     preferredIncidentCode: null,
-    softPressureHint: null,
-    hardConstraint: null,
     suppressions: [],
     pressureFlags: [],
     ...overrides,

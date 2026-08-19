@@ -106,7 +106,7 @@ async function runOneSystem(system: SystemGroup): Promise<void> {
     runNarrativeJudge: false,
     softlockThreshold: 40,
     stepTimeoutMs: 180000,
-    traceOutputDir: `.runtime-data/playthrough/live-${system.name}`,
+    traceOutputDir: `.runtime-data/eval/playthrough/live-${system.name}`,
     enableFailureClustering: true,
     // 紧凑步延迟：2s，比之前的 5s 减少 60% 空闲等待
     stepDelayMs: 2000,
@@ -199,7 +199,7 @@ async function main() {
   console.log("✅ Stage A 完成");
   console.log(`   总耗时: ${totalHours} 小时`);
   console.log(`   成功: ${successCount}/${SYSTEMS.length}`);
-  console.log(`   Trace: .runtime-data/playthrough/live-*`);
+  console.log(`   Trace: .runtime-data/eval/playthrough/live-*`);
   console.log(`   时间: ${new Date().toLocaleString()}`);
   console.log(`${"═".repeat(60)}`);
 }

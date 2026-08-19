@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "@/db/index";
-import type { DirectorPhase, DirectorPlan } from "./contracts";
+import type { DirectorPhase, DirectorPlan, WorldRuntimeScope } from "./contracts";
 
 export type WorldDirectorPacingState = {
   tension: number;
@@ -12,6 +12,8 @@ export type WorldDirectorPacingState = {
 };
 
 export type WorldDirectorState = {
+  worldId: WorldRuntimeScope["worldId"];
+  mapId: WorldRuntimeScope["mapId"];
   sessionId: string;
   userId: string | null;
   turnIndex: number;
@@ -49,9 +51,9 @@ function normalizePacing(raw: unknown): WorldDirectorPacingState {
   };
 }
 
-function defaultDirectorState(sessionId: string, userId: string | null, turnIndex = 0): WorldDirectorState {
+function defaultDirectorState(scope: WorldRuntimeScope, userId: string | null, turnIndex = 0): WorldDirectorState {
   return {
-    sessionId,
+    ...scope,
     userId,
     turnIndex,
     phase: "quiet",
@@ -61,8 +63,8 @@ function defaultDirectorState(sessionId: string, userId: string | null, turnInde
   };
 }
 
-export async function loadDirectorState(sessionId: string): Promise<WorldDirectorState | null> {
-  if (!sessionId) return null;
+export async function loadDirectorState(scope: WorldRuntimeScope): Promise<WorldDirectorState | null> {
+  if (!scope.sessionId) return null;
   let client;
   try {
     client = await pool.connect();
@@ -75,6 +77,8 @@ export async function loadDirectorState(sessionId: string): Promise<WorldDirecto
   try {
     const r = await client.query<{
       session_id: string;
+      world_id: WorldRuntimeScope["worldId"];
+      map_id: WorldRuntimeScope["mapId"];
       user_id: string | null;
       turn_index: number;
       phase: DirectorPhase;
@@ -83,16 +87,18 @@ export async function loadDirectorState(sessionId: string): Promise<WorldDirecto
       world_revision: string | null;
       updated_at: Date;
     }>(
-      `SELECT session_id, user_id, turn_index, phase, pacing_json, recent_director_intent,
+      `SELECT world_id, map_id, session_id, user_id, turn_index, phase, pacing_json, recent_director_intent,
               world_revision::text AS world_revision, updated_at
        FROM world_engine_director_state
-       WHERE session_id = $1
+       WHERE world_id = $1 AND map_id = $2 AND session_id = $3
        LIMIT 1`,
-      [sessionId]
+      [scope.worldId, scope.mapId, scope.sessionId]
     );
     const row = r.rows[0];
     if (!row) return null;
     return {
+      worldId: row.world_id,
+      mapId: row.map_id,
       sessionId: row.session_id,
       userId: row.user_id,
       turnIndex: Number(row.turn_index ?? 0),
@@ -115,12 +121,12 @@ export async function loadDirectorState(sessionId: string): Promise<WorldDirecto
 export function computeNextDirectorState(args: {
   previousState: WorldDirectorState | null;
   plan: DirectorPlan;
-  sessionId: string;
+  scope: WorldRuntimeScope;
   userId: string | null;
   turnIndex: number;
   worldRevision?: bigint | string | null;
 }): WorldDirectorState {
-  const prev = args.previousState ?? defaultDirectorState(args.sessionId, args.userId, args.turnIndex);
+  const prev = args.previousState ?? defaultDirectorState(args.scope, args.userId, args.turnIndex);
   const pacing = {
     tension: clamp01(args.plan.pacing_assessment.tension, prev.pacing.tension),
     mystery: clamp01(args.plan.pacing_assessment.mystery, prev.pacing.mystery),
@@ -141,7 +147,7 @@ export function computeNextDirectorState(args: {
   }
 
   return {
-    sessionId: args.sessionId,
+    ...args.scope,
     userId: args.userId,
     turnIndex: Math.max(0, Math.trunc(args.turnIndex ?? prev.turnIndex)),
     phase,
@@ -162,11 +168,11 @@ export async function saveDirectorState(
     ownedClient = client ? null : c;
     await c.query(
       `INSERT INTO world_engine_director_state (
-         session_id, user_id, turn_index, phase, pacing_json,
+         world_id, map_id, session_id, user_id, turn_index, phase, pacing_json,
          recent_director_intent, world_revision, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())
-       ON CONFLICT (session_id) DO UPDATE SET
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NOW())
+       ON CONFLICT (world_id, map_id, session_id) DO UPDATE SET
          user_id = COALESCE(EXCLUDED.user_id, world_engine_director_state.user_id),
          turn_index = GREATEST(world_engine_director_state.turn_index, EXCLUDED.turn_index),
          phase = EXCLUDED.phase,
@@ -175,6 +181,8 @@ export async function saveDirectorState(
          world_revision = COALESCE(EXCLUDED.world_revision, world_engine_director_state.world_revision),
          updated_at = NOW()`,
       [
+        state.worldId,
+        state.mapId,
         state.sessionId,
         state.userId,
         state.turnIndex,
@@ -185,6 +193,7 @@ export async function saveDirectorState(
       ]
     );
   } catch (e) {
+    if (client) throw e;
     console.warn('[worldEngine] saveDirectorState failed', {
       message: e instanceof Error ? e.message : String(e),
     });

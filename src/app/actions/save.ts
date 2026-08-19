@@ -232,14 +232,23 @@ export async function enqueueReviveWorldAdvanceJob(input: {
     if (!input?.slotId) return { ok: false };
     const requestId = `revive_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const res = await enqueueWorldEngineTick({
+      version: 2,
       requestId,
       userId,
       sessionId: input.slotId,
-      latestUserInput: "[system] revive_fast_forward_12h",
+      worldId: "dark_moon_prologue",
+      mapId: "dark_moon_apartment",
       triggerSignals: ["in_game_day_elapsed", "world_fact_threshold_reached"],
       controlRiskTags: ["revive_fast_forward"],
-      dmNarrativePreview: "玩家通过锚点复活，世界已快进12小时。",
-      playerLocation: input.playerLocation,
+      playerLocationBefore: input.playerLocation,
+      playerLocationAfter: input.playerLocation,
+      presentNpcIds: [],
+      deadNpcIds: [],
+      changedTaskIds: [],
+      changedClueIds: [],
+      pacingChapterSignals: { phase: "recovery", tension: 0.2, chapterId: null, chapterIndex: 0, progress: 0 },
+      worldStateSummary: { day: Math.floor(Math.max(0, Number(input.turnIndex ?? 0)) / 12) + 1, timeSlot: "unknown", danger: "low", stateCodes: ["revive_fast_forward_12h"] },
+      latestTurnSignals: { actionKinds: ["other"], legal: true, death: false, riskTags: ["revive_fast_forward"] },
       npcLocationUpdateCount: 0,
       turnIndex: Math.max(0, Number(input.turnIndex ?? 0)),
     });

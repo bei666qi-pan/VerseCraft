@@ -60,7 +60,7 @@ export function VerseCraftLogoMark({
     <span
       aria-hidden={decorative ? true : undefined}
       data-testid={dataTestId}
-      className={`relative inline-block shrink-0 overflow-visible ${hasHeight ? "" : "h-10"} ${hasWidth ? "" : "w-10"} ${className}`}
+      className={`relative inline-block shrink-0 overflow-hidden ${hasHeight ? "" : "h-10"} ${hasWidth ? "" : "w-10"} ${className}`}
       style={style}
     >
       <svg

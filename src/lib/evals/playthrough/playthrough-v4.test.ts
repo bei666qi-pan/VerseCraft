@@ -244,6 +244,16 @@ describe("live SUT 降级识别", () => {
     assert.equal(isDegradedSutResult(undefined, { narrative: "走廊尽头传来轻微的敲击声。" }), false);
   });
 
+  it("经过零状态 partial salvage 的正文仍是可评分 live 证据", () => {
+    assert.equal(isDegradedSutResult(undefined, {
+      narrative: "我贴着墙根停下脚步，听见楼梯间传来一阵由远及近的回声。",
+      internal_meta: {
+        action: "validated_partial_narrative_after_malformed_dm",
+        structured_fields_accepted: false,
+      },
+    }), false);
+  });
+
   it("空叙事 internal fallback 必须判为降级", () => {
     assert.equal(isDegradedSutResult(undefined, {
       narrative: "",

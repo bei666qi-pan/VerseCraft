@@ -1,5 +1,10 @@
 import { sanitizeInputText } from "@/lib/security/helpers";
 import { normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
+import { normalizeWorldIdentity, resolveWorldRuntime } from "@/lib/worlds/catalog";
+import type { MapId, WorldId } from "@/lib/worlds/types";
+import { normalizeXingniState, type XingniTaichuState } from "@/lib/worlds/xingni/progression";
+
+export type XingniWorldStateDigest = XingniTaichuState;
 
 export type IncomingMessage = {
   role: "system" | "user" | "assistant" | string;
@@ -17,6 +22,11 @@ export type IncomingMessage = {
  */
 export type ClientStructuredContextV1 = {
   v: 1;
+  /** Explicit world scope. Legacy requests are normalized to Dark Moon. */
+  worldId?: WorldId;
+  mapId?: MapId;
+  /** Bounded candidate digest. It is revalidated by the selected world runtime. */
+  worldStateDigest?: XingniWorldStateDigest;
   /** 客户端当前回合序号（用于基本一致性检查/审计） */
   turnIndex: number;
   /** 基础位置/时间（服务可用性与 guard 分支所需） */
@@ -147,6 +157,8 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
   const v = clampInt(obj.v, 1, 1);
   if (v !== 1) return null;
 
+  const identity = normalizeWorldIdentity({ worldId: obj.worldId, mapId: obj.mapId });
+
   const turnIndex = clampInt(obj.turnIndex, 0, 99999);
   const playerLocation = sanitizeInputText(String(obj.playerLocation ?? ""), 80);
   if (!playerLocation) return null;
@@ -208,8 +220,26 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
       ? sanitizeInputText(digestRaw.trim(), 260)
       : undefined;
 
+  const worldDigestObj = asPlainObject(obj.worldStateDigest);
+  const cultivationObj = asPlainObject(worldDigestObj?.cultivation);
+  const worldStateDigest: XingniWorldStateDigest | undefined =
+    identity.worldId === "xingni_taichu" && worldDigestObj?.kind === "xingni_taichu" && cultivationObj
+      ? normalizeXingniState({
+          ...worldDigestObj,
+          kind: "xingni_taichu",
+          cultivation: { ...cultivationObj, realm: sanitizeInputText(String(cultivationObj.realm ?? "炼气2层"), 16) },
+          spiritStones: clampInt(worldDigestObj.spiritStones, 0, 999999),
+          techniqueIds: asStringArray(worldDigestObj.techniqueIds, 32),
+          recipeIds: asStringArray(worldDigestObj.recipeIds, 32),
+          unlockedMapIds: asStringArray(worldDigestObj.unlockedMapIds, 12),
+          processedActionIds: asStringArray(worldDigestObj.processedActionIds, 64),
+        })
+      : undefined;
+
   return {
     v: 1,
+    ...identity,
+    ...(worldStateDigest ? { worldStateDigest } : {}),
     turnIndex,
     playerLocation,
     ...(time ? { time } : {}),
@@ -280,6 +310,15 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
   const sessionId = sessionIdCandidate || null;
 
   const clientState = validateClientState(rawClientState);
+  const rawClientStateObj = asPlainObject(rawClientState);
+  if (rawClientStateObj) {
+    const hasExplicitWorld = rawClientStateObj.worldId !== undefined || rawClientStateObj.mapId !== undefined;
+    if (hasExplicitWorld) {
+      const runtime = resolveWorldRuntime(rawClientStateObj.worldId, rawClientStateObj.mapId);
+      if (!runtime.ok) return { ok: false, status: 400, error: runtime.message };
+    }
+    if (!clientState) return { ok: false, status: 400, error: "clientState is invalid" };
+  }
   const language = normalizeGameLanguage(rawLanguage);
   const openingOptionsOnlyRound = rawOpeningOptionsOnlyRound === true;
   const clientPurpose = rawClientPurpose === "options_regen_only" ? "options_regen_only" : "normal";

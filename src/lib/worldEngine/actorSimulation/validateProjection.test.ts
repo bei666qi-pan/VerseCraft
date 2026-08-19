@@ -161,8 +161,8 @@ describe("validateActorProjection", () => {
       forbiddenFactIds: FORBIDDEN_FACTS,
     });
     assert.equal(result.issues.some((i) => i.code === "missing_source"), true);
-    // missing_source is low severity, should not block
-    assert.equal(result.accepted, true);
+    // Evidence-free actions are blocked rather than treated as low-risk invention.
+    assert.equal(result.accepted, false);
   });
 
   it("accepts projection with zero actions (no-op NPC)", () => {

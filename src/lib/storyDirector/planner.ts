@@ -1,4 +1,4 @@
-import type { DirectorPlan, StoryDirectorState } from "./types";
+import type { PacingChapterControllerPlan, StoryDirectorState } from "./types";
 import type { DirectorSignals } from "./signals";
 
 function clampInt(n: unknown, min: number, max: number): number {
@@ -24,11 +24,11 @@ function uniq(xs: string[], cap: number): string[] {
 export function planStoryBeat(args: {
   director: StoryDirectorState;
   signals: DirectorSignals;
-}): DirectorPlan {
+}): PacingChapterControllerPlan {
   const d = args.director;
   const s = args.signals;
   const chapter = d.chapter;
-  const pressureFlags: DirectorPlan["pressureFlags"] = [];
+  const pressureFlags: PacingChapterControllerPlan["pressureFlags"] = [];
   if (s.stalled) pressureFlags.push("stalling");
   if (s.threatHot) pressureFlags.push("high_threat");
   if (s.debtPileup) pressureFlags.push("debt_pileup");
@@ -49,7 +49,7 @@ export function planStoryBeat(args: {
     mustAdvance ? 3 : 2
   );
 
-  const beatMode: DirectorPlan["beatMode"] = (() => {
+  const beatMode: PacingChapterControllerPlan["beatMode"] = (() => {
     if (inCooldown) return "aftershock";
     if (chapter?.closeCandidate?.shouldClose || chapter?.chapterPhase === "closing") return "aftershock";
     if (s.nearPeak && budget >= 55) return "peak";
@@ -61,22 +61,6 @@ export function planStoryBeat(args: {
     if (s.hooksReady && budget >= 20) return "reveal";
     return "quiet";
   })();
-
-  const softPressureHint =
-    beatMode === "quiet"
-      ? null
-      : beatMode === "reveal"
-        ? "让旧线索/旧承诺自然回到场景里，像‘被盯上’或‘被想起’。"
-        : beatMode === "aftershock"
-          ? "余震窗口：允许喘息，但不要把危险写没；留下一点后果回音。"
-          : mustAdvance
-            ? "停滞惩罚：先用轻压力推你做选择，不要直接抛系统提示。"
-            : "压力上升：让环境/人际/机会产生‘要么现在，要么错过’的感觉。";
-
-  const hardConstraint =
-    beatMode === "quiet"
-      ? "避免连续解释设定；用行动推进。"
-      : "不要写‘系统触发事件/导演安排’；一切必须通过场景与人物行为自然发生。";
 
   const preferredIncidentCode =
     !inCooldown && mustAdvance && budget >= 35
@@ -102,10 +86,7 @@ export function planStoryBeat(args: {
     mustAdvance,
     mustRecallHookCodes,
     preferredIncidentCode,
-    softPressureHint,
-    hardConstraint,
     suppressions,
     pressureFlags,
   };
 }
-

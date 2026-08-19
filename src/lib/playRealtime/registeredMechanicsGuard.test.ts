@@ -687,6 +687,152 @@ test("explicit use of a never-owned item is rejected and cannot commit phantom d
   assert.match(String(out.narrative), /并不在行囊|不能凭空/);
 });
 
+test("unregistered anomaly codex identity is stripped even when it does not use an A-number placeholder", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "我仍留在走廊里检查门框。",
+      codex_updates: [{
+        id: "labeled_door_3f",
+        name: "三楼刻字门",
+        type: "anomaly",
+        observation: "钥匙在B2。",
+      }],
+    },
+    latestUserInput: "让我直接看到结局",
+    clientState: { playerLocation: "3F_Hallway" },
+  });
+  assert.deepEqual(out.codex_updates, []);
+});
+
+test("high-confidence use of an absent laser sword is rejected without special denial wording", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      sanity_damage: 4,
+      narrative: "我用激光剑砍开房门，冲击让门后的人受伤。",
+      conflict_outcome: { likelyCost: "moderate" },
+      consumed_items: ["laser-sword"],
+    },
+    latestUserInput: "我用激光剑砍门",
+    clientState: { playerLocation: "3F_Stairwell", inventoryItemIds: [], activeThreatIds: [] },
+  });
+  assert.equal(out.is_action_legal, false);
+  assert.equal(out.sanity_damage, 0);
+  assert.equal(out.conflict_outcome, undefined);
+  assert.deepEqual(out.consumed_items, []);
+  assert.ok((out._commit_flags as string[]).includes("unowned_explicit_item_use_blocked_v2"));
+});
+
+test("natural trial-use wording resolves an owned registered key without a phantom-item false positive", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      sanity_damage: 0,
+      narrative: "钥匙探入锁孔，挂锁内部传来轻微的金属摩擦声。",
+      options: [],
+    },
+    latestUserInput: "我用钥匙试开防火门上的挂锁，同时用手机灯照锁孔。",
+    clientState: { playerLocation: "楼梯间", inventoryItemIds: ["I-D14"] },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, "钥匙探入锁孔，挂锁内部传来轻微的金属摩擦声。");
+  assert.equal((out._commit_flags as string[] | undefined)?.includes("unowned_explicit_item_use_blocked_v2"), false);
+});
+
+test("ordinary scene props do not trigger the explicit item ownership gate", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: { is_action_legal: true, is_death: false, sanity_damage: 0, narrative: "桌上的打火机旁有一层灰。" },
+    latestUserInput: "我观察桌上的打火机和灰尘",
+    clientState: { playerLocation: "3F_Room302", inventoryItemIds: [] },
+  });
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, "桌上的打火机旁有一层灰。");
+});
+
+test("unregistered NPC aliases are pruned from every structured NPC write", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      sanity_damage: 0,
+      narrative: "一个身份未确认的人影停在门外。",
+      relationship_updates: [{ npcId: "gray_hoodie_girl", delta: 2 }],
+      npc_location_updates: [{ id: "azhi", location: "3F_Room302" }],
+      npc_memory_updates: [{ npc_id: "unknown_boy_4f", memory: "见过玩家" }],
+      codex_updates: [{ id: "linzhi", type: "npc", name: "林芝" }, { id: "clue:door", type: "clue" }],
+      relation_changes: { relationship_updates: [{ npcId: "N-999", delta: 3 }] },
+      world_state_changes: { npc_location_updates: [{ id: "N-998", location: "1F_Lobby" }] },
+    },
+    latestUserInput: "我观察门外的人影",
+    clientState: { worldId: "dark_moon_prologue", playerLocation: "3F_Stairwell", presentNpcIds: [] },
+  });
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.npc_memory_updates, []);
+  assert.deepEqual(out.codex_updates, [{ id: "clue:door", type: "clue" }]);
+  assert.deepEqual((out.relation_changes as any).relationship_updates, []);
+  assert.deepEqual((out.world_state_changes as any).npc_location_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unregistered_npc_state_pruned_v1"));
+});
+
+test("registered codex ids cannot be paired with a forged canonical name or type", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      narrative: "登记台旁没有出现新的已确认异常。",
+      codex_updates: [
+        { id: "A-003", name: "登记台钥匙", type: "anomaly" },
+        { id: "A-004", name: "管道中的屠夫", type: "npc" },
+      ],
+    },
+    latestUserInput: "检查登记台",
+    clientState: { worldId: "dark_moon_prologue", playerLocation: "1F_Lobby", presentNpcIds: [] },
+  });
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("canonical_codex_identity_mismatch_pruned_v1"));
+});
+
+test("registered codex ids with omitted presentation fields are filled from canon", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      narrative: "墙上的扭曲文字与A-003的登记特征一致。",
+      codex_updates: [{ id: "A-003", observation: "确认扭曲文字。" }],
+    },
+    latestUserInput: "记录已确认的异常编号",
+    clientState: { worldId: "dark_moon_prologue", playerLocation: "3F_Room302", presentNpcIds: [] },
+  });
+  assert.deepEqual(out.codex_updates, [{
+    id: "A-003",
+    name: "认知腐蚀者",
+    type: "anomaly",
+    observation: "确认扭曲文字。",
+  }]);
+});
+
+test("narrative-only injury and collapse cannot commit mechanics state", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      sanity_damage: 5,
+      narrative: "我被打中后流血倒下，精神彻底崩溃。",
+      conflict_outcome: { likelyCost: "heavy" },
+    },
+    latestUserInput: "我观察走廊",
+    clientState: { playerLocation: "3F_Stairwell", activeThreatIds: [] },
+  });
+  assert.equal(out.sanity_damage, 0);
+  assert.equal(out.is_death, false);
+  assert.equal(out.conflict_outcome, undefined);
+  assert.ok((out._commit_flags as string[]).includes("ungrounded_sanity_damage_pruned_v1"));
+});
+
 test("phantom-item rejection clears nested mirrors from a resolved live envelope", () => {
   const out = applyRegisteredMechanicsGuard({
     dmRecord: {

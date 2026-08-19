@@ -2,6 +2,7 @@
 import https from "node:https";
 import { Readable } from "node:stream";
 import { envBoolean } from "@/lib/config/envRaw";
+import { resolveManagedServiceUrlSafe } from "@/lib/ai/managed/urlSafety";
 import {
   buildPlayerTurnJsonFallbackInit,
   normalizePlayerTurnTerminalToolResponse,
@@ -33,16 +34,23 @@ export function isRetryableHttpStatus(status: number): boolean {
  * connections, and every later request (the "turn ~7 wedge"). `node:https`
  * never speaks h2, so gateway traffic cannot take down the process this way.
  */
-async function http1Fetch(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+async function http1Fetch(
+  url: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+  pinnedAddress?: { address: string; family: number }
+): Promise<Response> {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const req = https.request(
       {
         method: (init.method as string | undefined) ?? "GET",
-        hostname: u.hostname,
+        hostname: pinnedAddress?.address ?? u.hostname,
+        family: pinnedAddress?.family,
+        servername: u.hostname,
         port: u.port || 443,
         path: u.pathname + u.search,
-        headers: init.headers as Record<string, string> | undefined,
+        headers: { ...(init.headers as Record<string, string> | undefined), Host: u.host },
       },
       (res) => {
         const headers = new Headers();
@@ -75,9 +83,9 @@ async function http1Fetch(url: string, init: RequestInit, signal?: AbortSignal):
   });
 }
 
-/** Whether gateway traffic is forced onto HTTP/1.1 (see http1Fetch). Kill switch: AI_GATEWAY_FORCE_HTTP1=0. */
+/** Whether upstream traffic is forced onto HTTP/1.1 (see http1Fetch). */
 export function forceHttp1ForGateway(): boolean {
-  return envBoolean("AI_GATEWAY_FORCE_HTTP1", true);
+  return envBoolean("AI_UPSTREAM_FORCE_HTTP1", true);
 }
 
 export interface ResilientFetchOptions {
@@ -86,6 +94,9 @@ export interface ResilientFetchOptions {
   parentSignal?: AbortSignal;
   /** "http1" forces the HTTP/1.1 transport (see http1Fetch); default is global fetch. */
   transport?: "default" | "http1";
+  /** Resolve, reject restricted addresses, then pin the socket to that exact address. */
+  validateManagedUrl?: boolean;
+  allowLocalhost?: boolean;
   isRetryable?: (response: Response | null, error: unknown) => boolean;
   onRetry?: (ctx: { attempt: number; waitMs: number; cause: "http" | "error"; status?: number }) => void;
 }
@@ -129,9 +140,12 @@ export async function resilientFetch(
         : timeoutController.signal;
 
     try {
+      const safeTarget = options.validateManagedUrl
+        ? await resolveManagedServiceUrlSafe(url, { allowLocalhost: options.allowLocalhost })
+        : null;
       lastResponse =
-        options.transport === "http1"
-          ? await http1Fetch(url, init, combined)
+        options.transport === "http1" || (safeTarget?.url.protocol === "https:")
+          ? await http1Fetch(url, init, combined, safeTarget?.addresses[0])
           : await fetch(url, { ...init, signal: combined });
       clearTimeout(timeoutId);
 

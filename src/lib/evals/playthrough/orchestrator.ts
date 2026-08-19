@@ -501,8 +501,8 @@ export async function runSinglePlaythroughV3(
       try {
         narrativeConsistency = await judgeNarrativeConsistencyLive(transcript);
       } catch (err) {
-        console.warn(`  ⚠️ Live 叙事裁判失败，降级到 mock: ${err instanceof Error ? err.message : String(err)}`);
-        narrativeConsistency = judgeNarrativeConsistencyMock(transcript);
+        console.warn(`  ⚠️ Live 叙事裁判失败，本次证据不可评分: ${err instanceof Error ? err.message : String(err)}`);
+        narrativeConsistency = null;
       }
     } else {
       // auto: mock 为第一道筛选，若通过则再尝试一次真实裁判
@@ -517,7 +517,7 @@ export async function runSinglePlaythroughV3(
         narrativeConsistency = baseJudge;
       }
     }
-    if (narrativeConsistency === null) {
+    if (narrativeConsistency === null && judgeMode !== "live") {
       narrativeConsistency = judgeNarrativeConsistencyMock(transcript);
     }
   }
@@ -642,7 +642,7 @@ export async function runSinglePlaythroughV3(
     narrativeConsistency,
     passed: failures.length === 0 &&
       invariantResults.every((r) => r.passed) &&
-      (narrativeConsistency?.passed ?? true),
+      (!config.runNarrativeJudge || (narrativeConsistency?.passed ?? false)),
     failureContext: failureContext === null ? undefined : failureContext,
     failureSummary: failures,
     trace,

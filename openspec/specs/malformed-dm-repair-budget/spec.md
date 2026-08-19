@@ -6,7 +6,12 @@
 
 ### Requirement: Malformed-DM repair uses a gateway-realistic bounded final budget
 
-When the streamed player DM cannot be parsed, the system MUST allow the final repair path a bounded 4,000 ms request within a shared 6,000 ms final-repair window, clamped by the existing 1,000–12,000 ms operational bounds. The same shared window MAY be used by post-validator narrative repair. These budgets MUST only apply after generation and MUST NOT delay first SSE status or first model text.
+When streamed player DM is malformed or resolved facts require narrative-only consistency repair, the system MUST allow at most one repair attempt within the shared final deadline derived from the chat latency budget. The repair request MUST remain within the existing operational clamp and MUST receive only resolved facts needed to repair player-visible text. These budgets MUST apply after generation and MUST NOT delay first SSE status or first model text.
+
+#### Scenario: Repair has sufficient shared budget
+
+- **WHEN** the main stream is malformed or narrative contradicts a grounded resolved result and sufficient shared final budget remains
+- **THEN** one repair MAY run within the configured bounded repair budget and the normal-turn final p95 deadline
 
 #### Scenario: Default budget supports repair beyond prior two-second window
 
@@ -15,10 +20,15 @@ When the streamed player DM cannot be parsed, the system MUST allow the final re
 
 #### Scenario: Operator override stays bounded
 
-- **WHEN** `VC_FINAL_REPAIR_BUDGET_MS` is set below 1,000 or above 12,000
-- **THEN** the repair budget MUST be clamped to the existing lower or upper bound
+- **WHEN** `VC_FINAL_REPAIR_BUDGET_MS` is set outside the accepted operational bounds
+- **THEN** the repair budget MUST be clamped and MUST NOT extend the shared final deadline
 
 #### Scenario: Unknown entity hard block can be repaired safely
 
 - **WHEN** an entity hard block is not caused by prompt injection
-- **THEN** the system MUST attempt one bounded narrative-only repair and re-run the same safety audit; state writes remain blocked unless the repaired output passes, and a failed repair MUST retain deterministic safety fallback
+- **THEN** the system MUST attempt no more than one bounded narrative-only repair and re-run the same safety audit; state writes remain blocked unless the repaired output passes
+
+#### Scenario: Repair cannot finish in time
+
+- **WHEN** no safe repair budget remains or the repair fails
+- **THEN** the system MUST retain deterministic state and emit an audited, protocol-valid safe fallback without inferring state from prose

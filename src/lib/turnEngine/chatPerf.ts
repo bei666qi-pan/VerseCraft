@@ -78,7 +78,11 @@ export function pushAndSummarizeTtft(point: TtftAggregatePoint): {
 }
 
 export function nowMs(): number {
-  return Date.now();
+  // Latency and deadline math must use a monotonic clock. Host clock sync,
+  // VM resume, or test-time wall-clock jumps can move Date.now() forwards or
+  // backwards and previously caused healthy turns to be misclassified as
+  // timeouts even though their real elapsed time stayed inside budget.
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 export function elapsedMs(startAt: number): number {

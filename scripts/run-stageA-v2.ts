@@ -10,6 +10,7 @@
  */
 import { config } from "dotenv";
 import { appendFileSync, writeFileSync, mkdirSync } from "fs";
+import { CHAT_LATENCY_BUDGET } from "../src/lib/perf/waitingConfig";
 
 config({ path: ".env.local" });
 
@@ -134,8 +135,8 @@ async function runOneSystem(system: SystemGroup): Promise<void> {
     baseUrl: VERSE_CRAFT_URL,
     runNarrativeJudge: false,
     softlockThreshold: 60,
-    stepTimeoutMs: 300000,
-    traceOutputDir: `.runtime-data/playthrough/live-${system.name}`,
+    stepTimeoutMs: CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
+    traceOutputDir: `.runtime-data/eval/playthrough/live-${system.name}`,
     enableFailureClustering: true,
     stepDelayMs: 2000,
   };

@@ -1,6 +1,6 @@
 // These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
 // transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
-process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
+process.env.AI_UPSTREAM_FORCE_HTTP1 = "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -8,6 +8,7 @@ import {
   resolveRuleOutcome,
   runOfflineReasonerTask,
 } from "@/lib/ai/logicalTasks";
+import { installManagedAiTestSnapshotFromEnv } from "@/lib/ai/managed/testFixtures";
 
 // Kimi Code CLI 运行时注入的环境变量。测试期间需清除。
 const KIMI_INJECTED_VARS = [
@@ -42,9 +43,11 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void | Pro
       delete process.env[k];
     }
   }
+  const restoreSnapshot = installManagedAiTestSnapshotFromEnv();
   return Promise.resolve()
     .then(() => fn())
     .finally(() => {
+      restoreSnapshot();
       for (const k of Object.keys(patch)) {
         const old = prev[k];
         if (old === undefined) {

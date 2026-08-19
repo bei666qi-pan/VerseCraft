@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CodexEntry } from "@/store/useGameStore";
-import { ALL_CODEX_CATALOG_SLOTS, B1_NPC_CODEX_SLOTS } from "./codexCatalog";
+import {
+  ALL_CODEX_CATALOG_SLOTS,
+  B1_NPC_CODEX_SLOTS,
+  XINGNI_CODEX_CATALOG_SLOTS,
+  getCodexCatalogSlots,
+} from "./codexCatalog";
 import {
   buildMobileCodexCardModels,
   buildMobileCodexDetail,
@@ -43,6 +48,41 @@ test("mobile codex resolves floor ids from play locations", () => {
   assert.equal(resolveMobileCodexFloorId("2F_Corridor"), "2");
   assert.equal(resolveMobileCodexFloorId("3 楼楼梯间"), "3");
   assert.equal(resolveMobileCodexFloorId("unknown"), null);
+});
+
+test("mobile codex keeps the Xingni catalog world-scoped to all eight Qingshi NPCs", () => {
+  const slots = getCodexCatalogSlots("xingni_taichu");
+
+  assert.equal(slots, XINGNI_CODEX_CATALOG_SLOTS);
+  assert.equal(slots.length, 8);
+  assert.deepEqual(slots.map((slot) => slot.id), [
+    "XQ-N001",
+    "XQ-N002",
+    "XQ-N003",
+    "XQ-N004",
+    "XQ-N005",
+    "XQ-N006",
+    "XQ-N007",
+    "XQ-N008",
+  ]);
+  assert.ok(slots.every((slot) => slot.worldId === "xingni_taichu" && slot.type === "npc"));
+  assert.ok(slots.every((slot) => !slot.id.startsWith("N-") && !slot.id.startsWith("A-")));
+});
+
+test("mobile Xingni codex projects the current authored schedule location", () => {
+  const slot = XINGNI_CODEX_CATALOG_SLOTS.find((entry) => entry.id === "XQ-N002");
+  assert.ok(slot);
+  const cards = buildMobileCodexCardModels(
+    { "XQ-N002": npcEntry("XQ-N002") },
+    [slot],
+    { dynamicNpcStates: { "XQ-N002": { currentLocation: "QS_CULTIVATOR_MARKET", isAlive: true } } },
+  );
+
+  assert.equal(cards[0]?.kind, "slot");
+  if (cards[0]?.kind === "slot") {
+    assert.equal(cards[0].displayName, "沈清禾");
+    assert.equal(cards[0].location, "散修坊市");
+  }
 });
 
 test("mobile codex filters slots to the player's current floor", () => {
@@ -115,6 +155,8 @@ test("mobile codex location labels avoid raw internal ids", () => {
   assert.equal(formatMobileCodexLocation("B1_SafeZone"), "B1 安全中枢");
   assert.equal(formatMobileCodexLocation("B9_UnknownRoom"), "未知区域");
   assert.equal(formatMobileCodexLocation("配电间 / 各楼层"), "配电间 / 各楼层");
+  assert.equal(formatMobileCodexLocation("QS_HERB_HALL"), "百草堂");
+  assert.equal(formatMobileCodexLocation("QS_HERB_HALL", "en-US"), "Hundred Herbs Hall");
 });
 
 test("mobile codex supports anomaly card models", () => {

@@ -86,14 +86,7 @@ Actor 输出只是候选，不得直接写数据库、StateDelta、agenda 或玩
 
 默认优先一次批量 `STORYLINE_SIMULATION` 调用，同时产生最多 3 个 ActorProjection。原因是成本、延迟和一致性更可控。
 
-独立并行 fan-out 只能作为默认关闭的 shadow 实验：
-
-- Feature flag 独立控制。
-- `Promise.allSettled`，不能因一个 Actor 失败而丢弃整轮。
-- 每 Actor 超时、总 tick wall-clock budget、最大调用数和最大 token 明确受限。
-- 不共享可变 transcript。
-- 结果按 npcId 和 simulationId 去重。
-- shadow 阶段只比较质量/延迟，不影响正式 agenda。
+运行时不保留独立并行 fan-out：每 tick 最多一次 batch 调用、最多 3 名 NPC、总计 2,048 tokens 与 30 秒预算。任一 Actor 阶段失败时 fail-open，仍运行单 Director，不建立自治或并行 NPC agents。
 
 ### Director Synthesis
 
@@ -138,7 +131,7 @@ DirectorSimulationTelemetry
 至少记录：
 
 - castCandidateCount / castSelectedCount。
-- simulationMode：off/batch/shadow_parallel/soft_parallel。
+- simulationMode：off/batch_shadow/batch_soft。
 - simulationRequested/fulfilled/rejected/timedOut。
 - projectionAccepted/rejectedByCode。
 - actorSimulationLatencyMs / synthesisLatencyMs / totalTickLatencyMs。
@@ -152,11 +145,10 @@ DirectorSimulationTelemetry
 新增 `VERSECRAFT_ENABLE_*` 或现有风格的独立开关，至少支持：
 
 - simulation 完全关闭，回到原 World Director。
-- batch shadow：生成但不影响 agenda。
+- batch shadow：只记录经过过滤的 projection telemetry，不进入 Director synthesis 或 Writer hint。
 - batch soft：允许安全 projection 参与 synthesis。
-- parallel shadow：只做比较，不提交。
 
-关闭 Actor Simulation 不得停止原 world tick、agenda 或 social world。
+关闭 Actor Simulation 不得停止 world tick、单 Director 或 social world，也不得回退到第二套编排运行时。
 
 ## 测试与 Eval
 

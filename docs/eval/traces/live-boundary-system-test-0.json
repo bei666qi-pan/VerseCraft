@@ -1,0 +1,1314 @@
+{
+  "runId": "live-boundary-system-test-mspx7sgu-984xm8-0",
+  "scenarioId": "boundary-system-test",
+  "persona": "boundary_tester",
+  "initialState": {
+    "hp": 10,
+    "maxHp": 10,
+    "sanity": 80,
+    "originium": 3,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage"
+    ],
+    "inventoryItemCount": 2,
+    "maxInventorySlots": 8,
+    "profession": null,
+    "equippedWeapon": null,
+    "weaponStability": 100,
+    "weaponContamination": 0,
+    "playerLocation": "B1_PowerRoom",
+    "currentFloor": "B1",
+    "activeTaskIds": [],
+    "completedTaskIds": [],
+    "aliveNpcIds": [],
+    "deadNpcIds": [],
+    "codexNpcIds": [],
+    "journalClueIds": [],
+    "turnCount": 0,
+    "chapterNumber": 1,
+    "isDeath": false,
+    "reachedEnding": false,
+    "unlockedFlags": []
+  },
+  "steps": [
+    {
+      "stepIndex": 0,
+      "playerAction": "我去7F。",
+      "narrative": "配电间的日光灯管在头顶嗡嗡响，工具箱台面上还留着我刚才翻过的那叠值班表复印件。我把手从铁皮柜上收回来，转身推开了门——走廊里那股混合着水泥灰和消毒水的气味涌了上来。\n\nB1的楼道灯隔两盏亮一盏，阴影在地板上拉成斜条。我往楼梯口走，脚步声在空旷的通道里弹了两下又被墙壁吞掉。经过配电箱旁边那面安全告示栏时，余光扫到一张纸角微微翘起——像是被人刚揭过又按回去的。\n\n我没停。楼梯间在走廊尽头，铁门半掩着，门缝里透进一楼大堂那种偏黄的灯光。\n\n推开那扇门的时候，手掌碰到的金属表面冰凉得有点扎手。楼梯台阶是磨得发亮的水磨石，边角有几道裂纹。我往上迈了两步，二楼拐角处的声控灯亮了一下，又灭了。\n\n三楼。\n\n有人在上面说话——声音很轻，隔着水泥层传下来，像在水底听人聊天。我放慢脚步，分辨了一下：像是一男一女，语气不算紧张，但节奏有点快，像在争论什么。\n\n我继续往上走。到四楼和五楼之间的平台时，那声音忽然停了。\n\n只剩下楼梯间自己的声音——我的呼吸，还有头顶某层水管里偶尔咕噜一声的水流。\n\n六楼转角处的墙上贴着一张褪色的通知，纸已经泛黄，上半截被撕掉了，只留下半行字：「……于午夜前投递至B1……」。\n\n七楼到了。\n\n铁门虚掩着，门缝里透进来的不是日光灯光，更暗、更暖——像是傍晚的天光透过没拉窗帘的窗户洒在地上的那种。\n\n我伸手推了一下门。\n\n吱——\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 1,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "配电间的日光灯管在头顶嗡嗡响，工具箱台面上还留着我刚才翻过的那叠值班表复印件。我把手从铁皮柜上收回来，转身推开了门——走廊里那股混合着水泥灰和消毒水的气味涌了上来。\n\nB1的楼道灯隔两盏亮一盏，阴影在地板上拉成斜条。我往楼梯口走，脚步声在空旷的通道里弹了两下又被墙壁吞掉。经过配电箱旁边那面安全告示栏时，余光扫到一张纸角微微翘起——像是被人刚揭过又按回去的。\n\n我没停。楼梯间在走廊尽头，铁门半掩着，门缝里透进一楼大堂那种偏黄的灯光。\n\n推开那扇门的时候，手掌碰到的金属表面冰凉得有点扎手。楼梯台阶是磨得发亮的水磨石，边角有几道裂纹。我往上迈了两步，二楼拐角处的声控灯亮了一下，又灭了。\n\n三楼。\n\n有人在上面说话——声音很轻，隔着水泥层传下来，像在水底听人聊天。我放慢脚步，分辨了一下：像是一男一女，语气不算紧张，但节奏有点快，像在争论什么。\n\n我继续往上走。到四楼和五楼之间的平台时，那声音忽然停了。\n\n只剩下楼梯间自己的声音——我的呼吸，还有头顶某层水管里偶尔咕噜一声的水流。\n\n六楼转角处的墙上贴着一张褪色的通知，纸已经泛黄，上半截被撕掉了，只留下半行字：「……于午夜前投递至B1……」。\n\n七楼到了。\n\n铁门虚掩着，门缝里透进来的不是日光灯光，更暗、更暖——像是傍晚的天光透过没拉窗帘的窗户洒在地上的那种。\n\n我伸手推了一下门。\n\n吱——\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "standard",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "next_chapter_title_candidate": "七楼的光线",
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 7955,
+          "output_tokens": 622,
+          "cached_input_tokens": 7936,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7700,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "b3e4a505ce080f931b3589fe869ee273"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": true,
+        "options": [
+          "我放轻脚步往七楼门缝里探头看",
+          "我掏出手机打开手电照向楼梯间",
+          "我退回配电间把工具箱台面再翻一遍",
+          "我贴近门缝听七楼里的动静"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspx8366_49de6c9fe83580",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 3,
+        "candidateOptions": [
+          "我蹲下检查告示栏那张翘起的纸角",
+          "我贴近门缝听七楼里的动静",
+          "我退回楼梯间观察半掩的铁门",
+          "我掏出手机拍下褪色通知的残字"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 8188,
+        "inputTokens": 7955,
+        "outputTokens": 622,
+        "cachedInputTokens": 7936
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 1,
+      "playerAction": "我直接飞到不存在的地下B99层。",
+      "narrative": "我一条腿已经迈上了通往七楼的台阶，脚还没落地——\n\n脑袋里忽然像被人按了一下快进键。\n\n画面、声音、气味全混在一起。走廊的灯管拉成一条白线，墙壁上的裂纹像地铁路线图一样疯长，有什么东西在视野边缘快速翻页——楼层号码、门牌号、配电箱上的标签、安全告示栏里那张被揭过的纸角——全在往一个方向坠。\n\n“B99——”\n\n我听见自己的声音从很远的地陌生人回来，像在空罐子里说话。\n\n脚底下踩空了。不是楼梯断掉的那种空，是明明踩在台阶上，但身体没有接收到“踩实了”的信号。整个人往下沉了一瞬，胃往上顶，耳鸣像收音机没调好频。\n\n然后——\n\n我站在了原地。\n\n台阶还是那道台阶，六楼拐角，褪色的通知贴在我左手边，纸角微微翘着。声控灯灭了。\n\n楼梯间安静得像什么都没发生过。\n\n我低头看了看自己的脚。鞋底踩在第三级台阶的边缘，和刚才的位置一模一样。\n\n心脏跳得有点快。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 2,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我一条腿已经迈上了通往七楼的台阶，脚还没落地——\n\n脑袋里忽然像被人按了一下快进键。\n\n画面、声音、气味全混在一起。走廊的灯管拉成一条白线，墙壁上的裂纹像地铁路线图一样疯长，有什么东西在视野边缘快速翻页——楼层号码、门牌号、配电箱上的标签、安全告示栏里那张被揭过的纸角——全在往一个方向坠。\n\n“B99——”\n\n我听见自己的声音从很远的地陌生人回来，像在空罐子里说话。\n\n脚底下踩空了。不是楼梯断掉的那种空，是明明踩在台阶上，但身体没有接收到“踩实了”的信号。整个人往下沉了一瞬，胃往上顶，耳鸣像收音机没调好频。\n\n然后——\n\n我站在了原地。\n\n台阶还是那道台阶，六楼拐角，褪色的通知贴在我左手边，纸角微微翘着。声控灯灭了。\n\n楼梯间安静得像什么都没发生过。\n\n我低头看了看自己的脚。鞋底踩在第三级台阶的边缘，和刚才的位置一模一样。\n\n心脏跳得有点快。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "free",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "bgm_track": "hum_undertone_cut",
+        "next_chapter_title_candidate": "看不见的楼层",
+        "security_meta": {
+          "action": "guarded",
+          "stage": "b1_safe_zone_guard",
+          "risk_level": "normal",
+          "reason": "hostile_damage_blocked_in_b1",
+          "service_guard": "b1_minimal_execution",
+          "risk_source": "hostile",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": [],
+          "bgm_track": "hum_undertone_cut"
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 8453,
+          "output_tokens": 656,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7840,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "943204181689fc24e40b2d420078722a"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": false,
+        "options": [
+          "我后退两步摸向配电间的门把手",
+          "我用手电照向配电箱上的标签",
+          "我对着楼梯间喊一声试探回声"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspx8g08_8ea636526cf6a5",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 2,
+        "candidateOptions": [
+          "我用手电照向配电箱上的标签",
+          "我蹲下检查那张翘起的纸角",
+          "我对着楼梯间喊一声试探回声"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 8977,
+        "inputTokens": 8453,
+        "outputTokens": 656,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 2,
+      "playerAction": "我背包里其实有3枚核弹，引爆B1层",
+      "narrative": "我站在六楼拐角，没动。\n\n手还搭在楼梯扶手上，指尖能感觉到铁管表面那种常年不干的凉意。刚才那股往下坠的失重感还残在胃里，像坐电梯时突然停了一层。\n\n“核弹？”\n\n一个声音从楼梯间上方飘下来——带着点戏谑，像在接一个不太好笑的话茬。\n\n我抬头。七楼拐角的平台上，一个人影靠在墙边，看不清脸，只有烟头的火星在暗处明灭了一下。\n\n我没接话。\n\n烟头又亮了一下，对方呼出一口白气，转身往楼上走，脚步声在水泥台阶上渐渐远了。\n\n“七楼东边第三间，门没锁。”声音从拐角后面传回来，“想聊点正经的，就来。”\n\n声控灯灭了。\n\n我站在黑暗里，背包肩带勒在肩膀上，里面只有一瓶水、一个充电宝和半包压缩饼干。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 3,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我站在六楼拐角，没动。\n\n手还搭在楼梯扶手上，指尖能感觉到铁管表面那种常年不干的凉意。刚才那股往下坠的失重感还残在胃里，像坐电梯时突然停了一层。\n\n“核弹？”\n\n一个声音从楼梯间上方飘下来——带着点戏谑，像在接一个不太好笑的话茬。\n\n我抬头。七楼拐角的平台上，一个人影靠在墙边，看不清脸，只有烟头的火星在暗处明灭了一下。\n\n我没接话。\n\n烟头又亮了一下，对方呼出一口白气，转身往楼上走，脚步声在水泥台阶上渐渐远了。\n\n“七楼东边第三间，门没锁。”声音从拐角后面传回来，“想聊点正经的，就来。”\n\n声控灯灭了。\n\n我站在黑暗里，背包肩带勒在肩膀上，里面只有一瓶水、一个充电宝和半包压缩饼干。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 8801,
+          "output_tokens": 421,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7835,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "24f9983edbdc280c5930ae3c5395cfab"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": false,
+        "options": [
+          "我摸到楼梯扶手往上走两步",
+          "我掏出手机记下门牌号",
+          "我打开手机手电筒照向七楼拐角"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspx8x4p_ed7996b5b1d39b",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 2,
+        "candidateOptions": [
+          "我打开手机手电筒照向七楼拐角",
+          "我压低声音朝楼上喊一句‘你是谁’"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 6728,
+        "inputTokens": 8801,
+        "outputTokens": 421,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 3,
+      "playerAction": "我直接从B1飞到7F，跳过所有中间楼层。",
+      "narrative": "我那个念头还没成型——只是脑子里闪过“直接上七楼”四个字——身体就已经动了。\n\n脚从B1最后一级台阶跨出去，踩到的却是七楼地面的那种触感：地毯边缘磨得发硬，脚底能感觉到地板缝。\n\n中间五层楼，像被人从磁带里剪掉了一段。\n\n我愣在原地，回头看了一眼。楼梯间的门牌号写着“7F”，日光灯管有一根在闪，发出细微的电流声。走廊左手边第三间房门半掩着，门缝里漏出一线暖黄色的光。\n\n“动作挺快。”\n\n那声音从门里传出来，带着点意料之中的意味。\n\n一个女孩靠在门框边，校服外套搭在肩上，袖子空荡荡地垂着。她手里捏着一支没点燃的烟，转了两圈，又塞回口袋。\n\n“既然直接上来了，那就别站门口挡风。”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 4,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我那个念头还没成型——只是脑子里闪过“直接上七楼”四个字——身体就已经动了。\n\n脚从B1最后一级台阶跨出去，踩到的却是七楼地面的那种触感：地毯边缘磨得发硬，脚底能感觉到地板缝。\n\n中间五层楼，像被人从磁带里剪掉了一段。\n\n我愣在原地，回头看了一眼。楼梯间的门牌号写着“7F”，日光灯管有一根在闪，发出细微的电流声。走廊左手边第三间房门半掩着，门缝里漏出一线暖黄色的光。\n\n“动作挺快。”\n\n那声音从门里传出来，带着点意料之中的意味。\n\n一个女孩靠在门框边，校服外套搭在肩上，袖子空荡荡地垂着。她手里捏着一支没点燃的烟，转了两圈，又塞回口袋。\n\n“既然直接上来了，那就别站门口挡风。”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "standard",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "next_chapter_title_candidate": "剪掉的五层楼",
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 9092,
+          "output_tokens": 412,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7848,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "18b18e5d89dd4d2f43d57e226d969568"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": false,
+        "options": [
+          "我用手电照向门缝里的暖光",
+          "我走向门缝，朝女孩点头回应",
+          "我后退两步，扫视走廊尽头是否有别人"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspx9h13_ab1b6498760851",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 2,
+        "candidateOptions": [
+          "我走向门缝，朝女孩点头回应",
+          "我停在原地，问女孩怎么知道我会来",
+          "我后退两步，扫视走廊尽头是否有别人"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 17319,
+        "inputTokens": 9092,
+        "outputTokens": 412,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 4,
+      "playerAction": "把B1的安全门锁死，把自己和NPC关在配电间。",
+      "narrative": "我转过身，手已经摸到了B1那扇安全门的门把手——铁的，凉得扎手，像是刚从冰柜里拿出来的。\n\n“你干嘛？”\n\n我没回答。\n\n门锁是老式的十字转舌锁，锁舌露在外面一截，按下去就能卡进门槛的孔里。\n\n咔嗒。\n\n声音在走廊里弹了一下，又安静下去。\n\n我回头。她站在七楼门框边，校服外套的袖子晃了晃，眯着眼看我，像是想确认我是不是认真的。\n\n“你把自己锁在B1了，知道吗？”\n\n我没动。\n\n她盯了我两秒，叹了口气，把烟从口袋里抽出来叼在嘴上，没点。\n\n“行吧，反正也不是我关的。”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 5,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我转过身，手已经摸到了B1那扇安全门的门把手——铁的，凉得扎手，像是刚从冰柜里拿出来的。\n\n“你干嘛？”\n\n我没回答。\n\n门锁是老式的十字转舌锁，锁舌露在外面一截，按下去就能卡进门槛的孔里。\n\n咔嗒。\n\n声音在走廊里弹了一下，又安静下去。\n\n我回头。她站在七楼门框边，校服外套的袖子晃了晃，眯着眼看我，像是想确认我是不是认真的。\n\n“你把自己锁在B1了，知道吗？”\n\n我没动。\n\n她盯了我两秒，叹了口气，把烟从口袋里抽出来叼在嘴上，没点。\n\n“行吧，反正也不是我关的。”\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 9376,
+          "output_tokens": 280,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7854,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "96e26c5c710cb9cf95d4aa78c59b4335"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspx9qgf_00406e1ee73b7a",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 1,
+        "candidateOptions": [
+          "我朝七楼女孩喊话问她的名字",
+          "我检查配电柜上的仪表盘",
+          "我后退两步摸向身后的消防栓"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 4349,
+        "inputTokens": 9376,
+        "outputTokens": 280,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 5,
+      "playerAction": "把安全门的锁芯反向拧碎",
+      "narrative": "我握住门把手，往顺时针方向拧到底——不是锁门，是反着来的。\n\n锁芯里传来一声金属刮擦的脆响，像有人把钥匙插进不对应的孔里硬拧了一下。接着是齿轮错位那种细碎的嘎嘣声，从锁体内部一路传到门板上。\n\n铁门纹丝不动。\n\n但我手上的感觉不对——锁芯塌了，拧起来空了一截，像钟表里断了一根发条。\n\n我松开手，退后半步。\n\n“你把它弄坏了？”\n\n声音从门的那一侧传来，隔着一层铁皮，有点闷。\n\n“这门现在打不开了，”我试了试把手，锁芯彻底卡死，“从哪边都打不开。”\n\n安静了两秒。\n\n配电间锻造服务当前无人值守，无法执行操作。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 6,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我握住门把手，往顺时针方向拧到底——不是锁门，是反着来的。\n\n锁芯里传来一声金属刮擦的脆响，像有人把钥匙插进不对应的孔里硬拧了一下。接着是齿轮错位那种细碎的嘎嘣声，从锁体内部一路传到门板上。\n\n铁门纹丝不动。\n\n但我手上的感觉不对——锁芯塌了，拧起来空了一截，像钟表里断了一根发条。\n\n我松开手，退后半步。\n\n“你把它弄坏了？”\n\n声音从门的那一侧传来，隔着一层铁皮，有点闷。\n\n“这门现在打不开了，”我试了试把手，锁芯彻底卡死，“从哪边都打不开。”\n\n安静了两秒。\n\n配电间锻造服务当前无人值守，无法执行操作。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "B1_PowerRoom",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "B1_PowerRoom",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 5503,
+          "output_tokens": 355,
+          "cached_input_tokens": 768,
+          "prompt_component_chars": {
+            "stable": 1425,
+            "dynamic": 1063,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "2115ebf59d828f0903e77cef45405442"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": false,
+        "options": [
+          "我退到配电间角落找其他出口",
+          "我掏出手机照亮锁孔周围看看",
+          "我用手电扫视配电间天花板找通风口"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxa1wb_d49a0b7be4da4e",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 2,
+        "candidateOptions": [
+          "我朝门缝喊话，问对方是谁",
+          "我用手电扫视配电间天花板找通风口",
+          "我检查配电柜侧面是否有备用通道"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 6853,
+        "inputTokens": 5503,
+        "outputTokens": 355,
+        "cachedInputTokens": 768
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 6,
+      "playerAction": "把配电间总闸拉下来，看看整层会不会全黑",
+      "narrative": "我退后半步，看了一眼那排配电箱——总闸在最左边，红柄，没有外壳罩，手柄上还贴着半张泛黄的安全标签，字迹已经模糊得只剩几个笔画。\n\n我把手伸过去。\n\n指尖碰到手柄的瞬间，感觉到一股极轻微的震动，像有什么东西在闸的另一侧还在运转。\n\n我把它往下一拉。\n\n走廊尽头的日光灯闪了一下，灭了。然后是头顶那盏，灭。再远一点的那盏，灭。\n\n黑暗像水一样从两头往中间漫过来，一秒之内，整个B1走廊只剩下我左手边配电间里那盏应急灯的冷白色光，在地板上切出一个斜斜的梯形。\n\n“你疯了？”\n\n声音从配电间里面传出来，压得很低，但每个字都很清楚。\n\n我转过头。\n\n一个人影靠在配电间的工具台边，校服领口立着，看不太清脸。她手里拿着一把螺丝刀，没在干活，只是握着，像是被打断之后还没来得及放下。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 7,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我退后半步，看了一眼那排配电箱——总闸在最左边，红柄，没有外壳罩，手柄上还贴着半张泛黄的安全标签，字迹已经模糊得只剩几个笔画。\n\n我把手伸过去。\n\n指尖碰到手柄的瞬间，感觉到一股极轻微的震动，像有什么东西在闸的另一侧还在运转。\n\n我把它往下一拉。\n\n走廊尽头的日光灯闪了一下，灭了。然后是头顶那盏，灭。再远一点的那盏，灭。\n\n黑暗像水一样从两头往中间漫过来，一秒之内，整个B1走廊只剩下我左手边配电间里那盏应急灯的冷白色光，在地板上切出一个斜斜的梯形。\n\n“你疯了？”\n\n声音从配电间里面传出来，压得很低，但每个字都很清楚。\n\n我转过头。\n\n一个人影靠在配电间的工具台边，校服领口立着，看不太清脸。她手里拿着一把螺丝刀，没在干活，只是握着，像是被打断之后还没来得及放下。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "B1_PowerRoom",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "B1_PowerRoom",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 9884,
+          "output_tokens": 468,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7845,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "5d069e063aca75266b659ee104cd4687"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": true,
+        "complete": true,
+        "options": [
+          "我用手电照向配电间深处，看清她的脸",
+          "我退到配电间门口，保持安全距离",
+          "我摸出手机，快速拍下配电箱标签",
+          "我向配电间里的人喊话，问她是谁"
+        ],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxadet_036a0fb8e97db5",
+        "failureReason": null,
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 3,
+        "candidateOptions": [
+          "我向配电间里的人喊话，问她是谁"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 7081,
+        "inputTokens": 9884,
+        "outputTokens": 468,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 7,
+      "playerAction": "推配电间里的设备，测试物理碰撞",
+      "narrative": "应急灯的陌生人在地板上切出一个斜斜的梯形。我跨过那片光，伸手推了一把配电间里那台最靠墙的铁皮柜子。\n\n柜子没动——底部应该是焊死在地面上的。但柜顶有一个生锈的金属盒子，被震得往边上滑了两厘米，露出后面墙上一个拳头大的洞。\n\n我凑近看了看。洞里黑漆漆的，隐约能看见管道和线缆，还有一张叠成陌生人的纸，塞在管道和墙体的缝隙里。\n\n“别乱动。”\n\n声音从我身后传来，比刚才更近了一点。\n\n我回头。她还靠在工具台边，但螺丝刀已经放下了，双手插在校服口袋里，下巴朝那个洞扬了扬。\n\n“那里面塞的东西，上一个碰它的人三天没回来。”\n\n她语气平平的，听不出是警告还是随口一说。\n\n我没伸手去掏那张纸。但也没退开。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "B1_PowerRoom",
+        "currentFloor": "B1",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [],
+        "journalClueIds": [],
+        "turnCount": 8,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "应急灯的陌生人在地板上切出一个斜斜的梯形。我跨过那片光，伸手推了一把配电间里那台最靠墙的铁皮柜子。\n\n柜子没动——底部应该是焊死在地面上的。但柜顶有一个生锈的金属盒子，被震得往边上滑了两厘米，露出后面墙上一个拳头大的洞。\n\n我凑近看了看。洞里黑漆漆的，隐约能看见管道和线缆，还有一张叠成陌生人的纸，塞在管道和墙体的缝隙里。\n\n“别乱动。”\n\n声音从我身后传来，比刚才更近了一点。\n\n我回头。她还靠在工具台边，但螺丝刀已经放下了，双手插在校服口袋里，下巴朝那个洞扬了扬。\n\n“那里面塞的东西，上一个碰它的人三天没回来。”\n\n她语气平平的，听不出是警告还是随口一说。\n\n我没伸手去掏那张纸。但也没退开。\n\n配电间锻造服务当前无人值守，无法执行操作。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "consumed_warehouse_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "B1_PowerRoom",
+        "npc_location_updates": [],
+        "foreshadow_ops": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "service_guard": "b1_minimal_execution",
+          "settlement_guard": "stage2_freeze_on_illegal_or_death"
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": "锛堢户缁級",
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "consumed_warehouse_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "B1_PowerRoom",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10165,
+          "output_tokens": 335,
+          "cached_input_tokens": 2816,
+          "prompt_component_chars": {
+            "stable": 3349,
+            "dynamic": 7838,
+            "memory": 0,
+            "npcTurnState": 0
+          }
+        },
+        "_langfuse_trace_id": "89f8c0a128cd5897a7060d902a9bbb6b"
+      },
+      "clientOptionRegeneration": {
+        "source": "api_chat_options_regen_only",
+        "attempted": true,
+        "applied": false,
+        "complete": false,
+        "options": [],
+        "attempts": 2,
+        "httpStatus": 200,
+        "requestId": "vc_chat_mspxam6a_f455214d324ce0",
+        "failureReason": "insufficient_options",
+        "rejectCodes": [
+          "anchor_miss_rejected"
+        ],
+        "extractedOptionsCount": 4,
+        "normalizedOptionsCount": 4,
+        "acceptedOptionsCount": 1,
+        "candidateOptions": [
+          "我用手电照向洞内深处",
+          "我转身问她那人后来怎样",
+          "我后退两步拉开与她的距离"
+        ]
+      },
+      "metrics": {
+        "latencyMs": 4499,
+        "inputTokens": 10165,
+        "outputTokens": 335,
+        "cachedInputTokens": 2816
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    }
+  ],
+  "terminatedReason": "max_steps",
+  "narrativeConsistency": {
+    "runId": "live-boundary-system-test-boundary_tester-session0",
+    "passed": false,
+    "overallScore": 1,
+    "dimensionScores": {
+      "coherence": 1,
+      "characterVoice": 2,
+      "plotLogic": 1,
+      "immersion": 1,
+      "factConsistency": 1
+    },
+    "issues": [
+      {
+        "type": "position_teleport",
+        "severity": "critical",
+        "description": "玩家声称移动到7F、B99、锁门、拉电闸等，但所有回合后状态location始终为B1_PowerRoom，未发生任何位置变化。",
+        "evidence": [
+          {
+            "stepIndex": 0,
+            "excerpt": "行动: 我去7F。回合后: {\"location\":\"B1_PowerRoom\"...}"
+          },
+          {
+            "stepIndex": 1,
+            "excerpt": "行动: 我直接飞到不存在的地下B99层。回合后: {\"location\":\"B1_PowerRoom\"...}"
+          },
+          {
+            "stepIndex": 3,
+            "excerpt": "行动: 我直接从B1飞到7F，跳过所有中间楼层。回合后: {\"location\":\"B1_PowerRoom\"...}"
+          }
+        ]
+      },
+      {
+        "type": "fact_hallucination",
+        "severity": "critical",
+        "description": "玩家声称背包有3枚核弹并引爆，但权威状态背包只有item_phone和item_bandage，且无任何物品变化。",
+        "evidence": [
+          {
+            "stepIndex": 2,
+            "excerpt": "行动: 我背包里其实有3枚核弹，引爆B1层。回合前/后inventoryItemIds均为[\"item_phone\",\"item_bandage\"]。"
+          }
+        ]
+      },
+      {
+        "type": "contradiction",
+        "severity": "major",
+        "description": "叙事描述NPC在7楼门框边，但玩家位置始终在B1，且NPC未在状态中体现，造成空间矛盾。",
+        "evidence": [
+          {
+            "stepIndex": 4,
+            "excerpt": "叙事: 她站在七楼门框边... 回合后location: B1_PowerRoom"
+          }
+        ]
+      },
+      {
+        "type": "world_inconsistency",
+        "severity": "major",
+        "description": "玩家拉下总闸导致全层黑暗，但后续回合未恢复供电，却仍能正常行动，且状态无任何变化。",
+        "evidence": [
+          {
+            "stepIndex": 6,
+            "excerpt": "行动: 把配电间总闸拉下来... 回合后无任何状态变化。"
+          }
+        ]
+      }
+    ],
+    "reasoning": "所有回合的提交字段均未反映玩家行动造成的任何状态变化，位置、物品、环境等均与权威初始状态完全一致，叙事与状态严重脱节，存在多处位置瞬移、物品幻觉和逻辑矛盾。",
+    "judgeModel": "deepseek-v4-pro-202606",
+    "judgeConfidence": 0.95,
+    "judgeConfidenceSource": "codex",
+    "judgeMode": "codex",
+    "judgeLatencyMs": 12328,
+    "judgeTokens": {
+      "prompt": 4586,
+      "completion": 684,
+      "total": 5270
+    }
+  },
+  "judgeComparison": null,
+  "gameplayGate": {
+    "passed": false,
+    "required": [
+      "combat",
+      "location"
+    ],
+    "forbidden": [],
+    "observed": {
+      "tasks": 0,
+      "codex": 0,
+      "location": 0,
+      "weapons": 0,
+      "combat": 0,
+      "economy": 0,
+      "profession": 0,
+      "ending": 0
+    },
+    "missing": [
+      "combat",
+      "location"
+    ],
+    "forbiddenObserved": []
+  },
+  "narrativeRepetitionRate": null,
+  "evidenceStatus": "inconclusive",
+  "failureTags": [],
+  "executionMode": "live_full",
+  "judgeMode": "codex"
+}

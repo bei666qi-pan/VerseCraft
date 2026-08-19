@@ -128,15 +128,16 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
         const ret = await client.query(
           `
             INSERT INTO world_knowledge_chunks (
-              entity_id, chunk_index, content, content_tsv, token_estimate, importance,
+              entity_id, world_id, map_id, chunk_index, content, content_tsv, token_estimate, importance,
               visibility_scope, owner_user_id, retrieval_key,
               embedding_model, embedding_status, embedding_vector
             )
             VALUES (
-              $1, $2, $3, to_tsvector('simple', $3), $4, $5,
-              $6, $7, $8, NULL, 'pending', NULL
+              $1, $2, $3, $4, $5, to_tsvector('simple', $5), $6, $7,
+              $8, $9, $10, NULL, 'pending', NULL
             )
-            ON CONFLICT (entity_id, chunk_index) DO UPDATE SET
+            ON CONFLICT (world_id, entity_id, chunk_index) DO UPDATE SET
+              map_id = EXCLUDED.map_id,
               content = EXCLUDED.content,
               content_tsv = to_tsvector('simple', EXCLUDED.content),
               token_estimate = EXCLUDED.token_estimate,
@@ -148,6 +149,8 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
           `,
           [
             entityId,
+            chunk.worldId ?? "dark_moon_prologue",
+            chunk.mapId ?? "dark_moon_apartment",
             chunk.chunkIndex,
             chunk.content,
             chunk.tokenEstimate,
@@ -164,15 +167,16 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
         const ret = await client.query(
           `
             INSERT INTO world_knowledge_chunks (
-              entity_id, chunk_index, content, content_tsv, token_estimate, importance,
+              entity_id, world_id, map_id, chunk_index, content, content_tsv, token_estimate, importance,
               visibility_scope, owner_user_id, retrieval_key,
               embedding_model, embedding_status, embedding_vector
             )
             VALUES (
-              $1, $2, $3, to_tsvector('simple', $3), $4, $5,
-              $6, $7, $8, $9, 'ready', $10
+              $1, $2, $3, $4, $5, to_tsvector('simple', $5), $6, $7,
+              $8, $9, $10, $11, 'ready', $12
             )
-            ON CONFLICT (entity_id, chunk_index) DO UPDATE SET
+            ON CONFLICT (world_id, entity_id, chunk_index) DO UPDATE SET
+              map_id = EXCLUDED.map_id,
               content = EXCLUDED.content,
               content_tsv = to_tsvector('simple', EXCLUDED.content),
               token_estimate = EXCLUDED.token_estimate,
@@ -187,6 +191,8 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
           `,
           [
             entityId,
+            chunk.worldId ?? "dark_moon_prologue",
+            chunk.mapId ?? "dark_moon_apartment",
             chunk.chunkIndex,
             chunk.content,
             chunk.tokenEstimate,

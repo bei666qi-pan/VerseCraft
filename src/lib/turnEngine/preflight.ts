@@ -125,7 +125,7 @@ export async function runControlPreflightStage(args: {
         logAiTelemetryFn({
           requestId: args.requestId,
           task: "PLAYER_CONTROL_PREFLIGHT",
-          providerId: "oneapi",
+          providerId: "openai_compatible",
           logicalRole: "control",
           phase: "preflight_budget",
           message: `budget_ms=${args.controlPreflightBudgetMs}`,

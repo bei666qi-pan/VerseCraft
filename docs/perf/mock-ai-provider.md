@@ -1,6 +1,6 @@
 # Mock AI Provider
 
-`AI_PROVIDER=mock` 启用确定性本地模型提供方，只用于测试、benchmark 和 eval。生产默认仍是 one-api / OpenAI-compatible gateway；不要在生产环境配置 mock。
+`AI_PROVIDER=mock` 启用确定性本地模型提供方，只用于测试、benchmark 和 eval。生产真实服务由后台“AI 管理”配置；不要在生产环境配置 mock。
 
 入口在 `src/lib/ai/router/execute.ts`，不是 `/api/chat/route.ts` 旁路。它覆盖：
 
@@ -42,4 +42,4 @@ AI_PROVIDER=mock pnpm benchmark:chat-metrics -- --mode mock --assert-budget --in
 AI_PROVIDER=mock pnpm eval:chat-quality -- --mode mock --assert --json-out .runtime-data/eval-chat-quality-mock.json
 ```
 
-回滚方式：移除 `AI_PROVIDER=mock` 即回到真实 provider / degraded 行为。mock 不读取真实玩家输入、不产生真实 AI 费用、不需要 gateway key。
+回滚方式：移除 `AI_PROVIDER=mock` 即回到后台配置的真实服务或明确降级行为。mock 不产生真实 AI 费用，也不需要 API Key。

@@ -41,16 +41,13 @@ workflow 会把 GitHub `preview` 当前 HEAD 同步到 Gitee `preview` 分支。
 - `PREVIEW_ACCESS_MAX_AGE_SECONDS=604800`
 - `PRODUCTION_DATABASE_URL_FINGERPRINT=<optional sha256 fingerprint>`
 - `PREVIEW_DATABASE_URL_FINGERPRINT=<optional sha256 fingerprint>`
-- `AI_GATEWAY_BASE_URL=<preview one-api gateway url>`
-- `AI_GATEWAY_API_KEY=<preview one-api key>`
-- `AI_MODEL_MAIN=<gateway model>`
-- `AI_MODEL_CONTROL=<gateway model>`
-- `AI_MODEL_ENHANCE=<gateway model>`
-- `AI_MODEL_REASONER=<gateway model>`
+- `AI_CONFIG_ENCRYPTION_KEY=<preview-only 32-byte key>`
 - `MIGRATE_ON_BOOT=1`
 - `RUNTIME_SCHEMA_ENSURE=1`
 - `DAILY_TOKEN_LIMIT=5000`
 - `DAILY_ACTION_LIMIT=50`
+
+迁移完成后登录 preview 的 `/saiduhsa`，在“AI 管理”录入 preview 专用服务和 Key；不要与生产数据库或密钥共用。
 
 生产环境不要设置 `ENVIRONMENT_NAME=preview`，也不要把 `PREVIEW_ACCESS_ENABLED=true` 配给生产 host。
 

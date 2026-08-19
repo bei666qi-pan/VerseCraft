@@ -49,7 +49,8 @@ export type NpcConsistencyViolationType =
   | "player_echo_normal_npc_overreach"
   | "player_echo_reveal_overreach"
   | "player_echo_canon_override"
-  | "canon_name_alias";
+  | "canon_name_alias"
+  | "npc_location_teleport";
 
 function normalizeNpcId(id: string): string {
   return String(id ?? "")
@@ -148,6 +149,8 @@ export function applyNpcConsistencyPostGeneration(input: {
   latestUserInput?: string | null;
   playerEchoPacketPresent?: boolean;
   firstEncounterPlan?: NpcFirstEncounterEchoPlan | null;
+  /** Cross-turn NPC position tracking: npcId → location string from the previous turn. */
+  previousNpcPositions?: ReadonlyMap<string, string> | null;
 }): { dmRecord: Record<string, unknown>; telemetry: EpistemicValidatorTelemetry } {
   // Phase6 rollout: allow fast rollback of post-generation rewrites.
   const rollout = getVerseCraftRolloutFlags();
@@ -177,6 +180,7 @@ export function applyNpcConsistencyPostGeneration(input: {
   // 廉价字符串启发式，无大模型调用。优先运行以确保非焦点 NPC 的认知边界
   // 也被独立校验。
   const tier1Narrative = typeof rec.narrative === "string" ? rec.narrative : "";
+  const candidateOldFriendToneDetected = OLD_FRIEND_RE.test(tier1Narrative);
   let tier1Work = tier1Narrative;
   const tier1Violations: string[] = [];
   const tier1Vtypes: string[] = [];
@@ -213,6 +217,39 @@ export function applyNpcConsistencyPostGeneration(input: {
       tier1Logs.push(`offscreen:${off.join(",")}`);
       tier1Work = rewriteNarrativeOffscreenDialogue(tier1Work, input.presentNpcIds);
       tier1Rewrite = true;
+    }
+  }
+
+  // NPC 位置传送检测：跨回合比较 NPC 位置，检测 >3 层跳跃且叙事未解释
+  if (input.previousNpcPositions && input.previousNpcPositions.size > 0) {
+    try {
+      // Build current NPC positions from presentNpcIds and scene context.
+      // We extract NPC positions from the playerContext (N-XXX@location format).
+      const currentNpcPositions = new Map<string, string>();
+      const pc = input.playerContext ?? "";
+      const posRe = /\b(N-\d{3})@([A-Za-z0-9_]+)\b/g;
+      let m: RegExpExecArray | null;
+      while ((m = posRe.exec(pc)) !== null) {
+        const id = normalizeNpcId(m[1] ?? "");
+        const loc = m[2] ?? "";
+        if (id && loc) currentNpcPositions.set(id, loc);
+      }
+      if (currentNpcPositions.size > 0) {
+        const teleport = detectNpcLocationTeleport({
+          currentNpcPositions,
+          previousNpcPositions: input.previousNpcPositions,
+          narrative: tier1Work,
+        });
+        if (teleport.violations.length > 0) {
+          tier1Violations.push(...teleport.violations.map((v) => `npc_location_teleport:${v}`));
+          if (!tier1Vtypes.includes("npc_location_teleport")) tier1Vtypes.push("npc_location_teleport");
+          tier1Logs.push(...teleport.logs.slice(0, 3));
+        } else if (teleport.logs.length > 0) {
+          tier1Logs.push(...teleport.logs.slice(0, 2));
+        }
+      }
+    } catch (e) {
+      console.warn("[npc_consistency] npc location teleport check skipped", e);
     }
   }
 
@@ -324,6 +361,9 @@ export function applyNpcConsistencyPostGeneration(input: {
   const mr = (input.maxRevealRank ?? 0) as RevealTierRank;
 
   let narrativeWork = tier1Work;
+  // Preserve evidence before continuity/POV rewrites can paraphrase away a
+  // prohibited familiarity claim. Later guards may change the prose, but they
+  // must not erase the fact that the original candidate crossed this boundary.
 
   const violations: string[] = [...tier1Violations];
   const vtypes: string[] = [...tier1Vtypes];
@@ -405,7 +445,7 @@ export function applyNpcConsistencyPostGeneration(input: {
   if (enableNpcConsistencyValidator()) {
     // T1 已运行 persona mixup 与 offscreen dialogue，此处仅运行焦点 NPC 特权校验。
 
-    if (!privileged && OLD_FRIEND_RE.test(narrativeWork)) {
+    if (!privileged && candidateOldFriendToneDetected) {
       violations.push("narrative_old_friend_tone");
       vtypes.push("normal_npc_old_friend_tone");
       narrativeWork = rewriteNarrativeOldFriendLeak(narrativeWork);
@@ -566,4 +606,80 @@ export function applyNpcConsistencyPostGeneration(input: {
   }
 
   return { dmRecord: rec, telemetry };
+}
+
+/**
+ * Extract a numeric floor from a location string.
+ * B2 → -2, B1 → -1, 1F → 1, 7F → 7, "走廊3楼" → 3.
+ * Returns null if no floor can be reliably extracted.
+ */
+function extractFloorFromLocation(location: string): number | null {
+  if (!location) return null;
+  // B1 / B2
+  const bMatch = location.match(/B\s*(\d+)/i);
+  if (bMatch) return -parseInt(bMatch[1] ?? "0", 10);
+  // 1F / 2F / etc
+  const fMatch = location.match(/(\d+)\s*F/i);
+  if (fMatch) return parseInt(fMatch[1] ?? "0", 10);
+  // Chinese floor references: 一楼 / 三楼 / B1层
+  const chMatch = location.match(/([一二三四五六七B])楼/);
+  if (chMatch) {
+    const ch = chMatch[1] ?? "";
+    const chMap: Record<string, number> = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7 };
+    if (ch === "B") return -1;
+    return chMap[ch] ?? null;
+  }
+  return null;
+}
+
+/**
+ * Detect NPC location teleportation across turns.
+ *
+ * Compares current NPC positions against previous-turn positions and flags any NPC
+ * whose floor changed by more than 3 levels without the narrative explaining the
+ * transition (e.g., elevator, stairway mentions).
+ */
+export function detectNpcLocationTeleport(args: {
+  currentNpcPositions: ReadonlyMap<string, string>;
+  previousNpcPositions: ReadonlyMap<string, string>;
+  narrative: string;
+}): { violations: string[]; logs: string[] } {
+  const violations: string[] = [];
+  const logs: string[] = [];
+
+  if (args.previousNpcPositions.size === 0) return { violations, logs };
+
+  const narrativeLower = args.narrative.toLowerCase();
+  const hasTravelExplanation =
+    /电梯|楼梯|下楼|上楼|走下楼|走上楼|坐电梯|下到|上到|穿过楼层|跨层/i.test(narrativeLower);
+
+  for (const [npcId, currentLoc] of args.currentNpcPositions) {
+    const previousLoc = args.previousNpcPositions.get(npcId);
+    if (!previousLoc || previousLoc === currentLoc) continue;
+
+    const prevFloor = extractFloorFromLocation(previousLoc);
+    const currFloor = extractFloorFromLocation(currentLoc);
+
+    if (prevFloor === null || currFloor === null) continue;
+
+    const floorJump = Math.abs(currFloor - prevFloor);
+    if (floorJump <= 3) continue;
+
+    // Floor jump > 3 — check if narrative explains the transition.
+    if (!hasTravelExplanation) {
+      violations.push(
+        `npc_location_teleport:${npcId}:${previousLoc}→${currentLoc}:jump_${floorJump}_floors`,
+      );
+      logs.push(
+        `npc_location_teleport:${npcId} jumped ${floorJump} floors (${previousLoc} → ${currentLoc}) without narrative travel explanation`,
+      );
+    } else {
+      // Narrative mentions travel — still log for telemetry but don't flag as violation.
+      logs.push(
+        `npc_location_travel:${npcId} moved ${floorJump} floors (${previousLoc} → ${currentLoc}) with travel context`,
+      );
+    }
+  }
+
+  return { violations, logs };
 }

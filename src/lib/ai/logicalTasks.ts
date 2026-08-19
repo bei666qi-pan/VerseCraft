@@ -1,6 +1,6 @@
 /**
  * 逻辑任务层：业务与玩法只应依赖本模块的语义入口，不直接调用 execute*、不绑定厂商模型。
- * 内核仍为 TaskType + taskPolicy + execute + one-api 兼容网关。
+ * 内核仍为 TaskType + taskPolicy + execute + 后台管理的 OpenAI 兼容服务。
  * （不设 `server-only`，以便 Node 单测加载；服务端业务请通过 `@/lib/ai/service` 再导出使用。）
  */
 
@@ -32,7 +32,7 @@ import {
   type NarrativeExpansionResult,
 } from "@/lib/turnEngine/narrativeExpansion";
 
-/** 主叙事 / 玩家 SSE：固定 PLAYER_CHAT，由 taskPolicy 解析逻辑角色与 one-api 模型名。 */
+/** 主叙事 / 玩家 SSE：固定 PLAYER_CHAT，由用途路由解析后台模型候选。 */
 export async function generateMainReply(params: {
   messages: ChatMessage[];
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
@@ -73,7 +73,7 @@ export async function generateMainReply(params: {
  * - 提交 StateDelta 或写 FINAL
  * - 后台世界推演（reasoner）
  *
- * 配置：`AI_MODEL_WRITER`（未配置时回退 `AI_MODEL_MAIN`）。
+ * 配置：后台“玩家故事生成”用途的主用与备用顺序。
  * 此为 `generateMainReply` 的语义别名，当前委托同一实现。
  */
 export async function generateWriterTurn(params: {
@@ -332,7 +332,7 @@ export async function expandNarrativeOnly(args: {
   };
 
   try {
-    const res: AIResponse | AIErrorResponse = await executeChatCompletion({
+    const completion = executeChatCompletion({
       task: "NARRATIVE_EXPANSION",
       messages: [system, user],
       ctx: {
@@ -347,6 +347,16 @@ export async function expandNarrativeOnly(args: {
       requestTimeoutMs: budgetMs,
       skipCache: true,
     });
+    const res = await awaitAiCompletionWithinBudget(completion, budgetMs);
+
+    if (!res) {
+      return {
+        ok: false,
+        reason: "timeout",
+        latencyMs: Date.now() - startedAt,
+        beforeChars,
+      };
+    }
 
     if (!res.ok) {
       return {
@@ -411,6 +421,8 @@ export async function repairNarrativeOnly(args: {
   signal?: AbortSignal;
   budgetMs?: number;
   maxChars?: number;
+  /** Malformed-stream repair has no adjudicated structure to expose. */
+  structureSnapshotMode?: "full" | "omit";
 }): Promise<NarrativeRepairResult> {
   const startedAt = Date.now();
   const originalNarrative = String(args.originalNarrative ?? "");
@@ -438,7 +450,9 @@ export async function repairNarrativeOnly(args: {
       `【玩家本回合输入】\n${String(args.latestUserInput ?? "").slice(0, 500)}`,
       `【当前玩家/场景摘要】\n${String(args.playerContextSnapshot ?? "").slice(0, 1200)}`,
       `【待修复 narrative】\n${originalNarrative.slice(0, 1800)}`,
-      `【原始 DM 结构快照：只能用于保持结论，不能改字段】\n${stringifyCompactDmSnapshot(args.originalDmRecord)}`,
+      args.structureSnapshotMode === "omit"
+        ? "【权威结构事实】\n本次没有可供正文新增的结构化状态事实；只给出自然的当前动作反馈。"
+        : `【原始 DM 结构快照：只能用于保持结论，不能改字段】\n${stringifyCompactDmSnapshot(args.originalDmRecord)}`,
       `【validator 问题】\n${JSON.stringify(args.issues.slice(0, 12))}`,
       args.constraints && args.constraints.length > 0
         ? `【额外约束】\n${args.constraints.map((x) => `- ${String(x).slice(0, 160)}`).join("\n")}`
@@ -449,7 +463,7 @@ export async function repairNarrativeOnly(args: {
   };
 
   try {
-    const res: AIResponse | AIErrorResponse = await executeChatCompletion({
+    const completion = executeChatCompletion({
       task: "NARRATIVE_EXPANSION",
       messages: [system, user],
       ctx: {
@@ -464,6 +478,16 @@ export async function repairNarrativeOnly(args: {
       requestTimeoutMs: budgetMs,
       skipCache: true,
     });
+    const res = await awaitAiCompletionWithinBudget(completion, budgetMs);
+
+    if (!res) {
+      return {
+        ok: false,
+        reason: "timeout",
+        latencyMs: Date.now() - startedAt,
+        beforeChars,
+      };
+    }
 
     if (!res.ok) {
       return {
@@ -553,6 +577,21 @@ function createTimeoutSignal(parent: AbortSignal | undefined, timeoutMs: number)
     },
     timedOut: () => timedOut,
   };
+}
+
+async function awaitAiCompletionWithinBudget(
+  completion: Promise<AIResponse | AIErrorResponse>,
+  budgetMs: number,
+): Promise<AIResponse | AIErrorResponse | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hardTimeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), Math.max(1, Math.trunc(budgetMs)));
+  });
+  try {
+    return await Promise.race([completion, hardTimeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function stringifyCompactDmSnapshot(dmRecord: Record<string, unknown>): string {
@@ -733,7 +772,7 @@ async function runOptionsOnlyAiOnce(args: {
     ].join("\n"),
   };
 
-  const res: AIResponse | AIErrorResponse = await executeChatCompletion({
+  const completion = executeChatCompletion({
     task: "INTENT_PARSE",
     messages: [system, user],
     ctx: {
@@ -762,6 +801,9 @@ async function runOptionsOnlyAiOnce(args: {
       responseFormatJsonObject: true,
     },
   });
+  const res = await awaitAiCompletionWithinBudget(completion, args.timeoutMs);
+
+  if (!res) return { ok: false, reason: "ai_error:TIMEOUT" };
 
   if (!res.ok) return { ok: false, reason: summarizeCompletionFailure(res) };
   return { ok: true, content: res.content };
@@ -1134,7 +1176,7 @@ async function runDecisionOnlyAiOnce(args: {
     ].join("\n"),
   };
 
-  const res: AIResponse | AIErrorResponse = await executeChatCompletion({
+  const completion = executeChatCompletion({
     task: "INTENT_PARSE",
     messages: [system, user],
     ctx: {
@@ -1155,6 +1197,9 @@ async function runDecisionOnlyAiOnce(args: {
       responseFormatJsonObject: true,
     },
   });
+  const res = await awaitAiCompletionWithinBudget(completion, args.timeoutMs);
+
+  if (!res) return { ok: false, reason: "ai_error:TIMEOUT" };
 
   if (!res.ok) return { ok: false, reason: `ai_error:${res.code}` };
   return { ok: true, content: res.content };
@@ -1215,13 +1260,20 @@ export async function generateDecisionOptionsOnlyFallback(args: {
     return typeof AbortSignal !== "undefined" && "any" in AbortSignal ? AbortSignal.any(signals) : ac.signal;
   };
 
+  const firstTimeoutMs = Math.max(
+    1,
+    Math.min(
+      VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs,
+      budgetMs > 0 ? remainingMs() : VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs,
+    ),
+  );
   const first = await runDecisionOnlyAiOnce({
     ...args,
     temperature: 0.35,
     systemExtra: args.systemExtra,
     outputLanguage: args.outputLanguage,
-    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs,
-    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs),
+    timeoutMs: firstTimeoutMs,
+    signal: withBudgetSignal(firstTimeoutMs),
   });
   if (first.ok) {
     const done = tryParse(first.content);
@@ -1232,6 +1284,13 @@ export async function generateDecisionOptionsOnlyFallback(args: {
     return { ok: false, reason: first.ok ? "invalid_model_decision_options" : first.reason };
   }
 
+  const secondTimeoutMs = Math.max(
+    1,
+    Math.min(
+      VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs,
+      budgetMs > 0 ? remainingMs() : VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs,
+    ),
+  );
   const second = await runDecisionOnlyAiOnce({
     ...args,
     temperature: 0.6,
@@ -1242,8 +1301,8 @@ export async function generateDecisionOptionsOnlyFallback(args: {
         : "本次必须输出 2–4 条 decision_options，至少 2 条。",
     ].filter(Boolean).join("\n"),
     outputLanguage: args.outputLanguage,
-    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs,
-    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs),
+    timeoutMs: secondTimeoutMs,
+    signal: withBudgetSignal(secondTimeoutMs),
   });
   if (second.ok) {
     const done = tryParse(second.content);

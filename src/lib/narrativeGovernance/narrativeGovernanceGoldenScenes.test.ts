@@ -186,7 +186,6 @@ test("golden 13: prompt governance packets keep the PR-4 injection order", () =>
     protagonistAnchorBlock: "protagonist packet",
   });
   const ordered = [
-    "turn_mode_policy_packet",
     "narrative_style_bible_packet",
     "narrative_continuity_packet",
     "npc_knowledge_packet",

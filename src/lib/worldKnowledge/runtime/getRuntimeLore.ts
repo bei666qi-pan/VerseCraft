@@ -59,6 +59,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 export async function getRuntimeLore(input: RuntimeLoreRequest, deps: RuntimeLoreDeps = defaultDeps): Promise<LorePacket> {
   const normalizedInput: RuntimeLoreRequest = {
     ...input,
+    worldId: input.worldId ?? "dark_moon_prologue",
+    mapId: input.mapId ?? "dark_moon_apartment",
     worldRevision: input.worldRevision ?? BigInt(0),
     tokenBudget: input.tokenBudget > 0 ? input.tokenBudget : DEFAULT_RUNTIME_LORE_TOKEN_BUDGET,
     recentlyEncounteredEntities: input.recentlyEncounteredEntities ?? [],
@@ -76,7 +78,7 @@ export async function getRuntimeLore(input: RuntimeLoreRequest, deps: RuntimeLor
     floorHintCount: plan.floorHints.length,
     maxRevealRank: plan.maxRevealRank,
     ftsQueryLength: plan.ftsQuery.length,
-    semanticQueryLength: plan.semanticQuery.length,
+    semanticQueryLength: plan.semanticQuery?.length ?? 0,
     expandedTokenCount: plan.retrievalBudget.maxFacts,
     entityCount: plan.exactCodes.length + plan.exactCanonicalNames.length,
   }));

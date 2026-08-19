@@ -185,7 +185,7 @@ function parseLlmJudgeResponse(content: string): ModelJudgeOutput | null {
   }
 }
 
-function toModelJudgePrompt(transcript: PlaythroughTranscript): { system: string; user: string } {
+export function buildNarrativeJudgePrompt(transcript: PlaythroughTranscript): { system: string; user: string } {
   const stateView = (state: PlaythroughTranscript["initialState"]): Record<string, unknown> => ({
     location: state.playerLocation,
     hp: state.hp,
@@ -216,7 +216,7 @@ function toModelJudgePrompt(transcript: PlaythroughTranscript): { system: string
   const transcriptSummary = transcript.steps
     .map((s, index) => {
       const before = index === 0 ? transcript.initialState : transcript.steps[index - 1]!.stateAfter;
-      return `[第${s.stepIndex}步]\n行动: ${s.playerAction}\n叙事: ${s.narrative.slice(0, 320)}\n回合前: ${JSON.stringify(stateView(before))}\n提交字段: ${JSON.stringify(deltaView(s.dmJson)).slice(0, 1200)}\n回合后: ${JSON.stringify(stateView(s.stateAfter))}`;
+      return `[第${s.stepIndex}步]\n行动: ${s.playerAction}\n叙事: ${s.narrative.slice(0, 320)}\n回合前: ${JSON.stringify(stateView(before))}\n权威裁决证据: ${JSON.stringify(s.authorityEvidence ?? {})}\n提交字段: ${JSON.stringify(deltaView(s.dmJson)).slice(0, 1200)}\n回合后: ${JSON.stringify(stateView(s.stateAfter))}`;
     })
     .join("\n\n---\n\n");
   const boundedTranscriptSummary = transcriptSummary.length <= 32_000
@@ -225,8 +225,11 @@ function toModelJudgePrompt(transcript: PlaythroughTranscript): { system: string
 
   const systemPrompt = `你是独立的 VerseCraft 游戏 QA 裁判，不扮演玩家或 DM。
 只能根据权威初始状态、逐回合玩家动作、最终叙事、提交字段和提交后状态判断。
+权威裁决证据由项目确定性规则生成：若 registeredAdjacent=true 且 traversable=true，则该单边移动已有充分依据，不得要求额外的中间地点或叙事路径证明。
+若 source=registered_location_alias，则 from/to 只是同一地点的旧标签与 canonical ID，属于规范化而不是移动，不得报告位置突变。
 不得把猜测当成缺陷；每个问题必须引用具体回合和玩家可见证据。
-叙事声称发生但权威状态没有对应提交，属于状态矛盾。
+只有持久状态变化（地点、伤害、理智、死亡、物品、任务、NPC、伏笔等）声称发生但没有对应提交时，才属于状态矛盾。普通感官、材质、气味、光影和未形成持久进展的环境描写不要求结构化提交。
+判断前后矛盾时必须确认是同一对象、同一空间位置和相容时间；不同位置的灯光或先后变化不能仅凭词面相似判为矛盾。
 内部字段没有进入最终叙事或最终状态时，不算玩家可见问题。
 你必须只输出符合要求的 JSON，不得输出 Markdown 或额外解释。`;
 
@@ -273,7 +276,7 @@ async function runNarrativeJudgeByModel(
   transcript: PlaythroughTranscript,
   source: NarrativeConsistencyResult["judgeConfidenceSource"],
 ): Promise<Omit<NarrativeConsistencyResult, "runId">> {
-  const prompt = toModelJudgePrompt(transcript);
+  const prompt = buildNarrativeJudgePrompt(transcript);
   const response = await callDeepSeekCompletion({
     messages: [
       { role: "system", content: prompt.system },
@@ -731,19 +734,8 @@ function checkNpcResurrection(
 export async function judgeNarrativeConsistencyLive(
   transcript: PlaythroughTranscript
 ): Promise<NarrativeConsistencyResult> {
-  try {
-    return {
-      runId: transcript.runId,
-      ...(await runNarrativeJudgeByModel(transcript, "model")),
-    };
-  } catch (err) {
-    // JSON 解析失败或 API 调用失败，降级到 mock
-    const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`DeepSeek 叙事裁判失败，降级到 mock: ${reason}`);
-    return {
-      ...withConfidenceSource(judgeNarrativeConsistencyMock(transcript), "fallback"),
-      judgeMode: "fallback",
-      judgeError: reason,
-    };
-  }
+  return {
+    runId: transcript.runId,
+    ...(await runNarrativeJudgeByModel(transcript, "model")),
+  };
 }

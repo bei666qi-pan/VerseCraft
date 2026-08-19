@@ -6,7 +6,7 @@
  *
  * 用法:
  *   pnpm dlx tsx scripts/scan-playability-defects.ts
- *   pnpm dlx tsx scripts/scan-playability-defects.ts --json-out .runtime-data/defects.json
+ *   pnpm dlx tsx scripts/scan-playability-defects.ts --json-out .runtime-data/eval/playability-defects/report.json
  */
 
 import { readdirSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
@@ -65,8 +65,8 @@ function main() {
   const args = process.argv.slice(2);
   const jsonOut =
     args.includes("--json-out")
-      ? args[args.indexOf("--json-out") + 1] ?? ".runtime-data/playability-defects.json"
-      : ".runtime-data/playability-defects.json";
+      ? args[args.indexOf("--json-out") + 1] ?? ".runtime-data/eval/playability-defects/report.json"
+      : ".runtime-data/eval/playability-defects/report.json";
 
   console.log("🔍 Playability 缺陷全量扫描");
   console.log("═".repeat(60));

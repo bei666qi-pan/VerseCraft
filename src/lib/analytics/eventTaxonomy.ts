@@ -187,7 +187,6 @@ export const ANALYTICS_EVENT_TAXONOMY = {
   turn_commit_summary: c("turn_commit_summary", "content_quality", "Turn commit summary emitted after validation.", sessionIdentity, ["requestId"], ["deltaSummary", "commitFlags", "blockedCommitFields"], "turn-engine"),
   narrative_validator_issue: c("narrative_validator_issue", "content_quality", "Post-generation narrative validator issue.", sessionIdentity, ["requestId", "issueCodes"], ["byCode", "severity"], "content-safety"),
   narrative_protocol_leak: c("narrative_protocol_leak", "content_quality", "Narrative protocol leak detected.", sessionIdentity, ["requestId", "issueCode"], ["snippetHash"], "content-safety"),
-  world_engine_langgraph_node: c("world_engine_langgraph_node", "health", "World engine LangGraph node execution tracked.", sessionIdentity, [], [], "analytics"),
 
   narrative_safety_issue: c("narrative_safety_issue", "content_quality", "Narrative safety issue detected.", sessionIdentity, ["requestId", "issueCodes"], ["byCode", "bySeverity"], "content-safety"),
   narrative_safety_commit: c("narrative_safety_commit", "content_quality", "Narrative safety decision committed.", sessionIdentity, ["requestId", "decision"], ["mode", "fallbackApplied"], "content-safety"),

@@ -24,6 +24,8 @@ import { getChapterDefinition, getChapterDisplayName, normalizeChapterState } fr
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import type { ChapterState } from "@/lib/chapters/types";
 import { normalizeEndingSettlementSnapshot, normalizeEndingState } from "@/lib/endings/storeIntegration";
+import { normalizeWorldIdentity } from "@/lib/worlds/catalog";
+import { normalizeXingniState as normalizeXingniWorldState, type XingniTaichuState } from "@/lib/worlds/xingni/progression";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -119,7 +121,11 @@ function buildChapterDirectorBridgeFromState(chapterState: ChapterState): {
 
 export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnapshotV2 {
   const chapterState = normalizeChapterState(legacy.chapterState);
+  const identity = normalizeWorldIdentity(legacy);
   return buildRunSnapshotV2({
+    ...identity,
+    unlockedMapIds: Array.isArray(legacy.unlockedMapIds) ? legacy.unlockedMapIds : [identity.mapId],
+    worldState: identity.worldId === "xingni_taichu" ? normalizeXingniState(legacy.worldState) : null,
     runId: createRunId(),
     player: {
       name: legacy.playerName ?? "",
@@ -172,6 +178,7 @@ export function normalizeRunSnapshotV2(
     return migrateLegacySaveToSnapshot(fallbackLegacy ?? {});
   }
   const s = input as RunSnapshotV2;
+  const identity = normalizeWorldIdentity(s);
   const legacyBase = fallbackLegacy ?? {};
   const fromLegacy = migrateLegacySaveToSnapshot(legacyBase);
   const now = new Date();
@@ -202,6 +209,11 @@ export function normalizeRunSnapshotV2(
   const normalized: RunSnapshotV2 = {
     ...fromLegacy,
     ...s,
+    ...identity,
+    unlockedMapIds: Array.isArray(s.unlockedMapIds)
+      ? [...new Set(s.unlockedMapIds.filter((id) => typeof id === "string"))] as RunSnapshotV2["unlockedMapIds"]
+      : [identity.mapId],
+    worldState: identity.worldId === "xingni_taichu" ? normalizeXingniState(s.worldState) : null,
     meta: {
       ...fromLegacy.meta,
       ...asRecord(s.meta),
@@ -382,6 +394,10 @@ export function normalizeRunSnapshotV2(
 
 export function projectSnapshotToLegacy(snapshot: RunSnapshotV2): LegacySaveSurface {
   return {
+    worldId: snapshot.worldId,
+    mapId: snapshot.mapId,
+    unlockedMapIds: snapshot.unlockedMapIds,
+    worldState: snapshot.worldState,
     stats: snapshot.player.stats,
     inventory: snapshot.player.inventory,
     warehouse: snapshot.player.warehouse,
@@ -408,6 +424,10 @@ export function projectSnapshotToLegacy(snapshot: RunSnapshotV2): LegacySaveSurf
     endingSettlementSnapshot: snapshot.endingSettlementSnapshot ?? snapshot.endingState?.settlementSnapshot ?? null,
     runSnapshotV2: snapshot,
   };
+}
+
+function normalizeXingniState(raw: unknown): XingniTaichuState {
+  return normalizeXingniWorldState(raw);
 }
 
 export function createDefaultWorldFlags(): Record<string, boolean> {

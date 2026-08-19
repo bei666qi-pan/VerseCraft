@@ -128,9 +128,9 @@ test("resolveChatPerfFlags returns expected shape", () => {
 
 // ── nowMs / elapsedMs ──
 
-test("nowMs returns a positive timestamp", () => {
+test("nowMs returns a positive monotonic reading", () => {
   const ts = nowMs();
-  assert.ok(ts > 1_700_000_000_000, `Expected timestamp > 1.7e12, got ${ts}`);
+  assert.ok(ts >= 0, `Expected a non-negative monotonic reading, got ${ts}`);
 });
 
 test("elapsedMs computes correct difference", () => {
@@ -143,6 +143,20 @@ test("elapsedMs computes correct difference", () => {
 test("elapsedMs clamps negative to zero", () => {
   // Pass a future time
   assert.equal(elapsedMs(nowMs() + 10000), 0);
+});
+
+test("nowMs is not affected by wall-clock jumps", () => {
+  const originalDateNow = Date.now;
+  try {
+    Date.now = () => 1_000;
+    const before = nowMs();
+    Date.now = () => 86_401_000;
+    const after = nowMs();
+    assert.ok(after >= before);
+    assert.ok(after - before < 1_000, "a one-day wall-clock jump must not enter latency math");
+  } finally {
+    Date.now = originalDateNow;
+  }
 });
 
 // ── TTFT latency budget regression gates ──

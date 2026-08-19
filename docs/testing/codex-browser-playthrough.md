@@ -17,13 +17,8 @@
 ## 前置条件
 
 1. 使用独立的本地/预发环境，不要对生产账号或生产配额做长程 playtest。
-2. 配置 `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_MODEL_MAIN`，然后运行：
-
-   ```bash
-   VERIFY_AI_GATEWAY_STRICT=1 pnpm verify:ai-gateway
-   ```
-
-3. 可选但推荐：用 `pnpm probe:ai-gateway` 确认网关可连通。
+2. 在 `/saiduhsa` → “AI 管理”添加真实服务、模型和“玩家故事生成”候选，并确认测试成功。
+3. 可选但推荐：先运行一次 `pnpm benchmark:chat:mock` 确认本地契约环境正常。
 
 ## 启动一局
 

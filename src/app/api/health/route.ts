@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db, pool } from "@/db";
 import { anyAiProviderConfigured } from "@/lib/ai/service";
+import { ensureManagedAiSnapshot } from "@/lib/ai/managed/runtime";
 import { loadVerseCraftEnvFilesOnce, reloadVerseCraftProcessEnv } from "@/lib/config/loadVerseCraftEnv";
 import { readAnyWorkerHeartbeat } from "@/lib/kg/workerHeartbeat";
 
@@ -15,8 +16,10 @@ export async function GET() {
   try {
     await db.execute(sql`SELECT 1`);
     loadVerseCraftEnvFilesOnce();
+    await ensureManagedAiSnapshot();
     if (!anyAiProviderConfigured()) {
       reloadVerseCraftProcessEnv();
+      await ensureManagedAiSnapshot();
     }
     const hasAiKey = anyAiProviderConfigured();
 

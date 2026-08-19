@@ -1,5 +1,7 @@
 # Proposal: add-bounded-director-actor-simulation
 
+> **Status: Remaining work absorbed (not archived).** `unify-world-director-runtime` owns production integration, dual-world scope, defaults, and verification.
+
 ## Summary
 
 在现有后台 World Director 上增加有界的 NPC 行动推演能力：从当前重要 NPC 中选择最多 3 个角色，按各自认知边界推演行动候选，经过纯函数 validator 和 director synthesizer 后，将安全结果注入 reasoner context。

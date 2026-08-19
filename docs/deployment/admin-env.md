@@ -15,7 +15,7 @@
 | 变量 | 用途 | 降级行为 |
 | --- | --- | --- |
 | `REDIS_URL` | 登录失败限流、部分实时能力 | 不可用时使用进程内限流 fallback |
-| `AI_GATEWAY_*` / `OPENAI_*` | AI 运营洞察 | 未配置时返回本地 fallback 建议 |
+| `AI_CONFIG_ENCRYPTION_KEY` | 后台 AI 服务 Key 加密 | 缺失时 AI 配置 fail-closed，系统状态给出提示 |
 | `VERCEL_GIT_COMMIT_SHA` / `GITHUB_SHA` | 系统健康部署版本 | 缺失时显示 `unknown` |
 
 ## Cron 调用

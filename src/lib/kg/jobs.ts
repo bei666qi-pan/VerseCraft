@@ -23,6 +23,14 @@ export type ClaimedJob = {
   maxAttempts: number;
 };
 
+export type EnqueueJobResult = {
+  persisted: boolean;
+  inserted: boolean;
+  jobId: number | null;
+  idempotencyKey: string | null;
+  errorCode?: "db_unavailable" | "table_missing" | "insert_failed";
+};
+
 function isMissingJobsTable(err: unknown): boolean {
   const code = err && typeof err === "object" ? (err as { code?: string }).code : undefined;
   return code === "42P01";
@@ -31,25 +39,37 @@ function isMissingJobsTable(err: unknown): boolean {
 export async function enqueueJob(
   type: JobType,
   payload: object,
-  opts?: { runAt?: Date; priority?: number }
-): Promise<void> {
+  opts?: { runAt?: Date; priority?: number; idempotencyKey?: string | null }
+): Promise<EnqueueJobResult> {
+  const idempotencyKey = opts?.idempotencyKey?.trim().slice(0, 191) || null;
   let client;
   try {
     client = await pool.connect();
   } catch {
-    return;
+    return { persisted: false, inserted: false, jobId: null, idempotencyKey, errorCode: "db_unavailable" };
   }
   try {
     const runAt = opts?.runAt ?? new Date();
     const priority = opts?.priority ?? 0;
-    await client.query(
-      `INSERT INTO vc_jobs (job_type, payload, run_at, priority, status)
-       VALUES ($1, $2::jsonb, $3, $4, 'pending')`,
-      [type, JSON.stringify(payload), runAt.toISOString(), priority]
+    const result = await client.query<{ job_id: string; inserted: boolean }>(
+      `INSERT INTO vc_jobs (job_type, idempotency_key, payload, run_at, priority, status)
+       VALUES ($1, $2, $3::jsonb, $4, $5, 'pending')
+       ON CONFLICT (job_type, idempotency_key) WHERE idempotency_key IS NOT NULL
+       DO UPDATE SET job_type = EXCLUDED.job_type
+       RETURNING job_id::text, (xmax = 0) AS inserted`,
+      [type, idempotencyKey, JSON.stringify(payload), runAt.toISOString(), priority]
     );
+    const row = result.rows[0];
+    const jobId = Number(row?.job_id ?? 0);
+    if (!Number.isSafeInteger(jobId) || jobId <= 0) {
+      return { persisted: false, inserted: false, jobId: null, idempotencyKey, errorCode: "insert_failed" };
+    }
+    return { persisted: true, inserted: row?.inserted === true, jobId, idempotencyKey };
   } catch (e) {
-    if (isMissingJobsTable(e)) return;
-    /* 其它 DB 错误静默，避免调用方（ingest）失败 */
+    if (isMissingJobsTable(e)) {
+      return { persisted: false, inserted: false, jobId: null, idempotencyKey, errorCode: "table_missing" };
+    }
+    return { persisted: false, inserted: false, jobId: null, idempotencyKey, errorCode: "insert_failed" };
   } finally {
     client.release();
   }

@@ -8,6 +8,10 @@ import type { CodexEntry } from "@/store/useGameStore";
 import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "./codexCatalog";
 import { formatLocalizedLocation, localizedCodexName } from "@/lib/i18n/gameDisplay";
 import type { GameLanguage } from "@/lib/i18n/language";
+import {
+  QINGSHI_LOCATIONS,
+  type QingshiLocationId,
+} from "@/lib/worlds/xingni/qingshiContent";
 
 /** 图鉴类型筛选：全部 / 仅人物 / 仅异常 */
 export type MobileCodexTypeFilter = "all" | "npc" | "anomaly";
@@ -74,6 +78,18 @@ const LOCATION_FIELD_CANDIDATES = [
   "last_known_location",
   "player_location",
 ] as const;
+
+const QINGSHI_LOCATION_NAMES_EN: Record<QingshiLocationId, string> = {
+  QS_SOUTH_GATE: "South Gate",
+  QS_GUOYAN_INN: "Returning Geese Inn",
+  QS_CULTIVATOR_MARKET: "Cultivator Market",
+  QS_HERB_HALL: "Hundred Herbs Hall",
+  QS_DIVINE_FORGE: "Divine Forge",
+  QS_EXORCISM_OFFICE: "Exorcism Office",
+  QS_ASCENSION_TERRACE: "Ascension Terrace",
+  QS_BLACK_PINE_RIDGE: "Black Pine Ridge",
+  QS_SPIRIT_SPRING_CAVE: "Spirit Spring Cave",
+};
 
 export function resolveMobileCodexFloorId(locationOrFloor: string | null | undefined): FloorId | null {
   const raw = String(locationOrFloor ?? "").trim();
@@ -302,6 +318,11 @@ export function formatMobileCodexLocation(location: string | null | undefined, l
   const raw = String(location ?? "").trim();
   if (!raw) return language === "en-US" ? "Unknown area" : "未知区域";
 
+  if (Object.hasOwn(QINGSHI_LOCATIONS, raw)) {
+    const locationId = raw as QingshiLocationId;
+    return language === "en-US" ? QINGSHI_LOCATION_NAMES_EN[locationId] : QINGSHI_LOCATIONS[locationId].name;
+  }
+
   const compact = formatCompactLocationLabel(raw);
   if (compact !== "未知区域") return formatLocalizedLocation(language, raw, compact);
   if (/^[A-Za-z0-9]+_[A-Za-z0-9_]+$/.test(raw)) return language === "en-US" ? "Unknown area" : "未知区域";
@@ -310,7 +331,7 @@ export function formatMobileCodexLocation(location: string | null | undefined, l
 
 export function formatMobileCodexName(entry: CodexEntry | null | undefined, slot: CodexCatalogSlot, language: GameLanguage = "zh-CN"): string {
   if (!entry) return language === "en-US" ? "???" : "？？？";
-  const resolved = resolveCodexDisplayName(entry).trim();
+  const resolved = resolveCodexDisplayName(entry, slot.worldId).trim();
   const fallback = resolved && resolved !== "某位住户" && resolved !== "未知条目" ? resolved : slot.displayName;
   return localizedCodexName(language, slot.id, fallback);
 }
@@ -361,10 +382,14 @@ export function buildMobileCodexDetail(
     name: formatMobileCodexName(entry, slot, language),
     location: resolveMobileCodexEntryLocation(entry, slot, options.dynamicNpcStates, language),
     quote: slot.quote ?? null,
-    intro: buildMobileCodexIntro(entry),
-    observation: buildMobileCodexObservation(entry),
+    intro: buildMobileCodexIntro(entry, slot.worldId),
+    observation: buildMobileCodexObservation(entry, slot.worldId),
     relationship: buildMobileCodexRelationship(entry),
-    memories: buildMobileCodexMemories(entry, options.memorySpine),
+    memories: buildMobileCodexMemories(
+      entry,
+      options.memorySpine,
+      formatMobileCodexName(entry, slot, language),
+    ),
     dangerLabel: resolveMobileCodexDangerLabel(slot, true, language),
   };
 }
@@ -386,15 +411,15 @@ function firstDisplaySentence(text: string | null | undefined, maxLen = 96): str
   return candidate.slice(0, maxLen).trim();
 }
 
-export function buildMobileCodexIntro(entry: CodexEntry): string {
-  const registryIntro = buildCodexIntro(entry).trim();
+export function buildMobileCodexIntro(entry: CodexEntry, worldId?: CodexCatalogSlot["worldId"]): string {
+  const registryIntro = buildCodexIntro(entry, worldId).trim();
   const registryOpening = firstDisplaySentence(registryIntro);
   if (registryOpening) return registryOpening;
   return firstDisplaySentence(entry.known_info) || "暂无可靠记录。";
 }
 
-export function buildMobileCodexObservation(entry: CodexEntry): string {
-  const intro = normalizeCodexText(buildMobileCodexIntro(entry));
+export function buildMobileCodexObservation(entry: CodexEntry, worldId?: CodexCatalogSlot["worldId"]): string {
+  const intro = normalizeCodexText(buildMobileCodexIntro(entry, worldId));
   const seen = new Set<string>();
   const observationPieces = Array.isArray(entry.observations)
     ? entry.observations
@@ -433,8 +458,12 @@ export function buildMobileCodexRelationship(entry: CodexEntry): string {
  * G2：把与该 NPC 相关的具体记忆片段拼成一段可直接展示的文本（叙事化呈现，取代纯数值条）。
  * 异常类图鉴或无相关记忆时返回空字符串，调用方应据此隐藏该区块而非展示"暂无"。
  */
-export function buildMobileCodexMemories(entry: CodexEntry, memorySpine: MemorySpineState | null | undefined): string {
+export function buildMobileCodexMemories(
+  entry: CodexEntry,
+  memorySpine: MemorySpineState | null | undefined,
+  displayName?: string,
+): string {
   if (entry.type === "anomaly") return "";
-  const lines = buildNpcMemoryMomentLines(memorySpine, entry.id, { maxItems: 3 });
+  const lines = buildNpcMemoryMomentLines(memorySpine, entry.id, { maxItems: 3, displayName });
   return lines.join("；");
 }

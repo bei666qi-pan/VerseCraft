@@ -8,7 +8,7 @@ import { judgeNarrativeConsistencyCodex } from "../src/lib/evals/playthrough/nar
 import { SCENARIOS } from "../src/lib/evals/playthrough/scenarios";
 import type { PlaythroughTranscript } from "../src/lib/evals/playthrough/types";
 import { assessSubjectivePlayabilityProxy, type SubjectivePlayabilityAssessment } from "../src/lib/evals/productQuality/subjectivePlayability";
-import { classifyRunEvidence, type RunEvidenceStatus } from "../src/lib/evals/productQuality/runOutcome";
+import { assessJudgeEligibility, classifyRunEvidence, hasRequiredDmFields, type EvalJudgeMode, type RunEvidenceStatus } from "../src/lib/evals/productQuality/runOutcome";
 import { traceContentFingerprint } from "../src/lib/evals/productQuality/traceIdentity";
 import { classifyBugCohort } from "../src/lib/evals/productQuality/bugCohort";
 import type { RunFailureContext } from "../src/lib/evals/playthrough/types";
@@ -644,13 +644,27 @@ function summarizeBugRisk(args: { rows: BugRow[]; turns: number }): BugRiskSumma
 }
 
 const evidenceStatus = (run: Json): RunEvidenceStatus => {
-  if (run.evidenceStatus === "pass" || run.evidenceStatus === "fail" || run.evidenceStatus === "inconclusive") return run.evidenceStatus;
+  if (run.evidenceStatus === "pass" || run.evidenceStatus === "fail" || run.evidenceStatus === "inconclusive" || run.evidenceStatus === "infrastructure_failure") return run.evidenceStatus;
   const scenario = SCENARIOS.find((candidate) => candidate.id === run.scenarioId);
   const steps = Array.isArray(run.steps) ? run.steps : [];
   const judge = run.narrativeConsistency && typeof run.narrativeConsistency === "object" && !Array.isArray(run.narrativeConsistency) ? run.narrativeConsistency as Json : {};
   const gate = run.gameplayGate && typeof run.gameplayGate === "object" && !Array.isArray(run.gameplayGate) ? run.gameplayGate as Json : {};
   if (scenario?.scriptedActions?.length) {
-    return classifyRunEvidence({ executionMode: String(run.executionMode ?? "unknown"), terminatedReason: String(run.terminatedReason ?? "unknown"), judgePassed: judge.passed !== false, gameplayGatePassed: gate.passed === true, executedSteps: steps.length, plannedScenarioSteps: scenario.scriptedActions.length });
+    const executionMode = String(run.executionMode ?? "unknown");
+    const terminatedReason = String(run.terminatedReason ?? "unknown");
+    const degradedSteps = steps.filter((step) => (step.transport as Json | undefined)?.status === "degraded").length;
+    const eligibility = assessJudgeEligibility({
+      executionMode,
+      terminatedReason,
+      executedSteps: steps.length,
+      degradedSteps,
+      protocolComplete: steps.length > 0,
+      requiredDmFieldsComplete: steps.length > 0 && steps.every((step) => hasRequiredDmFields((step.dmJson as Json | undefined) ?? {})),
+    });
+    const judgeMode = (["live", "mock", "codex", "fallback", "none"] as const).includes(run.judgeMode as EvalJudgeMode)
+      ? run.judgeMode as EvalJudgeMode
+      : "none";
+    return classifyRunEvidence({ executionMode, terminatedReason, judgePassed: typeof judge.passed === "boolean" ? judge.passed : null, judgeMode, gameplayGatePassed: gate.passed === true, executedSteps: steps.length, plannedScenarioSteps: scenario.scriptedActions.length, eligibility });
   }
   return !Array.isArray(run.failureTags) || run.failureTags.length === 0 ? "pass" : "fail";
 };
@@ -957,7 +971,7 @@ for (const run of records) {
   }
 }
 
-const conclusiveRecords = records.filter((run) => evidenceStatus(run) !== "inconclusive");
+const conclusiveRecords = records.filter((run) => ["pass", "fail"].includes(evidenceStatus(run)));
 const inconclusiveRuns = records.length - conclusiveRecords.length;
 const passed = conclusiveRecords.filter((run) => evidenceStatus(run) === "pass").length;
 const softlocks = conclusiveRecords.filter((r) => r.terminatedReason === "softlock").length;

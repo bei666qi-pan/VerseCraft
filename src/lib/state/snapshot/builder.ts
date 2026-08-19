@@ -23,8 +23,15 @@ import { createInitialChapterState, normalizeChapterState, type ChapterState } f
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import type { EndingSettlementSnapshot, EndingState } from "@/lib/endings/types";
 import { normalizeEndingSettlementSnapshot, normalizeEndingState } from "@/lib/endings/storeIntegration";
+import type { MapId, WorldId } from "@/lib/worlds/types";
+import { DARK_MOON_MAP_ID, DARK_MOON_WORLD_ID } from "@/lib/worlds/types";
+import type { XingniTaichuState } from "@/lib/worlds/xingni/progression";
 
 export interface BuildRunSnapshotV2Input {
+  worldId?: WorldId;
+  mapId?: MapId;
+  unlockedMapIds?: MapId[];
+  worldState?: XingniTaichuState | null;
   runId?: string;
   startedAt?: string;
   slotMeta?: SaveSlotMeta | null;
@@ -97,6 +104,10 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       : endingStateBase;
   return {
     schemaVersion: RUN_SNAPSHOT_V2_VERSION,
+    worldId: input.worldId ?? DARK_MOON_WORLD_ID,
+    mapId: input.mapId ?? DARK_MOON_MAP_ID,
+    unlockedMapIds: [...(input.unlockedMapIds ?? [input.mapId ?? DARK_MOON_MAP_ID])],
+    worldState: input.worldState ?? null,
     meta: {
       runId: input.runId ?? createRunId(),
       worldVersion: RUN_SNAPSHOT_V2_VERSION,

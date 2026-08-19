@@ -10,6 +10,7 @@ export { MobileReadingShell } from "./components/MobileReadingShell";
 export { MobileSettingsPanel } from "./components/MobileSettingsPanel";
 export { MobileStoryViewport } from "./components/MobileStoryViewport";
 export { MobileTaskPanel } from "./components/MobileTaskPanel";
+export { XingniCultivationPanel } from "./xingni/XingniCultivationPanel";
 export {
   getMobileReadingTalentIcon,
   isMobileReadingTalentIconName,
@@ -23,6 +24,9 @@ export {
   ALL_CODEX_CATALOG_SLOTS,
   B1_NPC_CODEX_SLOTS,
   B1_NPC_CODEX_TOTAL,
+  DARK_MOON_CODEX_CATALOG_SLOTS,
+  XINGNI_CODEX_CATALOG_SLOTS,
+  getCodexCatalogSlots,
   type CodexCatalogSlotType,
   type CodexCatalogSlot,
 } from "./codexCatalog";

@@ -30,6 +30,8 @@ test.describe("Admin API integration", () => {
       "/api/admin/funnel?range=7d",
       "/api/admin/feedback-insights?range=7d",
       "/api/admin/ai-insights?range=7d",
+      "/api/admin/ai-management",
+      "/api/admin/ai-management/usage?days=7",
     ];
     for (const path of targets) {
       const res = await request.get(path);
@@ -39,6 +41,8 @@ test.describe("Admin API integration", () => {
     expect(aiPost.status()).toBe(403);
     const rebuildPost = await request.post("/api/admin/rebuild-daily?days=1");
     expect(rebuildPost.status()).toBe(403);
+    expect((await request.post("/api/admin/ai-management", { data: {} })).status()).toBe(403);
+    expect((await request.put("/api/admin/ai-management/routes", { data: {} })).status()).toBe(403);
 
     const cronPost = await request.post("/api/admin/cron/rebuild-daily?days=1", {
       headers: { "x-cron-secret": process.env.ADMIN_PASSWORD ?? "wrong" },
@@ -79,6 +83,8 @@ test.describe("Admin API integration", () => {
       "/api/admin/system-health",
       "/api/admin/users?limit=5",
       "/api/admin/audit-logs?limit=5",
+      "/api/admin/ai-management",
+      "/api/admin/ai-management/usage?days=7",
     ];
     for (const path of backofficeTargets) {
       const res = await request.get(path, {
@@ -155,4 +161,3 @@ test.describe("Admin API integration", () => {
     expect(rebuildBody).toHaveProperty("degraded");
   });
 });
-

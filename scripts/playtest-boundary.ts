@@ -29,8 +29,9 @@ import path from "node:path";
 
 const PLAYTEST_BASE_URL = process.env.PLAYTEST_BASE_URL ?? "http://localhost:666";
 const LLM_TIMEOUT_MS = Number(process.env.PLAYTEST_LLM_TIMEOUT_MS ?? "90000");
-const LOG_DIR = "logs";
-const REPORT_DIR = "docs/eval";
+const PLAYTEST_RUN_ID = new Date().toISOString().replace(/[:.]/g, "-");
+const REPORT_DIR = `.runtime-data/eval/playtest-boundary-${PLAYTEST_RUN_ID}`;
+const LOG_DIR = REPORT_DIR;
 
 /** 每局最大步数 —— 跑到结局/死亡/true softlock 为止 */
 const MAX_STEPS = 1000;

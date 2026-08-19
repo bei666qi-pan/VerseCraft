@@ -63,7 +63,7 @@ export function normalizeUsage(raw: unknown): TokenUsage | null {
 }
 
 /**
- * Parse one SSE `data:` JSON payload from OpenAI-compatible streams (e.g. one-api / upstream chat).
+ * Parse one SSE `data:` JSON payload from OpenAI-compatible upstream streams.
  */
 export function parseOpenAiLikeStreamData(data: string): OpenAiStreamFrame | null {
   const trimmed = data.trim();

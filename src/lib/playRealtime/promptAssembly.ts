@@ -14,12 +14,14 @@ import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
 import { buildStyleGuidePacketBlock, buildDynamicPlayerDmSystemSuffix, estimatePromptTokens, getPlayerDmPromptVersion, stablePromptHash } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { buildNpcProactiveGrantNarrativeBlock } from "@/lib/tasks/taskV2";
 import { build7FConspiracyNarrativeBlock } from "@/lib/revive/conspiracy";
-import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
-import { buildDirectorHintBlock } from "@/lib/langgraph/directorHintBuilder";
-import type { WorldEngineStructuredDelta } from "@/lib/worldEngine/contracts";
-import type { WorldDirectorState } from "@/lib/worldEngine/directorState";
-import { loadDueDirectorAgenda, loadRecentNpcActions, loadRecentBranchSeedsAndWarnings, loadLanggraphHintBlock, loadRecentPlayerHooks, type DirectorAgendaLoadResult } from "@/lib/worldEngine/agenda";
 import { resolveWorldDirectorConfig } from "@/lib/worldEngine/config";
+import { loadCommittedDirectorHintForWriter } from "@/lib/worldEngine/writerHintConsumer";
+import {
+  DARK_MOON_MAP_ID,
+  DARK_MOON_WORLD_ID,
+  QINGSHI_MAP_ID,
+  XINGNI_WORLD_ID,
+} from "@/lib/worlds/types";
 import { resolveSocialWorldConfig } from "@/lib/socialWorld/config";
 import { loadDueSocialEventsForPrompt } from "@/lib/socialWorld/persistence";
 import { loadSocialWorldHintForPrompt } from "@/lib/socialWorld/prompt";
@@ -45,7 +47,8 @@ import {
   buildNarrativeContinuityPacketBlock,
   buildNarrativeStyleBiblePacketBlock,
 } from "@/lib/playRealtime/narrativeStylePackets";
-import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
+import { buildPovPacketBlock, buildThirdPersonLimitedPovPacketBlock } from "@/lib/playRealtime/povPackets";
+import { buildXingniRuntimePacket, getXingniPromptVersion } from "@/lib/worlds/xingni/narrative";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
 import { buildProtagonistAnchorPacketBlock } from "@/lib/playRealtime/protagonistAnchorPackets";
 import { resolveNarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
@@ -310,16 +313,14 @@ export interface BuildPlayerChatMessagesResult {
     socialEventsProjected: number;
     socialProjectionSkippedReason: string;
   };
-  injectedDirectorAgendaIds: number[];
+  directorHintIdsForReceipt: string[];
   injectedSocialEventIds: string[];
-  dueDirectorAgendaForPrompt: ReturnType<typeof loadDueDirectorAgenda> extends Promise<infer T> ? T : never;
   playerEchoFirstEncounterPlan: ReturnType<typeof computeNpcFirstEncounterEchoPlan>;
   allEpistemicFactsForPrompt: KnowledgeFact[];
   presentNpcIdsForEpistemic: string[];
   nowIsoForEpistemic: string;
   maxRevealRankForMemory: number;
   epistemicProfileForPrompt: NpcEpistemicProfile | null;
-  directorDigestForPrompt: unknown;
   socialWorldConfig: ReturnType<typeof resolveSocialWorldConfig>;
   worldDirectorConfig: ReturnType<typeof resolveWorldDirectorConfig>;
 }
@@ -389,6 +390,8 @@ export async function buildPlayerChatMessages(
   let memoryBlock = ctx.memoryBlock;
   let runtimePacketChars = ctx.runtimePacketChars;
   let runtimePacketTokenEstimate = ctx.runtimePacketTokenEstimate;
+  const clientStateRecord = asPlainRecordForEcho(clientState);
+  const isXingni = clientStateRecord?.worldId === "xingni_taichu";
 
   const serviceState = (() => {
     const base = createDefaultB1ServiceState();
@@ -409,7 +412,7 @@ export async function buildPlayerChatMessages(
     };
   })();
 
-  const serviceContextBlock = buildB1ServiceContextBlock({
+  const serviceContextBlock = isXingni ? "" : buildB1ServiceContextBlock({
     playerLocation: guessPlayerLocationFromContext(playerContext),
     playerContext,
     serviceState,
@@ -434,91 +437,33 @@ export async function buildPlayerChatMessages(
       : "";
   const worldDirectorConfig = resolveWorldDirectorConfig();
   const socialWorldConfig = resolveSocialWorldConfig();
-  const directorDigestForPrompt =
-    clientState && typeof clientState === "object" && !Array.isArray(clientState)
-      ? ((clientState as any).directorDigest ?? null)
-      : null;
-  const dueDirectorAgendaPromise =
-    sessionId && worldDirectorConfig.hintInjectionEnabled
-      ? loadDueDirectorAgenda({
-          sessionId,
-          turnIndex: totalRounds,
-          limit: worldDirectorConfig.maxDueHints,
-          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
-        }).catch((): DirectorAgendaLoadResult => ({
-          items: [],
-          enforcerRejectedCount: 0,
-          enforcerRejectionReasons: [],
-        }))
-      : Promise.resolve({
-          items: [],
-          enforcerRejectedCount: 0,
-          enforcerRejectionReasons: [],
-        } as DirectorAgendaLoadResult);
-  const recentNpcActionsPromise =
-    sessionId && worldDirectorConfig.hintInjectionEnabled
-      ? loadRecentNpcActions({
-          sessionId,
-          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
-        }).catch(() => [])
-      : Promise.resolve([]);
-  const branchSeedsAndWarningsPromise =
-    sessionId && worldDirectorConfig.hintInjectionEnabled
-      ? loadRecentBranchSeedsAndWarnings({
-          sessionId,
-          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
-        }).catch(() => ({ seeds: [], warnings: [] }))
-      : Promise.resolve({ seeds: [], warnings: [] });
-  const playerHooksPromise =
-    sessionId && worldDirectorConfig.hintInjectionEnabled
-      ? loadRecentPlayerHooks({
-          sessionId,
-          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
-        }).catch(() => [])
-      : Promise.resolve([]);
-  const langgraphHintBlockPromise =
-    sessionId && worldDirectorConfig.enableLangGraph
-      ? loadLanggraphHintBlock({
-          sessionId,
-          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
-        }).catch(() => null)
-      : Promise.resolve(null);
+  const runtimeScope = {
+    worldId: isXingni ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID,
+    mapId: isXingni ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID,
+    sessionId: sessionId ?? "",
+  } as const;
+  const writerDirectorHintPromise = sessionId && worldDirectorConfig.hintInjectionEnabled
+    ? loadCommittedDirectorHintForWriter({
+        scope: runtimeScope,
+        turnIndex: totalRounds,
+        timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
+      }).catch(() => null)
+    : Promise.resolve(null);
   const socialWorldHintPromise = loadSocialWorldHintForPrompt({
     sessionId,
     nowTurn: totalRounds,
     loadDueSocialEventsForPrompt,
-    enabled: socialWorldConfig.promptInjectionEnabled,
+    enabled: !isXingni && socialWorldConfig.promptInjectionEnabled,
     timeoutMs: socialWorldConfig.queryTimeoutMs,
     budget: socialWorldConfig.budget,
   });
-  let dueDirectorAgendaForPrompt: Awaited<typeof dueDirectorAgendaPromise> = {
-    items: [],
-    enforcerRejectedCount: 0,
-    enforcerRejectionReasons: [],
-  };
-  let injectedDirectorAgendaIds: number[] = [];
-  let recentNpcActionsForPrompt: Awaited<typeof recentNpcActionsPromise> = [];
-  let recentBranchSeedsAndWarnings: Awaited<typeof branchSeedsAndWarningsPromise> = { seeds: [], warnings: [] };
-  let recentPlayerHooks: Awaited<typeof playerHooksPromise> = [];
-  let langgraphHintBlockFromDb: string | null = null;
-
-  const [, , dueDirectorAgendaItems, socialWorldHintForPrompt, recentNpcActions, branchSeedsWarnings, playerHooks, langgraphHintBlockResolved] = await Promise.all([
+  const [, , writerDirectorHint, socialWorldHintForPrompt] = await Promise.all([
     runControlPreflightP,
     loreRetrievalP,
-    dueDirectorAgendaPromise,
+    writerDirectorHintPromise,
     socialWorldHintPromise,
-    recentNpcActionsPromise,
-    branchSeedsAndWarningsPromise,
-    playerHooksPromise,
-    langgraphHintBlockPromise,
   ]);
-  dueDirectorAgendaForPrompt = dueDirectorAgendaItems;
-  injectedDirectorAgendaIds = dueDirectorAgendaItems.items.map((item) => item.id).filter((id) => Number.isFinite(id));
-  recentNpcActionsForPrompt = recentNpcActions;
-  recentBranchSeedsAndWarnings = branchSeedsWarnings;
-  recentPlayerHooks = playerHooks;
-  langgraphHintBlockFromDb = langgraphHintBlockResolved;
-  void injectedDirectorAgendaIds; // used downstream by external callers after returning
+  const directorHintEnvelope = writerDirectorHint?.envelope ?? null;
   const socialWorldHintBlock = socialWorldHintForPrompt?.block ?? "";
   const injectedSocialEventIds = socialWorldHintForPrompt?.projectedEventIds ?? [];
   const socialProjectionTelemetry = {
@@ -537,95 +482,18 @@ export async function buildPlayerChatMessages(
       socialWorldHintForPrompt?.socialProjectionSkippedReason ??
       (socialWorldConfig.promptInjectionEnabled ? "query_failed" : "disabled"),
   };
-  const directorHintBlock = (() => {
-    try {
-      // LangGraph path: prefer the pre-built hint stored in the agenda snapshot
-      // (richer — contains phase, intent, pacing, key events, NPC actions, forbidden outcomes).
-      if (worldDirectorConfig.enableLangGraph) {
-        // If a LangGraph hint block was persisted, use it directly.
-        if (langgraphHintBlockFromDb) {
-          return langgraphHintBlockFromDb;
-        }
-
-        // Fallback: rebuild from available DB data (less rich, used when no
-        // LangGraph tick has run yet for this session).
-        const hasAgenda = dueDirectorAgendaForPrompt.items.length > 0;
-        const hasDigest = directorDigestForPrompt != null;
-        const hasPlan = hasAgenda || hasDigest;
-
-        if (!hasPlan) {
-          return "";
-        }
-
-        const structuredDelta = (
-          directorDigestForPrompt != null &&
-          typeof directorDigestForPrompt === "object" &&
-          !Array.isArray(directorDigestForPrompt)
-            ? (directorDigestForPrompt as WorldEngineStructuredDelta)
-            : null
-        );
-
-        const directorState: WorldDirectorState = {
-          sessionId: sessionId ?? "",
-          userId,
-          turnIndex: totalRounds,
-          phase: structuredDelta?.current_phase ?? "quiet",
-          pacing: {
-            tension: structuredDelta?.pacing_assessment?.tension ?? 0.3,
-            mystery: structuredDelta?.pacing_assessment?.mystery ?? 0.5,
-            fatigue: structuredDelta?.pacing_assessment?.fatigue ?? 0.2,
-            progress: structuredDelta?.pacing_assessment?.progress ?? 0.3,
-            agency_health: structuredDelta?.pacing_assessment?.agency_health ?? 0.75,
-            reveal_pressure: structuredDelta?.pacing_assessment?.reveal_pressure ?? 0.25,
-          },
-          recentDirectorIntent: structuredDelta?.director_intent ?? null,
-          worldRevision: null,
-        };
-
-        return buildDirectorHintBlock({
-          hasPlan: true,
-          planConfidence: "normal",
-          structuredDelta,
-          directorState,
-        });
-      }
-
-      // Legacy path: existing behavior unchanged
-      return buildServerDirectorHintBlock(
-        directorDigestForPrompt,
-        dueDirectorAgendaForPrompt.items.map((item) => ({
-          id: item.id,
-          eventCode: item.eventCode,
-          title: item.title,
-          injectionHint: item.injectionHint,
-          triggerConditions: [],
-          agencyConstraints: item.agencyConstraints,
-          forbiddenOutcomes: item.forbiddenOutcomes,
-          salience: item.salience,
-          revealPolicy: item.revealPolicy,
-        })),
-        {
-          directorIntent: dueDirectorAgendaForPrompt.directorIntent,
-          currentPhase: dueDirectorAgendaForPrompt.currentPhase,
-          pacingSummary: dueDirectorAgendaForPrompt.pacingSummary,
-          socialWorldHintBlock,
-          npcActions: recentNpcActionsForPrompt,
-          storyBranchSeeds: recentBranchSeedsAndWarnings.seeds,
-          consistencyWarnings: recentBranchSeedsAndWarnings.warnings,
-          playerPrivateHooks: recentPlayerHooks,
-        }
-      );
-    } catch {
-      return "";
-    }
-  })();
+  const directorHintBlock = writerDirectorHint?.block ?? "";
   ttftProfile.controlPreflightMs =
     typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
   ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
 
   const nowIsoForEpistemic = new Date().toISOString();
-  const playerLocForEpistemic = guessPlayerLocationFromContext(playerContext);
-  const presentNpcIdsForEpistemic = extractPresentNpcIds(playerContext, playerLocForEpistemic);
+  const playerLocForEpistemic = isXingni
+    ? String(clientStateRecord?.playerLocation ?? "QS_GUOYAN_INN")
+    : guessPlayerLocationFromContext(playerContext);
+  const presentNpcIdsForEpistemic = isXingni
+    ? (Array.isArray(clientStateRecord?.presentNpcIds) ? clientStateRecord.presentNpcIds.filter((id): id is string => typeof id === "string").slice(0, 32) : [])
+    : extractPresentNpcIds(playerContext, playerLocForEpistemic);
   const signalsForEpistemicReveal = parsePlayerWorldSignals(playerContext, playerLocForEpistemic);
   const maxRevealRankForMemory = computeMaxRevealRankFromSignals(signalsForEpistemicReveal);
 
@@ -644,7 +512,7 @@ export async function buildPlayerChatMessages(
    * - 输入安全、协议守卫、npcConsistencyBoundary（compact）仍在 core prompt 里
    * - 该分支主要影响"叙事一致性/记忆精度"，不负责内容安全与硬裁决
    */
-  const shouldResolveFocusNpcForPrompt =
+  const shouldResolveFocusNpcForPrompt = !isXingni &&
     !shouldApplyFirstActionConstraint && (!laneSideEffectPlan.compactPrompt || laneSideEffectPlan.requireFullEpistemic);
   const shouldRunFullEpistemicForPrompt =
     shouldResolveFocusNpcForPrompt &&
@@ -653,7 +521,7 @@ export async function buildPlayerChatMessages(
   if (shouldRunFullEpistemicForPrompt) {
     const loreSlice = runtimeLorePacket ? mergeLorePacketSlices(runtimeLorePacket) : [];
     const fromLore = loreFactsToKnowledgeFacts(loreSlice.slice(0, 96), nowIsoForEpistemic);
-    const fromSession = sessionMemoryRowToKnowledgeFacts(sessionMemory, nowIsoForEpistemic);
+    const fromSession = isXingni ? [] : sessionMemoryRowToKnowledgeFacts(sessionMemory, nowIsoForEpistemic);
     const mergedFacts = new Map<string, KnowledgeFact>();
     for (const f of [...fromLore, ...fromSession]) mergedFacts.set(f.id, f);
     allEpistemicFactsForPrompt = [...mergedFacts.values()];
@@ -785,7 +653,7 @@ export async function buildPlayerChatMessages(
         })
       : null;
   const playerEchoPromptBlock =
-    verseRollout.enablePlayerEchoCanon && verseRollout.enablePlayerEchoPromptPacket
+    !isXingni && verseRollout.enablePlayerEchoCanon && verseRollout.enablePlayerEchoPromptPacket
       ? buildPlayerEchoPromptBlock(playerEchoSelectedFragments, playerEchoFirstEncounterPlan)
       : "";
   const playerEchoPacketChars = playerEchoPromptBlock.length;
@@ -859,10 +727,10 @@ export async function buildPlayerChatMessages(
   const hasEpistemicAugmentation =
     Boolean(epistemicAlertAugmentation) || Boolean(epistemicResiduePlan.augmentationBlock);
 
-  const controlAndLoreAugmentation = [
+  const controlAndLoreAugmentation = isXingni ? "" : [
     contextMode === "minimal" ? "" : controlAugmentation,
     contextMode === "minimal" ? "" : serviceContextBlock,
-    contextMode === "minimal" ? "" : directorHintBlock,
+    directorHintBlock,
     contextMode === "minimal" ? "" : npcTaskNarrativeBlock,
     conspiracyNarrativeBlock,
     ...(hasEpistemicAugmentation
@@ -886,7 +754,17 @@ export async function buildPlayerChatMessages(
     ? 900
     : Math.max(2_400, Math.min(4_000, Math.trunc(envNumber("AI_CHAT_RUNTIME_PACKET_MAX_CHARS", 3_200))));
 
-  const runtimePackets = shouldSkipRuntimePacketsForFastLane
+  const runtimePackets = isXingni
+    ? [
+        buildXingniRuntimePacket({
+          playerLocation: playerLocForEpistemic,
+          worldStateDigest: clientStateRecord?.worldStateDigest,
+          presentNpcIds: presentNpcIdsForEpistemic,
+          directorPacing: null,
+        }),
+        directorHintBlock,
+      ].filter(Boolean).join("\n\n")
+    : shouldSkipRuntimePacketsForFastLane
     ? ""
     : buildRuntimeContextPackets({
         playerContext,
@@ -919,7 +797,7 @@ export async function buildPlayerChatMessages(
       enableNpcSceneAuthority: epistemicRolloutFlags.enableNpcSceneAuthority,
     },
   });
-  const legacyStyleGuideBlock =
+  const legacyStyleGuideBlock = !isXingni &&
     verseRollout.enableStyleGuidePacket &&
     !(verseRollout.enablePromptPacketDedupV1 && verseRollout.enableNarrativeStyleBible) &&
     !useFastLaneCompactDynamicPackets
@@ -928,7 +806,7 @@ export async function buildPlayerChatMessages(
   // Minimal context mode: the compact stable prompt already covers style and continuity
   // guidance, so skip the heavier narrative style bible and continuity block buildup.
   const narrativeStyleBibleBlock =
-    verseRollout.enableNarrativeStyleBible && !useFastLaneCompactDynamicPackets && contextMode !== "minimal"
+    !isXingni && verseRollout.enableNarrativeStyleBible && !useFastLaneCompactDynamicPackets && contextMode !== "minimal"
       ? buildNarrativeStyleBiblePacketBlock({
           rawAction: turnRawAction ?? latestUserInput,
           maxChars: 1200,
@@ -937,7 +815,7 @@ export async function buildPlayerChatMessages(
       : "";
   // worldFactAuditBlock removed: redundant with validateNarrative + unsupportedFactDetector.
   const styleGuideBlock = legacyStyleGuideBlock;
-  const narrativeContinuityBlock = contextMode === "minimal"
+  const narrativeContinuityBlock = isXingni || contextMode === "minimal"
     ? ""
     : buildNarrativeContinuityPacketBlock({
         previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
@@ -945,7 +823,9 @@ export async function buildPlayerChatMessages(
         dice: turnDice,
         maxChars: 900,
       });
-  const povBlock = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
+  const povBlock = isXingni
+    ? buildThirdPersonLimitedPovPacketBlock({ maxChars: contextMode === "minimal" ? 220 : 420 })
+    : buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
   const npcGenderPronounBlock = buildNpcGenderPronounPacketBlock({
     focusNpcId: focusNpcForPrompt,
     presentNpcIds: presentNpcIdsForEpistemic,
@@ -1099,7 +979,7 @@ export async function buildPlayerChatMessages(
   }
 
   // turnModePolicyBlock removed: code controls maxTokens; narrative length is governed by narrativeBudgetBlock.
-  const protagonistAnchorBlock = verseRollout.enableProtagonistAnchorPacket && !useFastLaneCompactDynamicPackets
+  const protagonistAnchorBlock = !isXingni && verseRollout.enableProtagonistAnchorPacket && !useFastLaneCompactDynamicPackets
     ? buildProtagonistAnchorPacketBlock({
         playerContext: playerContextForPrompt,
         clientState,
@@ -1107,7 +987,7 @@ export async function buildPlayerChatMessages(
       })
     : "";
   // realityConstraintBlock trimmed to 2-3 essential lines: resolveDmTurn + validateNarrative are the real guardrails.
-  const realityConstraintBlock = verseRollout.enableRealityConstraintPacket && !useFastLaneCompactDynamicPackets
+  const realityConstraintBlock = !isXingni && verseRollout.enableRealityConstraintPacket && !useFastLaneCompactDynamicPackets
     ? buildRealityConstraintPacketBlock({
         playerContext: playerContextForPrompt,
         latestUserInput,
@@ -1128,7 +1008,7 @@ export async function buildPlayerChatMessages(
     }
   }
   const narrativeDirectiveBlock =
-    verseRollout.enableNarrativeDirective && !useFastLaneCompactDynamicPackets && directorBeatHint
+    !isXingni && verseRollout.enableNarrativeDirective && !useFastLaneCompactDynamicPackets && directorBeatHint
       ? buildNarrativeDirectiveBlock({
           lane: turnLaneDecision.lane,
           beatState: normalizeBeatState(directorBeatHint),
@@ -1139,7 +1019,7 @@ export async function buildPlayerChatMessages(
       : "";
   // NPC 回合状态：基于场景和对话历史计算每个在场 NPC 的对话阶段
   const npcTurnState = computeNpcTurnState(playerContext, rawChatMessages);
-  const npcTurnStateBlock = buildNpcTurnStatePacket(npcTurnState);
+  const npcTurnStateBlock = isXingni ? "" : buildNpcTurnStatePacket(npcTurnState);
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     languageInstruction,
     memoryBlock,
@@ -1153,10 +1033,10 @@ export async function buildPlayerChatMessages(
     narrativeBudgetBlock,
     playerEchoBlock: playerEchoPromptBlock,
     realityConstraintBlock,
-    npcConsistencyBoundaryBlock: useFastLaneCompactDynamicPackets ? "" : npcConsistencyBoundaryFinal.text,
+    npcConsistencyBoundaryBlock: isXingni || useFastLaneCompactDynamicPackets ? "" : npcConsistencyBoundaryFinal.text,
     narrativeContinuityBlock: useFastLaneCompactDynamicPackets ? "" : narrativeContinuityBlock,
     povBlock: useFastLaneCompactDynamicPackets ? "" : povBlock,
-    npcGenderPronounBlock: useFastLaneCompactDynamicPackets ? "" : npcGenderPronounBlock,
+    npcGenderPronounBlock: isXingni || useFastLaneCompactDynamicPackets ? "" : npcGenderPronounBlock,
     styleGuideBlock,
     narrativeDirectiveBlock,
     npcTurnStateBlock,
@@ -1179,7 +1059,7 @@ export async function buildPlayerChatMessages(
   // character / token estimates (chars / 4 是仓内统一约定)
   const stableCharLen = playerDmStablePrefix.length;
   const dynamicCharLen = dynamicSuffixFull.length;
-  const promptVersion = getPlayerDmPromptVersion();
+  const promptVersion = isXingni ? getXingniPromptVersion() : getPlayerDmPromptVersion();
   const promptStablePrefixHash = stablePromptHash(playerDmStablePrefix);
   const stableTokenEstimate = Math.ceil(stableCharLen / 4);
   const dynamicTokenEstimate = Math.ceil(dynamicCharLen / 4);
@@ -1271,16 +1151,14 @@ export async function buildPlayerChatMessages(
     epistemicAnomalyResult,
     epistemicResiduePlan,
     socialProjectionTelemetry,
-    injectedDirectorAgendaIds,
+    directorHintIdsForReceipt: directorHintEnvelope ? [directorHintEnvelope.hintId] : [],
     injectedSocialEventIds,
-    dueDirectorAgendaForPrompt,
     playerEchoFirstEncounterPlan,
     allEpistemicFactsForPrompt,
     presentNpcIdsForEpistemic,
     nowIsoForEpistemic,
     maxRevealRankForMemory,
     epistemicProfileForPrompt,
-    directorDigestForPrompt,
     socialWorldConfig,
     worldDirectorConfig,
     totalSystemPromptChars,

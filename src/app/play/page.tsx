@@ -35,6 +35,8 @@ import {
   MobileSettingsPanel,
   MobileStoryViewport,
   MobileTaskPanel,
+  XingniCultivationPanel,
+  getCodexCatalogSlots,
   getMobileCodexUnreadCount,
   type MobileOptionsRegenStage,
 } from "@/features/play/mobileReading";
@@ -116,6 +118,10 @@ import { parseBackendWaitStage, type PlayWaitUxStage } from "@/features/play/wai
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
+import { XINGNI_WORLD_ID } from "@/lib/worlds/types";
+import { createInitialXingniState } from "@/lib/worlds/xingni/progression";
+import { QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
+import { getNpcLocationAt } from "@/lib/worlds/xingni/qingshiProductionContent";
 import type { PlaySemanticWaitingKind } from "@/features/play/components/PlaySemanticWaitingHint";
 import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, shouldAllowDoomline } from "@/features/play/endgame/endgame";
 import { FinalChoicePanel } from "@/features/play/endings/FinalChoicePanel";
@@ -437,7 +443,7 @@ function guessSemanticWaitingKind(action: string): PlaySemanticWaitingKind {
   return "unknown";
 }
 
-const OPTIONS_REGEN_SYSTEM_PROMPT =
+const DARK_MOON_OPTIONS_REGEN_SYSTEM_PROMPT =
   "你是互动叙事平台的行动选项主笔助手。你必须只输出一个 JSON 对象，且只包含 options 键：" +
   '{"options":["...","...","...","..."]}。' +
   "强制：options 恰好 4 条、使用请求指定的玩家语言、第一人称、互不重复且差异明显；" +
@@ -445,6 +451,11 @@ const OPTIONS_REGEN_SYSTEM_PROMPT =
   "必须避免复用当前与最近选项（含换说法的近似动作），至少 2 条直接锚定最近叙事中的实体或场景；" +
   "禁止灵感手记/背包/任务/仓库/成就/武器栏/游戏指南/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
   "禁止解释、禁止 markdown、禁止额外字段、禁止推进剧情结论、禁止修改世界状态。";
+
+const XINGNI_OPTIONS_REGEN_SYSTEM_PROMPT =
+  "你是星逆·太初互动叙事的行动选项主笔助手。请严格以 JSON 格式输出，且只包含 options 键：" +
+  '{"options":["...","...","...","..."]}。' +
+  "options 恰好四条，使用第三人称贴身但省略主语的中文可执行动作，互不重复；必须锚定当前青石县登记地点、相邻地点、固定 NPC 或服务，不得使用第一人称，不得编造地图、出口、人物、功法、物品或战果；禁止解释、markdown、额外字段及状态修改。";
 
 function collectNamedLines(raw: unknown, fallbackPrefix: string): string[] {
   if (!Array.isArray(raw)) return [];
@@ -457,6 +468,32 @@ function collectNamedLines(raw: unknown, fallbackPrefix: string): string[] {
       return typeof name === "string" && name.trim().length > 0
         ? `${fallbackPrefix}${name.trim()}`
         : "";
+    })
+    .filter((line): line is string => line.length > 0)
+    .slice(0, 5);
+}
+
+function collectRelationshipLines(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (!item || typeof item !== "object" || Array.isArray(item)) return "";
+      const row = item as Record<string, unknown>;
+      const npc = [row.name, row.npcName, row.npc_name, row.npcId, row.npc_id, row.id]
+        .find((value) => typeof value === "string" && value.trim().length > 0);
+      const deltaRaw = row.delta ?? row.change ?? row.value_delta ?? row.relation_delta;
+      const delta = typeof deltaRaw === "number" && Number.isFinite(deltaRaw)
+        ? `${deltaRaw >= 0 ? "+" : ""}${deltaRaw}`
+        : "";
+      const relation = [row.relation, row.type, row.kind]
+        .find((value) => typeof value === "string" && value.trim().length > 0);
+      const detail = [
+        typeof npc === "string" ? npc.trim() : "",
+        typeof relation === "string" ? relation.trim() : "",
+        delta,
+      ].filter(Boolean).join(" · ");
+      return detail ? `关系变化：${detail}` : "";
     })
     .filter((line): line is string => line.length > 0)
     .slice(0, 5);
@@ -510,6 +547,9 @@ function PlayContent() {
   const isGuest = useGameStore((s) => s.isGuest ?? false);
   const guestId = useGameStore((s) => s.guestId ?? null);
   const activeMenu = useGameStore((s) => s.activeMenu);
+  const worldId = useGameStore((s) => s.worldId);
+  const worldState = useGameStore((s) => s.worldState);
+  const isXingni = worldId === XINGNI_WORLD_ID;
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
 
   const rawStats = useGameStore((s) => s.stats) ?? FALLBACK_STATS;
@@ -580,6 +620,7 @@ function PlayContent() {
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const updateTask = useGameStore((s) => s.updateTask);
   const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
+  const applyXingniWorldState = useGameStore((s) => s.applyXingniWorldState);
   const setBgm = useGameStore((s) => s.setBgm);
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
   const applyMainThreatUpdates = useGameStore((s) => s.applyMainThreatUpdates);
@@ -606,9 +647,23 @@ function PlayContent() {
     [currentOptionsFromStore]
   );
 
+  const codexCatalogSlots = useMemo(() => getCodexCatalogSlots(worldId), [worldId]);
+  const codexDynamicNpcStates = useMemo(() => {
+    if (!isXingni || worldState?.kind !== "xingni_taichu") return dynamicNpcStates;
+    return Object.fromEntries(
+      QINGSHI_NPCS.map((npc) => [
+        npc.id,
+        {
+          currentLocation: getNpcLocationAt(npc.id, worldState.clock.hour) ?? npc.home,
+          isAlive: true,
+        },
+      ])
+    );
+  }, [dynamicNpcStates, isXingni, worldState]);
+
   const hasUnreadCodex = useMemo(
-    () => (codex && typeof codex === "object" ? getMobileCodexUnreadCount(codex, viewedCodexIds) > 0 : false),
-    [codex, viewedCodexIds]
+    () => (codex && typeof codex === "object" ? getMobileCodexUnreadCount(codex, viewedCodexIds, codexCatalogSlots) > 0 : false),
+    [codex, codexCatalogSlots, viewedCodexIds]
   );
 
   const hasUnviewedTaskUpdates = useMemo(() => taskUnviewedCount > 0, [taskUnviewedCount]);
@@ -664,13 +719,13 @@ function PlayContent() {
   }>({ enabled: false, options: [], mapping: {} });
   const persistedProfessionChoice = useMemo(
     () =>
-      buildPersistedProfessionCertificationChoice({
+      isXingni ? { options: [], mapping: {} as Record<string, ProfessionId> } : buildPersistedProfessionCertificationChoice({
         playerLocation,
         hasMetProfessionCertifier: Boolean(hasMetProfessionCertifier),
         currentProfession: professionState?.currentProfession,
         eligibilityByProfession: professionState?.eligibilityByProfession,
       }),
-    [hasMetProfessionCertifier, playerLocation, professionState]
+    [hasMetProfessionCertifier, isXingni, playerLocation, professionState]
   );
   const chapterRuntime = useChapterRuntime();
   const [chapterPageTurn, setChapterPageTurn] = useState<ChapterPageTurnDirection | null>(null);
@@ -1102,7 +1157,7 @@ function PlayContent() {
   }, [streamPhase, tailAlignKey, onTailDrainComplete]);
 
   const day = time.day ?? 0;
-  const isDarkMoon = day >= 3 && day < 10;
+  const isDarkMoon = !isXingni && day >= 3 && day < 10;
   const isLowSanity = (stats?.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted, guestId ?? "guest_play", "/play");
   usePresenceHeartbeat({
@@ -1574,9 +1629,9 @@ function PlayContent() {
   // 低频恐怖 drone 只属于 /play：进入时启动、离开时淡出。
   // 首页/序章不再触发它，杜绝泄漏到首页的低沉嗡鸣。
   useEffect(() => {
-    startAmbientDrone();
+    if (!isXingni) startAmbientDrone();
     return () => stopAmbientDrone();
-  }, []);
+  }, [isXingni]);
 
   useEffect(() => {
     setMasterVolume(volume);
@@ -1591,15 +1646,15 @@ function PlayContent() {
   );
 
   useEffect(() => {
-    if (!audioMuted) updateSanityFilter(sanity);
-  }, [sanity, audioMuted]);
+    if (!audioMuted && !isXingni) updateSanityFilter(sanity);
+  }, [sanity, audioMuted, isXingni]);
 
   useEffect(() => {
-    if (!audioMuted) setDarkMoonMode(isDarkMoon);
-  }, [isDarkMoon, audioMuted]);
+    if (!audioMuted) setDarkMoonMode(!isXingni && isDarkMoon);
+  }, [isDarkMoon, audioMuted, isXingni]);
 
   useEffect(() => {
-    if (sanity <= 0) {
+    if (!isXingni && sanity <= 0) {
       const current = useGameStore.getState().endingState;
       if (current?.phase !== "settlement_ready") {
         const nextEnding = evaluateEndingAfterTurn({
@@ -1615,7 +1670,7 @@ function PlayContent() {
         }
       }
     }
-  }, [emitEndingTelemetryEvent, sanity, evaluateEndingAfterTurn]);
+  }, [emitEndingTelemetryEvent, sanity, evaluateEndingAfterTurn, isXingni]);
 
   useEffect(() => {
     if (!showDarkMoonOverlay) return;
@@ -1637,13 +1692,13 @@ function PlayContent() {
 
   // 终局触发后：等待当前回合完全结束，再发起一次系统回合请求生成结局文案。
   useEffect(() => {
-    if (!endgameState.awaitingEnding) return;
+    if (isXingni || !endgameState.awaitingEnding) return;
     if (streamPhase !== "idle") return;
     if (sendActionInFlightRef.current) return;
     const ending = useGameStore.getState().endingState;
     if (ending?.phase && ending.phase !== "playing") return;
     void sendActionRef.current(ENDGAME_SYSTEM_PROMPT, true, false, true);
-  }, [endgameState.awaitingEnding, streamPhase, ENDGAME_SYSTEM_PROMPT]);
+  }, [endgameState.awaitingEnding, streamPhase, ENDGAME_SYSTEM_PROMPT, isXingni]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -1670,7 +1725,7 @@ function PlayContent() {
     hasTriggeredOpening.current = true;
     openingAwaitingAssistantRef.current = true;
     openingStartedAtRef.current = Date.now();
-    void sendActionRef.current(getOpeningSystemPrompt(useGameStore.getState().language), true, false, true);
+    void sendActionRef.current(getOpeningSystemPrompt(useGameStore.getState().language, useGameStore.getState().worldId), true, false, true);
   }, [isHydrated, isChatBusy]);
 
   /** 成功拿到选项后清掉【开局】类提示，避免与正常对局并存 */
@@ -1716,7 +1771,7 @@ function PlayContent() {
           openingAwaitingAssistantRef.current = false;
           void requestFreshOptions("opening_fallback");
         } else {
-          void sendActionRef.current(getOpeningSystemPrompt(useGameStore.getState().language), true, false, true);
+          void sendActionRef.current(getOpeningSystemPrompt(useGameStore.getState().language, useGameStore.getState().worldId), true, false, true);
         }
         return;
       }
@@ -2493,7 +2548,7 @@ function PlayContent() {
               ...userContextMessages,
             ]
           : [
-              { role: "system", content: OPTIONS_REGEN_SYSTEM_PROMPT },
+              { role: "system", content: isXingni ? XINGNI_OPTIONS_REGEN_SYSTEM_PROMPT : DARK_MOON_OPTIONS_REGEN_SYSTEM_PROMPT },
               {
                 role: "user",
                 content: [
@@ -4207,7 +4262,7 @@ function PlayContent() {
     try {
       const autoEntries = extractCodexMentionsFromDmRecord(
         { ...(parsed as Record<string, unknown>), narrative: narrativeToPush },
-        { maxMatches: 10 }
+        { maxMatches: 10, worldId }
       );
       if (autoEntries.length > 0) {
         const curCodex = useGameStore.getState().codex ?? {};
@@ -4541,6 +4596,13 @@ function PlayContent() {
     if (typeof parsed.player_location === "string" && parsed.player_location.length > 0) {
       setPlayerLocation(parsed.player_location);
     }
+    if (
+      parsed.world_delta?.worldId === "xingni_taichu" &&
+      parsed.world_delta?.accepted === true &&
+      parsed.world_delta?.resolvedState?.kind === "xingni_taichu"
+    ) {
+      applyXingniWorldState(parsed.world_delta.resolvedState);
+    }
 
     const nextLocationForBgm =
       typeof parsed.player_location === "string" && parsed.player_location.length > 0
@@ -4557,14 +4619,14 @@ function PlayContent() {
     });
     setBgm(bgmSelection.track);
 
-    // Recompute profession eligibility and issue short certification trials when gates are met.
-    useGameStore.getState().refreshProfessionState();
+    // 暗月职业不进入星逆运行时。
+    if (!isXingni) useGameStore.getState().refreshProfessionState();
 
     // ---- 单职业认证触发（签发者NPC + 1F + 好感>=0 + 当前无职业）----
     // 设计：不解析叙事文本；仅依赖结构化回写（codex/relationship/npc_location_updates）做“遇到”近似。
     // 修复：签发者不再硬编码 N-010——五个职业分属 N-008/N-011/N-014 三位签发者，统一从注册表取值，
     // 避免“职业A的认证进度却被职业B的签发者好感/相遇状态把关”的矛盾。
-    {
+    if (!isXingni) {
       const currentLoc =
         typeof parsed.player_location === "string" && parsed.player_location.trim().length > 0
           ? parsed.player_location.trim()
@@ -4724,10 +4786,10 @@ function PlayContent() {
             : undefined,
       });
       const nextTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
-      if (prevTime.day < 3 && nextTime.day === 3 && nextTime.hour === 0) {
+      if (!isXingni && prevTime.day < 3 && nextTime.day === 3 && nextTime.hour === 0) {
         setShowDarkMoonOverlay(true);
       }
-      if (nextTime.day >= 10) {
+      if (!isXingni && nextTime.day >= 10) {
         // 终局以“第10日0时”作为强制结局点；不在这里做扣理智/跳结算。
         const escapeStage = (() => {
           try {
@@ -4758,7 +4820,7 @@ function PlayContent() {
     }
 
     // Phase-4: 剧情导演层与突发事件队列推进（必须在真实状态写入完成后）
-    try {
+    if (!isXingni) try {
       useGameStore.getState().postTurnStoryDirectorUpdate({
         resolvedTurn: parsed,
         preTurnIndex: (stateBeforeProfessionTurn.logs ?? []).length,
@@ -4774,7 +4836,7 @@ function PlayContent() {
     }
 
     // Phase-5: 出口主线推进（必须在真实状态写入完成后）
-    try {
+    if (!isXingni) try {
       useGameStore.getState().advanceEscapeMainlineFromResolvedTurn({
         resolvedTurn: parsed,
         playerAction: trimmed,
@@ -4843,9 +4905,8 @@ function PlayContent() {
           ...collectNamedLines(parsed.awarded_warehouse_items, "入库："),
         ],
         lostLines: dmg > 0 ? [`精神承受了 ${dmg} 点损耗。`] : [],
-        relationshipLines: collectNamedLines(
-          (parsed as { relationship_updates?: unknown }).relationship_updates,
-          "关系变化："
+        relationshipLines: collectRelationshipLines(
+          (parsed as { relationship_updates?: unknown }).relationship_updates
         ),
         clueLines: [
           ...collectNamedLines((parsed as { clue_updates?: unknown }).clue_updates, "线索："),
@@ -4854,12 +4915,14 @@ function PlayContent() {
       });
     }
 
-    const endingAfterTurn = evaluateEndingAfterTurn({
-      resolvedTurn: parsed,
-      turnCount: (useGameStore.getState().logs ?? []).length,
-      finalNarrative: narrativeToPush,
-      lastAction: isSystemAction ? null : trimmed,
-    });
+    const endingAfterTurn = isXingni
+      ? useGameStore.getState().endingState
+      : evaluateEndingAfterTurn({
+          resolvedTurn: parsed,
+          turnCount: (useGameStore.getState().logs ?? []).length,
+          finalNarrative: narrativeToPush,
+          lastAction: isSystemAction ? null : trimmed,
+        });
     if (endingAfterTurn.eligibility) {
       emitEndingTelemetryEvent("ending_eligible_detected", {
         endingState: endingAfterTurn,
@@ -5161,20 +5224,21 @@ function PlayContent() {
     router.push("/settlement");
   }
 
-  const bottomNavActiveItem: "character" | "story" | "codex" | "settings" | "tasks" =
-    activeMenu === "character" || activeMenu === "codex" || activeMenu === "settings" || activeMenu === "tasks"
+  const bottomNavActiveItem: "character" | "story" | "codex" | "settings" | "tasks" | "map" =
+    activeMenu === "character" || activeMenu === "codex" || activeMenu === "settings" || activeMenu === "tasks" || activeMenu === "map"
       ? activeMenu
       : "story";
   const isCharacterPanelActive = activeMenu === "character";
   const isCodexPanelActive = activeMenu === "codex";
   const isSettingsPanelActive = activeMenu === "settings";
   const isTasksPanelActive = activeMenu === "tasks";
+  const isMapPanelActive = activeMenu === "map";
   const isStoryPanelActive = activeMenu === null;
-  const isOverlayPanelActive = isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive || isTasksPanelActive;
-  const isReviewingChapter = chapterRuntime.isReviewing && isStoryPanelActive;
-  const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
-  const chapterInteractionLocked = Boolean(pendingChapterEnd);
-  const mobileHeaderTitle = chapterRuntime.headerTitle;
+  const isOverlayPanelActive = isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive || isTasksPanelActive || isMapPanelActive;
+  const isReviewingChapter = !isXingni && chapterRuntime.isReviewing && isStoryPanelActive;
+  const pendingChapterEnd = !isXingni && isStoryPanelActive ? chapterRuntime.pending : null;
+  const chapterInteractionLocked = !isXingni && Boolean(pendingChapterEnd);
+  const mobileHeaderTitle = isXingni ? "星逆·太初 · 青石县" : chapterRuntime.headerTitle;
   const previousChapterId = chapterRuntime.displayedDefinition?.previousChapterId;
   const canNavigatePreviousChapter = Boolean(
     !chapterRuntime.isReviewing &&
@@ -5225,10 +5289,16 @@ function PlayContent() {
     setActiveMenu("character");
   }
 
+  function onOpenMapNav() {
+    playUIClick();
+    setOptionsExpanded(false);
+    setActiveMenu("map");
+  }
+
   function onFocusStoryNav() {
     playUIClick();
     setOptionsExpanded(false);
-    if (isStoryPanelActive && !chapterRuntime.isReviewing) {
+    if (!isXingni && isStoryPanelActive && !chapterRuntime.isReviewing) {
       setChapterNavigatorOpen(true);
       return;
     }
@@ -5266,9 +5336,9 @@ function PlayContent() {
   return (
     <MobileReadingShell hitEffectActive={hitEffectUntil > Date.now()}>
       <PlayAmbientOverlays
-        showDarkMoonOverlay={showDarkMoonOverlay}
-        showApocalypseOverlay={showApocalypseOverlay}
-        showIntrusionFlash={showIntrusionFlash}
+        showDarkMoonOverlay={!isXingni && showDarkMoonOverlay}
+        showApocalypseOverlay={!isXingni && showApocalypseOverlay}
+        showIntrusionFlash={!isXingni && showIntrusionFlash}
         hitEffectActive={hitEffectUntil > Date.now()}
         talentEffectType={talentEffectType}
       />
@@ -5355,7 +5425,7 @@ function PlayContent() {
                       plainOnlyLogIndexMin={streamLogsBaselineRef.current}
                       embeddedOpeningContent={
                         showPinnedOpeningNarrative && chapterRuntime.activeDefinition.order === 1
-                          ? getFixedOpeningNarrative(language)
+                          ? getFixedOpeningNarrative(language, worldId)
                           : null
                       }
                       semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
@@ -5409,10 +5479,10 @@ function PlayContent() {
                   </>
                 ) : (
                 <>
-              <ChapterProgressHint
+              {!isXingni ? <ChapterProgressHint
                 definition={chapterRuntime.activeDefinition}
                 progress={chapterRuntime.activeProgress}
-              />
+              /> : null}
               <MobileActionDock
                 inputMode={inputMode}
                 hasAnyGate={hasAnyGate}
@@ -5525,7 +5595,14 @@ function PlayContent() {
           {isOverlayPanelActive ? (
             <div className="absolute inset-0 z-20 h-full min-h-0 overflow-hidden bg-transparent">
               {isCharacterPanelActive ? (
-                <MobileCharacterPanel
+                isXingni && worldState?.kind === "xingni_taichu" ? (
+                  <XingniCultivationPanel
+                    currentLocation={playerLocation}
+                    state={worldState}
+                    busy={isChatBusy}
+                    onAction={(text) => useGameStore.getState().queueClientAction(text, true, "system")}
+                  />
+                ) : <MobileCharacterPanel
                   stats={stats}
                   historicalMaxSanity={historicalMaxSanity}
                   originium={originium}
@@ -5537,10 +5614,18 @@ function PlayContent() {
                   }}
                   escapeStage={escapeMainlineStage}
                 />
+              ) : isMapPanelActive && isXingni ? (
+                <XingniCultivationPanel
+                  currentLocation={playerLocation}
+                  state={worldState?.kind === "xingni_taichu" ? worldState : createInitialXingniState()}
+                  busy={isChatBusy}
+                  onAction={(text) => useGameStore.getState().queueClientAction(text, true, "system")}
+                />
               ) : isCodexPanelActive ? (
                 <MobileCodexPanel
+                  worldId={worldId}
                   codex={codex}
-                  dynamicNpcStates={dynamicNpcStates}
+                  dynamicNpcStates={codexDynamicNpcStates}
                   mainThreatByFloor={mainThreatByFloor}
                   playerLocation={playerLocation}
                   memorySpine={memorySpine}
@@ -5589,7 +5674,7 @@ function PlayContent() {
             </div>
           ) : null}
           <ChapterNavigator
-            open={chapterNavigatorOpen && isStoryPanelActive}
+            open={!isXingni && chapterNavigatorOpen && isStoryPanelActive}
             chapterState={chapterRuntime.chapterState}
             onClose={() => setChapterNavigatorOpen(false)}
             onReviewChapter={(chapterId) => {
@@ -5615,7 +5700,7 @@ function PlayContent() {
             }}
           />
           <ChapterEndSheet
-            open={Boolean(pendingChapterEnd)}
+            open={!isXingni && Boolean(pendingChapterEnd)}
             definition={pendingChapterEnd?.definition ?? null}
             chapterState={chapterRuntime.chapterState}
             summary={pendingChapterEnd?.summary ?? null}
@@ -5654,7 +5739,7 @@ function PlayContent() {
             }}
           />
           <ChapterPageTurnOverlay
-            active={chapterPageTurn !== null}
+            active={!isXingni && chapterPageTurn !== null}
             direction={chapterPageTurn ?? "next"}
           />
           <MobileBottomNav
@@ -5663,6 +5748,7 @@ function PlayContent() {
             onFocusStory={onFocusStoryNav}
             onOpenCodex={onOpenCodexNav}
             onOpenTasks={onOpenTasksNav}
+            onOpenMap={isXingni ? onOpenMapNav : undefined}
             onOpenSettings={onOpenSettingsNav}
             hasUnreadCodex={hasUnreadCodex}
             hasUnviewedTaskUpdates={hasUnviewedTaskUpdates}

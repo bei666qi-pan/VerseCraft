@@ -19,3 +19,16 @@ export function buildPovPacketBlock(args: { maxChars?: number }): string {
   return text.length <= max ? text : `${clamp(text, max - 1)}…`;
 }
 
+export function buildThirdPersonLimitedPovPacketBlock(args: { maxChars?: number }): string {
+  const packet = {
+    schema: "pov_packet_v1",
+    narrative_pov: "third_person_limited",
+    protagonist_reference: "角色姓名或他/她",
+    first_person_protagonist_forbidden: true,
+    npc_inner_mind_forbidden: true,
+    reminder: "只写主角能够观察、感受或合理推断的信息；不得切入 NPC 内心，不得把未揭露动机写成事实。",
+  };
+  const text = `## 【pov_packet】\n${JSON.stringify(packet)}`;
+  const max = Math.max(160, Math.min(800, args.maxChars ?? 420));
+  return text.length <= max ? text : `${clamp(text, max - 1)}…`;
+}

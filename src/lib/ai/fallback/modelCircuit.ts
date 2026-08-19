@@ -7,8 +7,8 @@ type Bucket = { failures: number; openedUntil: number };
 
 const modelState = new Map<string, Bucket>();
 
-function key(role: AiLogicalRole): string {
-  return role;
+function key(role: AiLogicalRole, scopeId?: string): string {
+  return scopeId ?? role;
 }
 
 function threshold(): number {
@@ -19,11 +19,12 @@ function cooldownMs(): number {
   return resolveAiEnv().circuitCooldownMs;
 }
 
-export function isModelCircuitOpen(role: AiLogicalRole, now = Date.now()): boolean {
-  const b = modelState.get(key(role));
+export function isModelCircuitOpen(role: AiLogicalRole, now = Date.now(), scopeId?: string): boolean {
+  const k = key(role, scopeId);
+  const b = modelState.get(k);
   if (!b) return false;
   if (now >= b.openedUntil) {
-    modelState.delete(key(role));
+    modelState.delete(k);
     return false;
   }
   return b.failures >= threshold();
@@ -32,25 +33,25 @@ export function isModelCircuitOpen(role: AiLogicalRole, now = Date.now()): boole
 export function recordModelSuccess(
   role: AiLogicalRole,
   provider: AiProviderId,
-  opts?: { providerScope?: "online" | "offline" }
+  opts?: { providerScope?: "online" | "offline"; serviceId?: string; modelId?: string }
 ): void {
-  modelState.delete(key(role));
-  recordProviderSuccess(provider, opts);
+  modelState.delete(key(role, opts?.modelId));
+  recordProviderSuccess(provider, { scope: opts?.providerScope, circuitScopeId: opts?.serviceId });
 }
 
 export function recordModelFailure(
   role: AiLogicalRole,
   provider: AiProviderId,
-  opts?: { providerScope?: "online" | "offline"; countProvider?: boolean }
+  opts?: { providerScope?: "online" | "offline"; countProvider?: boolean; serviceId?: string; modelId?: string }
 ): void {
-  const k = key(role);
+  const k = key(role, opts?.modelId);
   const prev = modelState.get(k) ?? { failures: 0, openedUntil: 0 };
   const failures = prev.failures + 1;
   const openedUntil =
     failures >= threshold() ? Date.now() + cooldownMs() : prev.openedUntil;
   modelState.set(k, { failures, openedUntil });
   if (opts?.countProvider !== false) {
-    recordProviderFailure(provider, { scope: opts?.providerScope });
+    recordProviderFailure(provider, { scope: opts?.providerScope, circuitScopeId: opts?.serviceId });
   }
 }
 

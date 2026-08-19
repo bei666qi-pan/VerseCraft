@@ -5,7 +5,7 @@
  * 所有新能力均通过独立灰度开关控制，关闭后旧 world director 路径不受影响。
  */
 
-import { envBoolean, envNumber } from "@/lib/config/envRaw";
+import { envBoolean, envEnum, envNumber } from "@/lib/config/envRaw";
 import type { ActorSimulationFlags } from "./types";
 
 // ============================================================
@@ -13,8 +13,8 @@ import type { ActorSimulationFlags } from "./types";
 // ============================================================
 
 const DEFAULTS: ActorSimulationFlags = {
-  enabled: false,
-  mode: "batch_shadow",
+  enabled: true,
+  mode: "batch_soft",
   maxActors: 3,
   horizonTurns: 2,
   totalTickBudgetMs: 30_000,
@@ -40,8 +40,11 @@ const DEFAULTS: ActorSimulationFlags = {
 export function resolveActorSimulationFlags(): ActorSimulationFlags {
   const enabled = envBoolean("VERSECRAFT_ENABLE_ACTOR_SIMULATION", DEFAULTS.enabled);
 
-  const rawMode = (process.env.VERSECRAFT_ACTOR_SIMULATION_MODE ?? "").trim().toLowerCase();
-  const mode = (["off", "batch_shadow", "batch_soft"] as const).find((m) => m === rawMode) ?? DEFAULTS.mode;
+  const mode = envEnum(
+    "VERSECRAFT_ACTOR_SIMULATION_MODE",
+    ["off", "batch_shadow", "batch_soft"] as const,
+    DEFAULTS.mode,
+  );
 
   const maxActors = envNumber("VERSECRAFT_ACTOR_SIMULATION_MAX_ACTORS", DEFAULTS.maxActors);
   const horizonTurns = envNumber("VERSECRAFT_ACTOR_SIMULATION_HORIZON_TURNS", DEFAULTS.horizonTurns);
@@ -52,9 +55,9 @@ export function resolveActorSimulationFlags(): ActorSimulationFlags {
   return {
     enabled,
     mode,
-    maxActors: Math.max(0, Math.min(5, maxActors)),
+    maxActors: Math.max(0, Math.min(3, maxActors)),
     horizonTurns: Math.max(1, Math.min(3, horizonTurns)),
-    totalTickBudgetMs: Math.max(5_000, Math.min(60_000, totalTickBudgetMs)),
+    totalTickBudgetMs: Math.max(5_000, Math.min(30_000, totalTickBudgetMs)),
     perActorTimeoutMs: Math.max(2_000, Math.min(20_000, perActorTimeoutMs)),
     maxActionsPerActor: Math.max(1, Math.min(5, maxActionsPerActor)),
   };

@@ -6,15 +6,16 @@ type Bucket = { failures: number; openedUntil: number };
 
 const state = new Map<string, Bucket>();
 
-function key(provider: AiProviderId): string {
-  return provider;
+function key(provider: AiProviderId, scopeId?: string): string {
+  return scopeId ? `${provider}:${scopeId}` : provider;
 }
 
-export function isCircuitOpen(provider: AiProviderId, now = Date.now()): boolean {
-  const b = state.get(key(provider));
+export function isCircuitOpen(provider: AiProviderId, now = Date.now(), scopeId?: string): boolean {
+  const k = key(provider, scopeId);
+  const b = state.get(k);
   if (!b) return false;
   if (now >= b.openedUntil) {
-    state.delete(key(provider));
+    state.delete(k);
     return false;
   }
   return b.failures >= resolveAiEnv().circuitFailureThreshold;
@@ -22,19 +23,19 @@ export function isCircuitOpen(provider: AiProviderId, now = Date.now()): boolean
 
 export function recordProviderSuccess(
   provider: AiProviderId,
-  opts?: { scope?: "online" | "offline" }
+  opts?: { scope?: "online" | "offline"; circuitScopeId?: string }
 ): void {
   void opts;
-  state.delete(key(provider));
+  state.delete(key(provider, opts?.circuitScopeId));
 }
 
 export function recordProviderFailure(
   provider: AiProviderId,
-  opts?: { scope?: "online" | "offline" }
+  opts?: { scope?: "online" | "offline"; circuitScopeId?: string }
 ): void {
   void opts;
   const env = resolveAiEnv();
-  const k = key(provider);
+  const k = key(provider, opts?.circuitScopeId);
   const prev = state.get(k) ?? { failures: 0, openedUntil: 0 };
   const failures = prev.failures + 1;
   const openedUntil =

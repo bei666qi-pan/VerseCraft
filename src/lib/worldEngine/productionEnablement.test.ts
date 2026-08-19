@@ -88,6 +88,9 @@ test("world director snapshot insert casts reused session parameter for PostgreS
   const snapshotEnd = engine.indexOf("const wr = await client.query", snapshotStart);
   const snapshotInsert = engine.slice(snapshotStart, snapshotEnd);
 
-  assert.match(snapshotInsert, /\$2::varchar/);
-  assert.match(snapshotInsert, /WHERE session_id = \$2::varchar/);
+  assert.match(snapshotInsert, /\$4::varchar/);
+  assert.match(
+    snapshotInsert,
+    /WHERE world_id = \$1::varchar AND map_id = \$2::varchar AND session_id = \$4::varchar/,
+  );
 });

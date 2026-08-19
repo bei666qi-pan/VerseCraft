@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { languageText } from "@/lib/i18n/gameDisplay";
-import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "../codexCatalog";
+import { XINGNI_WORLD_ID } from "@/lib/worlds/types";
+import { getCodexCatalogSlots, type CodexCatalogSlot } from "../codexCatalog";
 import {
   buildMobileCodexCardModels,
   buildMobileCodexDetail,
@@ -70,7 +71,7 @@ function CodexCard({
       onClick={() => {
         if (card.kind === "slot") onSelect(card.slot);
       }}
-      className={`relative h-[146px] w-[82px] shrink-0 overflow-visible rounded-[14px] border bg-vc-paper-bright text-left shadow-[0_6px_16px_rgba(73,63,51,0.09)] transition min-[420px]:h-[168px] min-[420px]:w-[92px] ${
+      className={`relative h-[146px] w-[82px] shrink-0 overflow-visible rounded-[14px] border bg-vc-paper-bright text-left shadow-[0_6px_16px_rgba(73,63,51,0.09)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent focus-visible:ring-offset-2 min-[420px]:h-[168px] min-[420px]:w-[92px] ${
         selected
           ? "border-vc-accent shadow-[0_10px_22px_rgba(47,116,106,0.14),0_0_0_2px_rgba(47,116,106,0.06)]"
           : "border-[#d8d1c6]"
@@ -254,7 +255,7 @@ function FilterPillGroup<T extends string>({
           aria-pressed={value === opt.value}
           data-testid={`${testId}-${opt.value}`}
           onClick={() => onChange(opt.value)}
-          className={`px-2.5 py-1 transition min-[420px]:px-3 min-[420px]:py-1.5 ${
+          className={`px-2.5 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-vc-accent min-[420px]:px-3 min-[420px]:py-1.5 ${
             value === opt.value ? "bg-vc-accent text-white" : "text-vc-ink-soft"
           }`}
         >
@@ -266,6 +267,7 @@ function FilterPillGroup<T extends string>({
 }
 
 export function MobileCodexPanel({
+  worldId,
   codex,
   dynamicNpcStates,
   mainThreatByFloor,
@@ -276,17 +278,21 @@ export function MobileCodexPanel({
 }: MobileCodexPanelProps) {
   const language = useGameStore((state) => state.language);
   const isEnglish = language === "en-US";
+  const isXingni = worldId === XINGNI_WORLD_ID;
+  const catalogSlots = useMemo(() => getCodexCatalogSlots(worldId), [worldId]);
   const currentFloor = useMemo(() => resolveMobileCodexCurrentFloor(playerLocation), [playerLocation]);
   const floorLabel = formatMobileCodexFloorLabel(currentFloor);
   const floorSlots = useMemo(
-    () =>
-      getMobileCodexSlotsForFloor({
-        codex,
-        dynamicNpcStates,
-        floorId: currentFloor,
-        mainThreatByFloor,
-      }),
-    [codex, currentFloor, dynamicNpcStates, mainThreatByFloor]
+    () => isXingni
+      ? [...catalogSlots]
+      : getMobileCodexSlotsForFloor({
+          codex,
+          dynamicNpcStates,
+          floorId: currentFloor,
+          mainThreatByFloor,
+          slots: catalogSlots,
+        }),
+    [catalogSlots, codex, currentFloor, dynamicNpcStates, isXingni, mainThreatByFloor]
   );
 
   const [typeFilter, setTypeFilter] = useState<MobileCodexTypeFilter>("all");
@@ -294,20 +300,22 @@ export function MobileCodexPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const trimmedQuery = searchQuery.trim();
   // 搜索时自动扩大到全部楼层：玩家输入关键字时期望"帮我找到它"，而不是被当前楼层限制住。
-  const effectiveFloorScope: MobileCodexFloorScope = trimmedQuery ? "all" : floorScope;
-  const scopedSlots = effectiveFloorScope === "all" ? ALL_CODEX_CATALOG_SLOTS : floorSlots;
+  const effectiveFloorScope: MobileCodexFloorScope = isXingni || trimmedQuery ? "all" : floorScope;
+  const effectiveTypeFilter: MobileCodexTypeFilter = isXingni ? "npc" : typeFilter;
+  const scopedSlots = effectiveFloorScope === "all" ? catalogSlots : floorSlots;
   const visibleSlots = useMemo(
-    () => filterMobileCodexSlotsByQuery(filterMobileCodexSlotsByType(scopedSlots, typeFilter), codex, trimmedQuery, language),
-    [scopedSlots, typeFilter, codex, trimmedQuery, language]
+    () => filterMobileCodexSlotsByQuery(filterMobileCodexSlotsByType(scopedSlots, effectiveTypeFilter), codex, trimmedQuery, language),
+    [scopedSlots, effectiveTypeFilter, codex, trimmedQuery, language]
   );
 
   const identifiedCount = getMobileCodexIdentifiedCount(codex, visibleSlots);
-  const globalIdentifiedCount = useMemo(() => getMobileCodexIdentifiedCount(codex, ALL_CODEX_CATALOG_SLOTS), [codex]);
+  const globalIdentifiedCount = useMemo(() => getMobileCodexIdentifiedCount(codex, catalogSlots), [catalogSlots, codex]);
   const cards = useMemo(
     () => buildMobileCodexCardModels(codex, visibleSlots, { dynamicNpcStates, viewedCodexIds }, language),
     [codex, dynamicNpcStates, visibleSlots, viewedCodexIds, language]
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const cardStripRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const next = resolveMobileCodexInitialSelection(codex, visibleSlots);
@@ -318,6 +326,16 @@ export function MobileCodexPanel({
   }, [codex, visibleSlots]);
 
   const selectedSlot = visibleSlots.find((slot) => slot.id === selectedId) ?? visibleSlots[0] ?? null;
+  useEffect(() => {
+    if (!selectedSlot || !cardStripRef.current) return;
+    const strip = cardStripRef.current;
+    const card = strip.querySelector<HTMLElement>(`[data-codex-id="${selectedSlot.id}"]`);
+    if (!card) return;
+    strip.scrollTo({
+      left: Math.max(0, card.offsetLeft - (strip.clientWidth - card.clientWidth) / 2),
+      behavior: "auto",
+    });
+  }, [selectedSlot]);
   const selectedIndex = selectedSlot ? Math.max(0, visibleSlots.findIndex((slot) => slot.id === selectedSlot.id)) : 0;
   const progressWidth =
     visibleSlots.length > 0 ? Math.max(18, ((selectedIndex + 1) / visibleSlots.length) * 100) : 0;
@@ -331,12 +349,14 @@ export function MobileCodexPanel({
     onViewCodexEntry?.(selectedSlot.id);
   }, [selectedSlot, codex, onViewCodexEntry]);
 
-  const scopeLabel = trimmedQuery
+  const scopeLabel = isXingni
+    ? languageText(language, "青石县", "Qingshi County")
+    : trimmedQuery
     ? languageText(language, "搜索结果", "Search results")
     : effectiveFloorScope === "all"
       ? languageText(language, "全部楼层", "All floors")
       : isEnglish ? floorLabel : `${floorLabel}${floorLabel.endsWith("F") ? "" : "层"}`;
-  const typeLabel = typeFilter === "npc" ? languageText(language, "人物", "people") : typeFilter === "anomaly" ? languageText(language, "异常", "anomalies") : languageText(language, "条目", "entries");
+  const typeLabel = effectiveTypeFilter === "npc" ? languageText(language, "人物", "people") : effectiveTypeFilter === "anomaly" ? languageText(language, "异常", "anomalies") : languageText(language, "条目", "entries");
   const countLine = trimmedQuery
     ? isEnglish ? `Results: ${visibleSlots.length} found` : `搜索结果：命中 ${visibleSlots.length} 条`
     : isEnglish ? `${scopeLabel} identified ${typeLabel}: ${identifiedCount} / ${visibleSlots.length}` : `${scopeLabel}已识别${typeLabel}：${identifiedCount} / ${visibleSlots.length}`;
@@ -358,31 +378,42 @@ export function MobileCodexPanel({
           data-testid="mobile-codex-global-count"
           className="vc-reading-serif shrink-0 text-[13px] leading-none text-vc-ink-soft min-[420px]:text-[15px]"
         >
-          {isEnglish ? `Collection ${globalIdentifiedCount} / ${ALL_CODEX_CATALOG_SLOTS.length}` : `总收藏 ${globalIdentifiedCount} / ${ALL_CODEX_CATALOG_SLOTS.length}`}
+          {isEnglish ? `Collection ${globalIdentifiedCount} / ${catalogSlots.length}` : `总收藏 ${globalIdentifiedCount} / ${catalogSlots.length}`}
         </span>
       </div>
 
       <div className="mt-2.5 flex shrink-0 flex-wrap items-center gap-1.5 px-1">
-        <FilterPillGroup
-          testId="mobile-codex-floor-scope"
-          value={effectiveFloorScope}
-          disabled={Boolean(trimmedQuery)}
-          onChange={setFloorScope}
-          options={[
-            { value: "current", label: isEnglish ? `This floor ${floorLabel}` : `本层 ${floorLabel}` },
-            { value: "all", label: languageText(language, "全部楼层", "All floors") },
-          ]}
-        />
-        <FilterPillGroup
-          testId="mobile-codex-type-filter"
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={[
-            { value: "all", label: languageText(language, "全部", "All") },
-            { value: "npc", label: languageText(language, "人物", "People") },
-            { value: "anomaly", label: languageText(language, "异常", "Anomalies") },
-          ]}
-        />
+        {isXingni ? (
+          <span
+            data-testid="mobile-codex-xingni-scope"
+            className="rounded-full border border-[#b9cec5] bg-[linear-gradient(135deg,rgba(232,246,242,0.95),rgba(247,240,211,0.88))] px-3 py-1 text-[12px] text-[#24685f] shadow-[0_3px_10px_rgba(47,116,106,0.08)] min-[420px]:text-[13px]"
+          >
+            {languageText(language, "青石县 · 八方人物志", "Qingshi County · People")}
+          </span>
+        ) : (
+          <>
+            <FilterPillGroup
+              testId="mobile-codex-floor-scope"
+              value={effectiveFloorScope}
+              disabled={Boolean(trimmedQuery)}
+              onChange={setFloorScope}
+              options={[
+                { value: "current", label: isEnglish ? `This floor ${floorLabel}` : `本层 ${floorLabel}` },
+                { value: "all", label: languageText(language, "全部楼层", "All floors") },
+              ]}
+            />
+            <FilterPillGroup
+              testId="mobile-codex-type-filter"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={[
+                { value: "all", label: languageText(language, "全部", "All") },
+                { value: "npc", label: languageText(language, "人物", "People") },
+                { value: "anomaly", label: languageText(language, "异常", "Anomalies") },
+              ]}
+            />
+          </>
+        )}
       </div>
 
       <div className="relative mt-2 shrink-0 px-1">
@@ -391,7 +422,9 @@ export function MobileCodexPanel({
           inputMode="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={languageText(language, "搜索已识别人物 / 异常（跨全部楼层）", "Search identified people / anomalies")}
+          placeholder={isXingni
+            ? languageText(language, "搜索已识别的青石县人物", "Search identified Qingshi people")
+            : languageText(language, "搜索已识别人物 / 异常（跨全部楼层）", "Search identified people / anomalies")}
           aria-label={languageText(language, "搜索图鉴", "Search codex")}
           data-testid="mobile-codex-search-input"
           className="w-full rounded-full border border-[#d8d1c6] bg-vc-paper-bright/90 py-1.5 pl-3.5 pr-8 text-[13px] text-[#174d46] placeholder:text-vc-ink-soft/70 focus:border-vc-accent focus:outline-none min-[420px]:text-[14px]"
@@ -410,6 +443,7 @@ export function MobileCodexPanel({
       </div>
 
       <div
+        ref={cardStripRef}
         data-testid="mobile-codex-card-strip"
         className="-mx-4 mt-3 flex shrink-0 gap-2.5 overflow-x-auto px-4 pb-4 pt-1 [scrollbar-width:none] [-ms-overflow-style:none] min-[420px]:-mx-5 min-[420px]:gap-3 min-[420px]:px-5 [&::-webkit-scrollbar]:hidden"
       >

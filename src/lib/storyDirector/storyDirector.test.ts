@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { createEmptyDirectorState, createEmptyIncidentQueue } from "./types";
 import { normalizeDirectorState, postTurnStoryDirectorUpdate } from "./postTurn";
 import { buildDirectorDigestForServer } from "./prompt";
-import { buildDirectorAgendaHintBlock, buildServerDirectorHintBlock } from "./serverHint";
 import { clearChapterReasonerTrace, getChapterReasonerTrace } from "./chapterTrace";
 
 function mkState(overrides?: Partial<ReturnType<typeof createEmptyDirectorState>>) {
@@ -335,7 +334,7 @@ test("chapter director can produce close candidate and next chapter seed", () =>
   assert.equal(trace.suppressedGameyUi, true);
 });
 
-test("directorDigest and server hint are length-capped", () => {
+test("directorDigest is length-capped", () => {
   const dig = buildDirectorDigestForServer({
     tension: 88,
     stallCount: 3,
@@ -345,28 +344,4 @@ test("directorDigest and server hint are length-capped", () => {
     mustRecallHookCodes: ["hook_a", "hook_b", "hook_c"],
   });
   assert.ok(dig.digest.length <= 220);
-  const hint = buildServerDirectorHintBlock(dig);
-  assert.ok(hint.length <= 600);
-  assert.match(hint, /主流网文/);
-  assert.match(hint, /不接管 PLAYER_CHAT/);
 });
-
-test("director agenda hint block only exposes sanitized soft constraints", () => {
-  const hint = buildDirectorAgendaHintBlock([
-    {
-      id: 1,
-      eventCode: "EV_SOFT_CLUE",
-      title: "soft clue",
-      injectionHint: "let the hallway light flicker near the old notice board",
-      triggerConditions: ["player stays near corridor"],
-      agencyConstraints: ["player can ignore or avoid it"],
-      forbiddenOutcomes: ["do not reveal the hidden culprit"],
-      salience: 0.9,
-    },
-  ]);
-  assert.match(hint, /EV_SOFT_CLUE/);
-  assert.match(hint, /player can ignore/);
-  assert.doesNotMatch(hint, /private_hooks/);
-  assert.doesNotMatch(hint, /must_not_surface_directly/);
-});
-

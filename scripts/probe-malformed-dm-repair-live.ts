@@ -17,7 +17,7 @@ type RepairResult = { ok: boolean; latencyMs: number; narrative?: string; reason
 function outputPath(): string {
   const index = process.argv.indexOf("--out");
   if (index >= 0 && process.argv[index + 1]) return path.resolve(process.argv[index + 1]!);
-  return path.resolve(`.runtime-data/malformed-dm-repair-live-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  return path.resolve(`.runtime-data/eval/malformed-dm-repair-live-${new Date().toISOString().replace(/[:.]/g, "-")}/report.json`);
 }
 
 async function runRealGatewayRepair(): Promise<RepairResult> {

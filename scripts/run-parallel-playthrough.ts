@@ -46,8 +46,8 @@ function parseArgs(): CliArgs {
     runNarrativeJudge: !args.includes("--no-judge"),
     verbose: args.includes("--verbose") || args.includes("-v"),
     traceDir: args.includes("--trace-dir")
-      ? (args[args.indexOf("--trace-dir") + 1] ?? ".runtime-data/playthrough/parallel-traces")
-      : ".runtime-data/playthrough/parallel-traces",
+      ? (args[args.indexOf("--trace-dir") + 1] ?? ".runtime-data/eval/playthrough/parallel-traces")
+      : ".runtime-data/eval/playthrough/parallel-traces",
   };
 }
 

@@ -18,6 +18,7 @@ import {
 } from "../src/lib/evals/playthrough";
 import type { PlaythroughV3Config, PersonaType } from "../src/lib/evals/playthrough";
 import { callDeepSeekCompletion } from "../src/lib/evals/liveProvider";
+import { CHAT_LATENCY_BUDGET } from "../src/lib/perf/waitingConfig";
 
 const VERSE_CRAFT_URL = process.env.VERSE_CRAFT_URL ?? "http://localhost:666";
 
@@ -97,8 +98,8 @@ async function runOneSystem(system: SystemGroup): Promise<void> {
     baseUrl: VERSE_CRAFT_URL,
     runNarrativeJudge: false,
     softlockThreshold: 60,  // 60 步：宽松，避免剧情式叙事误判
-    stepTimeoutMs: 300000,
-    traceOutputDir: `.runtime-data/playthrough/live-${system.name}`,
+    stepTimeoutMs: CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
+    traceOutputDir: `.runtime-data/eval/playthrough/live-${system.name}`,
     enableFailureClustering: true,
     stepDelayMs: 2000,
   };
@@ -175,7 +176,7 @@ async function main() {
   console.log(`\n${"═".repeat(60)}`);
   console.log(`✅ Stage A 完成 (${okCount}/${SYSTEMS.length})`);
   console.log(`   ${totalHours}h`);
-  console.log(`   Trace: .runtime-data/playthrough/live-*`);
+  console.log(`   Trace: .runtime-data/eval/playthrough/live-*`);
   console.log(`   时间: ${new Date().toLocaleString()}`);
   console.log(`${"═".repeat(60)}`);
 }

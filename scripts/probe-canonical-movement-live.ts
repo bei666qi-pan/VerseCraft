@@ -12,6 +12,7 @@ import { createSutAdapter } from "../src/lib/evals/playthrough/sutAdapter";
 import { createInitialStateSnapshot } from "../src/lib/evals/playthrough/invariants";
 import { applyDmJsonToState } from "../src/lib/evals/playthrough/stateApply";
 import { buildClientStructuredSnapshot } from "../src/lib/evals/playthrough";
+import { CHAT_LATENCY_BUDGET } from "../src/lib/perf/waitingConfig";
 
 type EvidenceStep = {
   action: string;
@@ -26,7 +27,7 @@ type EvidenceStep = {
 function outputPath(): string {
   const index = process.argv.indexOf("--out");
   if (index >= 0 && process.argv[index + 1]) return path.resolve(process.argv[index + 1]!);
-  return path.resolve(`.runtime-data/canonical-movement-live-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  return path.resolve(`.runtime-data/eval/canonical-movement-live-${new Date().toISOString().replace(/[:.]/g, "-")}/report.json`);
 }
 
 async function main(): Promise<void> {
@@ -34,7 +35,7 @@ async function main(): Promise<void> {
   const sut = createSutAdapter({
     mock: false,
     baseUrl: process.env.LIVEPLAY_BASE_URL ?? "http://127.0.0.1:666",
-    frameTimeoutMs: 120_000,
+    frameTimeoutMs: CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
   });
   const steps: Array<{ action: string; expectedLocation: string }> = [
     { action: "下楼探索，先进入确认可通行的楼梯间。", expectedLocation: "3F_Stairwell" },

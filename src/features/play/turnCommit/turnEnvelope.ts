@@ -1,4 +1,5 @@
 import type { InjuryDelta } from "@/lib/combat/combatInjuryIntegration";
+import type { XingniTaichuState, XingniWorldAction } from "@/lib/worlds/xingni/progression";
 
 export type TurnMode = "narrative_only" | "decision_required" | "system_transition";
 
@@ -58,6 +59,15 @@ export type TurnEnvelope = {
   main_threat_updates: unknown[];
   weapon_updates: Array<Record<string, unknown>>;
   weapon_bag_updates: Array<Record<string, unknown>>;
+  world_delta?: {
+    worldId: "xingni_taichu";
+    mapId: "xingni_qingshi_county";
+    accepted: boolean;
+    action: XingniWorldAction | null;
+    message: string;
+    resolvedState: XingniTaichuState;
+    unlockedMapIds: string[];
+  };
 
   // Security / audit info (kept small)
   security_meta?: Record<string, unknown>;
@@ -154,6 +164,7 @@ export type TurnEnvelope = {
     clue_updates: Array<Record<string, unknown>>;
   };
   world_state_changes: {
+    world_delta?: TurnEnvelope["world_delta"];
     player_location?: string;
     npc_location_updates: unknown[];
     main_threat_updates: unknown[];

@@ -33,6 +33,11 @@ export class IncrementalVerseCraftSseDecoder {
     return { ...this.result };
   }
 
+  /** Whether this decoder has already captured a __VERSECRAFT_FINAL__ frame. */
+  get hasFinal(): boolean {
+    return this.result.finalFrameCount > 0;
+  }
+
   private drain(flush: boolean): void {
     this.buffer = this.buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     let boundary = this.buffer.indexOf("\n\n");

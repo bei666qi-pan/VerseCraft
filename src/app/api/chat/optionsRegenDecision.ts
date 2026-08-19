@@ -74,6 +74,8 @@ export interface UnifiedOptionsRegenInput {
   // --- Common guards ---
   canRunFinalRepair: boolean;
   deferPlayableOptsToSeparateRequest: boolean;
+  /** Malformed candidates already consumed their single bounded recovery lane. */
+  malformedCandidateFinalized: boolean;
 
   // --- Pre-computed budgets (already capped via nextFinalRepairBudgetMs) ---
   budgetPreResolveMs: number;
@@ -99,7 +101,11 @@ export function evaluateUnifiedOptionsRegen(
   input: UnifiedOptionsRegenInput,
 ): OptionsRegenDecision {
   // Common guard — if either fails, no regen at all.
-  if (!input.canRunFinalRepair || input.deferPlayableOptsToSeparateRequest) {
+  if (
+    !input.canRunFinalRepair ||
+    input.deferPlayableOptsToSeparateRequest ||
+    input.malformedCandidateFinalized
+  ) {
     return NO_REGEN;
   }
 

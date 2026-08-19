@@ -140,14 +140,15 @@ test("backfillMissingFields: backfills player_location from slots.locationHint",
   assert.equal(result.didBackfill, true);
 });
 
-test("backfillMissingFields: backfills player_location from narrative movement verb", () => {
+test("backfillMissingFields: narrative movement cannot backfill player_location", () => {
   const result = backfillMissingFields({
     missingFields: ["player_location"],
     intent: intent({ kind: "explore" }),
     narrative: "我推开厚重的铁门，走进B1_PowerRoom，一股机油味扑面而来。",
     playerAction: "推开门进去",
   });
-  assert.equal(result.backfilled.player_location, "B1_PowerRoom");
+  assert.equal(result.backfilled.player_location, undefined);
+  assert.ok(result.failed.includes("player_location"));
 });
 
 test("backfillMissingFields: backfills consumes_time to true", () => {
@@ -160,27 +161,25 @@ test("backfillMissingFields: backfills consumes_time to true", () => {
   assert.equal(result.backfilled.consumes_time, true);
 });
 
-test("backfillMissingFields: backfills sanity_damage for combat intent", () => {
+test("backfillMissingFields: missing combat damage defaults to zero", () => {
   const result = backfillMissingFields({
     missingFields: ["sanity_damage"],
     intent: intent({ kind: "combat" }),
     narrative: "",
     playerAction: "攻击",
   });
-  assert.equal(result.backfilled.sanity_damage, 1);
+  assert.equal(result.backfilled.sanity_damage, 0);
 });
 
-test("backfillMissingFields: backfills codex_updates from NPC mentions in narrative", () => {
+test("backfillMissingFields: narrative NPC mentions cannot backfill codex", () => {
   const result = backfillMissingFields({
     missingFields: ["codex_updates"],
     intent: intent({ kind: "dialogue", slots: { target: "N-008" } }),
     narrative: "老刘放下扳手，抬起头看了看我。电工老刘的眼神里有一丝犹豫。",
     playerAction: "问老刘关于地下室的事",
   });
-  assert.equal(result.didBackfill, true);
-  const updates = result.backfilled.codex_updates as Array<{ name: string }>;
-  // Uses registry name "电工老刘" (from NPCS), not short form "老刘"
-  assert.ok(updates.some((u) => u.name === "电工老刘"));
+  assert.equal(result.backfilled.codex_updates, undefined);
+  assert.ok(result.failed.includes("codex_updates"));
 });
 
 test("backfillMissingFields: backfills relationship_updates from slots.target", () => {

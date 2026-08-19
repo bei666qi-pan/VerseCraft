@@ -51,6 +51,7 @@ export type DMJson = {
   protagonist_anchor?: string;
   world_consistency_flags?: string[];
   anti_cheat_meta?: Record<string, unknown>;
+  world_delta?: import("@/features/play/turnCommit/turnEnvelope").TurnEnvelope["world_delta"];
   consumed_items?: string[];
   awarded_items?: Array<{
     id?: string;

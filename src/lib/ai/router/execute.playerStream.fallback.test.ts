@@ -4,13 +4,14 @@
  */
 // These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
 // transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
-process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
+process.env.AI_UPSTREAM_FORCE_HTTP1 = "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resetProviderCircuitsForTests } from "@/lib/ai/fallback/circuitBreaker";
 import { resetModelCircuitsForTests } from "@/lib/ai/fallback/modelCircuit";
 import type { ChatMessage } from "@/lib/ai/types/core";
 import { executePlayerChatStream } from "@/lib/ai/router/execute";
+import { installManagedAiTestSnapshotFromEnv } from "@/lib/ai/managed/testFixtures";
 
 // Kimi Code CLI 运行时注入的环境变量。测试期间需清除。
 const KIMI_INJECTED_VARS = [
@@ -43,7 +44,9 @@ function patchEnv(updates: Record<string, string | undefined>): () => void {
       delete process.env[k];
     }
   }
+  const restoreSnapshot = installManagedAiTestSnapshotFromEnv();
   return () => {
+    restoreSnapshot();
     for (const k of Object.keys(updates)) {
       const o = prev[k];
       if (o === undefined) delete process.env[k];

@@ -92,13 +92,58 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
 test("malformed DM repair keeps a bounded post-generation budget", () => {
   // 内联回 route.ts
   const content = readFileSync(join(process.cwd(), "src/app/api/chat/route.ts"), "utf8");
+  const fallbackContent = readFileSync(
+    join(process.cwd(), "src/lib/playRealtime/malformedDmSafeFallback.ts"),
+    "utf8"
+  );
   const finalizingIndex = content.indexOf('writeStatusFrame("finalizing"');
   const budgetIndex = content.indexOf('envNumber("VC_FINAL_REPAIR_BUDGET_MS", 6_000)');
   const repairIndex = content.indexOf("const phaseRepairMalformedCandidate");
   assert.ok(budgetIndex > finalizingIndex, "repair budget must be created in final hooks, after first status");
   assert.ok(repairIndex > budgetIndex, "malformed-DM repair must consume the final-hook budget");
-  assert.ok(content.includes("budgetMs: nextFinalRepairBudgetMs(4_000)"), "malformed-DM repair must retain its four-second default window");
+  assert.ok(
+    content.includes("const repairBudgetMs = nextFinalRepairBudgetMs(4_000)") &&
+      content.includes("budgetMs: repairBudgetMs"),
+    "malformed-DM repair must retain and pass its four-second default window",
+  );
   assert.ok(content.includes("budgetMs: nextFinalRepairBudgetMs(6_000)"), "post-validator narrative repair must receive the six-second default window");
+  assert.ok(content.includes("buildMalformedDmSafeFallback"), "malformed-DM repair failure must use the deterministic safe fallback");
+  assert.ok(
+    content.includes("buildValidatedPartialNarrativeCandidate") &&
+      content.includes("malformed_dm_partial_narrative_salvaged") &&
+      content.includes("if (!isMockScenario)"),
+    "a closed partial narrative must be salvageable without trusting malformed structured fields",
+  );
+  assert.ok(
+    content.includes('internalMeta?.action === "model_repair_after_malformed_dm"')
+      && content.includes('internalMeta?.action === "validated_partial_narrative_after_malformed_dm"')
+      && content.includes("recoveredFromMalformedDm ||"),
+    "a malformed-DM recovery must not trigger a second optional narrative expansion",
+  );
+  assert.ok(
+    content.includes("OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs + CHAT_FINALIZATION_RESERVE_MS"),
+    "malformed-DM options repair must reserve enough time to write the authoritative final frame",
+  );
+  assert.ok(
+    content.includes("remainingFinalRepairBudgetMs() - CHAT_FINALIZATION_RESERVE_MS"),
+    "optional final hooks must subtract the shared finalization reserve before starting",
+  );
+  assert.ok(
+    content.includes("regenDecision.shouldRegen && regenDecision.budgetMs > 0"),
+    "zero optional-hook budget must skip options regeneration instead of becoming unbounded",
+  );
+  assert.ok(
+    content.includes("malformedCandidateFinalized") &&
+      content.includes("finalization_reserve_protected"),
+    "malformed-DM recovery must prevent a later unified options call from consuming final reserve",
+  );
+  assert.ok(fallbackContent.includes("malformed_dm_safe_fallback_v1"), "safe fallback must remain auditable");
+  const malformedRepairBody = content.slice(repairIndex, content.indexOf("// --- Phase 2", repairIndex));
+  assert.equal(
+    malformedRepairBody.includes("return null"),
+    false,
+    "malformed-DM repair must always return a protocol-valid deterministic fallback"
+  );
   // repair budget must retain 1–12 second bounds (Math.max(1_000, Math.min(12_000, ...)))
   assert.ok(content.includes("Math.min(12_000, envNumber"), "repair budget must retain 1–12 second bounds");
 });

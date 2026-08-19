@@ -1,6 +1,12 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { NPCS } from "@/lib/registry/npcs";
 import { NPC_ALIASES } from "@/lib/registry/npcAliases";
+import { QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
+import {
+  DARK_MOON_WORLD_ID,
+  XINGNI_WORLD_ID,
+  type WorldId,
+} from "@/lib/worlds/types";
 import type { CodexEntry } from "@/store/useGameStore";
 
 export type CodexMention = Pick<CodexEntry, "id" | "name" | "type">;
@@ -15,26 +21,28 @@ type MentionKeyword = {
   entry: CodexMention;
 };
 
-let memoKeywords: MentionKeyword[] | null = null;
+const memoKeywords = new Map<WorldId, MentionKeyword[]>();
 
-const REGISTERED_BY_ID = new Map<string, CodexMention>([
+const DARK_MOON_REGISTERED_BY_ID = new Map<string, CodexMention>([
   ...NPCS.map((npc) => [String(npc.id).trim().toUpperCase(), {
-    id: String(npc.id).trim(),
-    name: String(npc.name).trim(),
-    type: "npc" as const,
+    id: String(npc.id).trim(), name: String(npc.name).trim(), type: "npc" as const,
   }] as const),
   ...ANOMALIES.map((anomaly) => [String(anomaly.id).trim().toUpperCase(), {
-    id: String(anomaly.id).trim(),
-    name: String(anomaly.name).trim(),
-    type: "anomaly" as const,
+    id: String(anomaly.id).trim(), name: String(anomaly.name).trim(), type: "anomaly" as const,
   }] as const),
 ]);
-
-const REGISTERED_NPC_NAME_TO_ID = new Map(
-  NPCS.map((npc) => [String(npc.name).trim(), String(npc.id).trim()] as const)
+const XINGNI_REGISTERED_BY_ID = new Map<string, CodexMention>(
+  QINGSHI_NPCS.map((npc) => [String(npc.id).trim().toUpperCase(), {
+    id: String(npc.id).trim(), name: String(npc.name).trim(), type: "npc" as const,
+  }] as const),
 );
-
-const REGISTERED_ANOMALY_NAME_TO_ID = new Map(
+const DARK_MOON_NPC_NAME_TO_ID = new Map(
+  NPCS.map((npc) => [String(npc.name).trim(), String(npc.id).trim()] as const),
+);
+const XINGNI_NPC_NAME_TO_ID = new Map(
+  QINGSHI_NPCS.map((npc) => [String(npc.name).trim(), String(npc.id).trim()] as const),
+);
+const DARK_MOON_ANOMALY_NAME_TO_ID = new Map(
   ANOMALIES.map((anomaly) => [String(anomaly.name).trim(), String(anomaly.id).trim()] as const)
 );
 
@@ -44,10 +52,11 @@ function pushKeyword(keys: MentionKeyword[], key: string, entry: CodexMention): 
   keys.push({ key: trimmed, entry });
 }
 
-function buildKeywords(): MentionKeyword[] {
+function buildKeywords(worldId: WorldId): MentionKeyword[] {
   const keys: MentionKeyword[] = [];
+  const npcs = worldId === XINGNI_WORLD_ID ? QINGSHI_NPCS : NPCS;
 
-  for (const n of NPCS) {
+  for (const n of npcs) {
     if (!n?.id || !n?.name) continue;
     const id = String(n.id).trim();
     const name = String(n.name).trim();
@@ -57,12 +66,12 @@ function buildKeywords(): MentionKeyword[] {
     if (name && name.length >= 2) {
       pushKeyword(keys, name, { id, name, type: "npc" });
     }
-    for (const alias of NPC_ALIASES[id] ?? []) {
+    for (const alias of worldId === DARK_MOON_WORLD_ID ? (NPC_ALIASES[id] ?? []) : []) {
       if (alias.length >= 2) pushKeyword(keys, alias, { id, name, type: "npc" });
     }
   }
 
-  for (const a of ANOMALIES) {
+  for (const a of worldId === DARK_MOON_WORLD_ID ? ANOMALIES : []) {
     if (!a?.id || !a?.name) continue;
     const id = String(a.id).trim();
     const name = String(a.name).trim();
@@ -79,15 +88,19 @@ function buildKeywords(): MentionKeyword[] {
   return keys;
 }
 
-function getKeywords(): MentionKeyword[] {
-  if (memoKeywords) return memoKeywords;
-  memoKeywords = buildKeywords();
-  return memoKeywords;
+function getKeywords(worldId: WorldId): MentionKeyword[] {
+  const cached = memoKeywords.get(worldId);
+  if (cached) return cached;
+  const built = buildKeywords(worldId);
+  memoKeywords.set(worldId, built);
+  return built;
 }
+
+type CodexCaptureOptions = { maxMatches?: number; worldId?: WorldId };
 
 export function extractCodexMentionsFromNarrative(
   narrative: string,
-  options?: { maxMatches?: number }
+  options?: CodexCaptureOptions
 ): CodexMention[] {
   const text = normalizeText(narrative);
   if (!text) return [];
@@ -96,7 +109,8 @@ export function extractCodexMentionsFromNarrative(
   const out: CodexMention[] = [];
   const seen = new Set<string>();
 
-  for (const k of getKeywords()) {
+  const worldId = options?.worldId ?? DARK_MOON_WORLD_ID;
+  for (const k of getKeywords(worldId)) {
     if (out.length >= maxMatches) break;
     if (!k.key) continue;
     if (!text.includes(k.key)) continue;
@@ -119,39 +133,43 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function registeredMentionById(value: unknown): CodexMention | null {
+function registeredMentionById(value: unknown, worldId: WorldId): CodexMention | null {
   if (typeof value !== "string") return null;
   const key = value.trim().toUpperCase();
   if (!key) return null;
-  return REGISTERED_BY_ID.get(key) ?? null;
+  const registry = worldId === XINGNI_WORLD_ID ? XINGNI_REGISTERED_BY_ID : DARK_MOON_REGISTERED_BY_ID;
+  return registry.get(key) ?? null;
 }
 
-function registeredMentionByName(value: unknown, typeHint?: unknown): CodexMention | null {
+function registeredMentionByName(value: unknown, typeHint: unknown, worldId: WorldId): CodexMention | null {
   if (typeof value !== "string") return null;
   const name = value.trim();
   if (!name) return null;
   if (typeHint === "anomaly") {
-    const id = REGISTERED_ANOMALY_NAME_TO_ID.get(name);
-    return id ? registeredMentionById(id) : null;
+    if (worldId === XINGNI_WORLD_ID) return null;
+    const id = DARK_MOON_ANOMALY_NAME_TO_ID.get(name);
+    return id ? registeredMentionById(id, worldId) : null;
   }
+  const npcNames = worldId === XINGNI_WORLD_ID ? XINGNI_NPC_NAME_TO_ID : DARK_MOON_NPC_NAME_TO_ID;
   if (typeHint === "npc") {
-    const id = REGISTERED_NPC_NAME_TO_ID.get(name);
-    return id ? registeredMentionById(id) : null;
+    const id = npcNames.get(name);
+    return id ? registeredMentionById(id, worldId) : null;
   }
-  const npcId = REGISTERED_NPC_NAME_TO_ID.get(name);
-  if (npcId) return registeredMentionById(npcId);
-  const anomalyId = REGISTERED_ANOMALY_NAME_TO_ID.get(name);
-  return anomalyId ? registeredMentionById(anomalyId) : null;
+  const npcId = npcNames.get(name);
+  if (npcId) return registeredMentionById(npcId, worldId);
+  if (worldId === XINGNI_WORLD_ID) return null;
+  const anomalyId = DARK_MOON_ANOMALY_NAME_TO_ID.get(name);
+  return anomalyId ? registeredMentionById(anomalyId, worldId) : null;
 }
 
-function mentionFromCodexRow(row: Record<string, unknown>): CodexMention | null {
-  const byId = registeredMentionById(row.id ?? row.npcId ?? row.npc_id ?? row.anomalyId ?? row.anomaly_id);
+function mentionFromCodexRow(row: Record<string, unknown>, worldId: WorldId): CodexMention | null {
+  const byId = registeredMentionById(row.id ?? row.npcId ?? row.npc_id ?? row.anomalyId ?? row.anomaly_id, worldId);
   if (byId) return byId;
-  return registeredMentionByName(row.name ?? row.npcName ?? row.npc_name, row.type ?? row.kind);
+  return registeredMentionByName(row.name ?? row.npcName ?? row.npc_name, row.type ?? row.kind, worldId);
 }
 
-function mentionFromNpcRow(row: Record<string, unknown>): CodexMention | null {
-  return registeredMentionById(row.id ?? row.npcId ?? row.npc_id);
+function mentionFromNpcRow(row: Record<string, unknown>, worldId: WorldId): CodexMention | null {
+  return registeredMentionById(row.id ?? row.npcId ?? row.npc_id, worldId);
 }
 
 function pushUnique(out: CodexMention[], seen: Set<string>, entry: CodexMention | null): void {
@@ -164,14 +182,15 @@ function pushUnique(out: CodexMention[], seen: Set<string>, entry: CodexMention 
 
 export function extractCodexMentionsFromDmRecord(
   dmRecord: Record<string, unknown> | null | undefined,
-  options?: { maxMatches?: number }
+  options?: CodexCaptureOptions
 ): CodexMention[] {
   if (!dmRecord) return [];
   const maxMatches = Math.max(1, Math.min(24, Math.trunc(options?.maxMatches ?? 12)));
+  const worldId = options?.worldId ?? DARK_MOON_WORLD_ID;
   const out: CodexMention[] = [];
   const seen = new Set<string>();
 
-  for (const entry of extractCodexMentionsFromNarrative(String(dmRecord.narrative ?? ""), { maxMatches })) {
+  for (const entry of extractCodexMentionsFromNarrative(String(dmRecord.narrative ?? ""), { maxMatches, worldId })) {
     pushUnique(out, seen, entry);
     if (out.length >= maxMatches) return out;
   }
@@ -180,7 +199,7 @@ export function extractCodexMentionsFromDmRecord(
   for (const raw of codexUpdates) {
     const row = asRecord(raw);
     if (!row) continue;
-    pushUnique(out, seen, mentionFromCodexRow(row));
+    pushUnique(out, seen, mentionFromCodexRow(row, worldId));
     if (out.length >= maxMatches) return out;
   }
 
@@ -188,7 +207,7 @@ export function extractCodexMentionsFromDmRecord(
   for (const raw of relationshipUpdates) {
     const row = asRecord(raw);
     if (!row) continue;
-    pushUnique(out, seen, mentionFromNpcRow(row));
+    pushUnique(out, seen, mentionFromNpcRow(row, worldId));
     if (out.length >= maxMatches) return out;
   }
 
@@ -196,7 +215,7 @@ export function extractCodexMentionsFromDmRecord(
   for (const raw of npcLocationUpdates) {
     const row = asRecord(raw);
     if (!row) continue;
-    pushUnique(out, seen, mentionFromNpcRow(row));
+    pushUnique(out, seen, mentionFromNpcRow(row, worldId));
     if (out.length >= maxMatches) return out;
   }
 
@@ -216,7 +235,7 @@ function collectExistingCodexIds(value: unknown): Set<string> {
 
 export function mergeAutoCapturedCodexUpdates<T extends Record<string, unknown>>(
   dmRecord: T,
-  options?: { maxMatches?: number; observation?: string }
+  options?: CodexCaptureOptions & { observation?: string }
 ): T {
   const captured = extractCodexMentionsFromDmRecord(dmRecord, options);
   if (captured.length === 0) return dmRecord;
@@ -237,4 +256,3 @@ export function mergeAutoCapturedCodexUpdates<T extends Record<string, unknown>>
     codex_updates: [...existingUpdates, ...additions],
   } as T;
 }
-

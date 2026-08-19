@@ -1,4 +1,5 @@
 import { buildWorldGraph, canTraverseWorldEdge } from "@/lib/revive/graph";
+import { formatLocationLabel } from "@/lib/ui/locationLabels";
 
 type RecordLike = Record<string, unknown>;
 
@@ -12,7 +13,7 @@ const LEGACY_LOCATION_ALIASES: Record<string, string> = {
   "地下一层配电间": "B1_PowerRoom",
 };
 
-function canonicalLocation(value: string): string {
+export function canonicalizeWorldLocationId(value: string): string {
   return LEGACY_LOCATION_ALIASES[value] ?? value;
 }
 
@@ -47,11 +48,45 @@ function appendFlag(dmRecord: RecordLike, flag: string): string[] {
   return [...new Set([...flags, flag])];
 }
 
+function explicitNeighborAliases(node: string): string[] {
+  const aliases = new Set<string>([node, node.toLowerCase()]);
+  const room = node.match(/(?:^|_)Room(\d{2,4})$/i)?.[1];
+  if (room) {
+    aliases.add(room);
+    aliases.add(`${room}室`);
+    aliases.add(`房间${room}`);
+  }
+  const suffix = node.split("_").slice(1).join("_");
+  if (suffix) aliases.add(suffix);
+  if (/_Stairwell$/i.test(node)) aliases.add("楼梯间");
+  if (/_Hallway$/i.test(node)) aliases.add("走廊");
+  if (/_Corridor(?:End)?$/i.test(node)) {
+    aliases.add("走廊");
+    aliases.add("楼梯转角");
+  }
+  if (/_Lobby$/i.test(node)) {
+    aliases.add("大堂");
+    aliases.add("大厅");
+    aliases.add("门厅");
+  }
+  for (const [legacy, canonical] of Object.entries(LEGACY_LOCATION_ALIASES)) {
+    if (canonical === node) aliases.add(legacy);
+  }
+  return [...aliases].filter((alias) => alias.length >= 2);
+}
+
+function resolveExplicitNeighborTarget(action: string, neighbors: string[]): string | null {
+  const normalizedAction = action.toLowerCase().replace(/\s+/g, "");
+  const matched = neighbors.filter((node) =>
+    explicitNeighborAliases(node).some((alias) => normalizedAction.includes(alias.toLowerCase().replace(/\s+/g, "")))
+  );
+  return matched.length === 1 ? matched[0]! : null;
+}
+
 function resolveActionTarget(action: string, from: string, graph: Map<string, Set<string>>): string | null {
   const neighbors = [...(graph.get(from) ?? [])];
-  const explicit = [...graph.keys()].find((node) => action.includes(node))
-    ?? Object.entries(LEGACY_LOCATION_ALIASES).find(([alias]) => action.includes(alias))?.[1];
-  if (explicit && neighbors.includes(explicit)) return explicit;
+  const explicit = resolveExplicitNeighborTarget(action, neighbors);
+  if (explicit) return explicit;
 
   const wantsDown = /(?:下楼|下到|往下|向下|楼下)/.test(action);
   const wantsUp = /(?:上楼|上到|往上|向上|楼上)/.test(action);
@@ -83,6 +118,34 @@ function noConfirmedMovement(dmRecord: RecordLike, rawFrom: string): RecordLike 
   };
 }
 
+function readableLocation(location: string): string {
+  const label = formatLocationLabel(location);
+  if (label !== "未知区域") return label;
+  const floorNames: Record<string, string> = {
+    "1": "一",
+    "2": "二",
+    "3": "三",
+    "4": "四",
+    "5": "五",
+    "6": "六",
+    "7": "七",
+  };
+  return location
+    .replace(/^B(\d+)_/i, (_match, floor: string) => `地下${floorNames[floor] ?? floor}层`)
+    .replace(/^(\d+)F_/i, (_match, floor: string) => `${floorNames[floor] ?? floor}楼`)
+    .replace(/_/g, "")
+    .replace(/Hallway/gi, "走廊")
+    .replace(/CorridorEnd/gi, "走廊尽头")
+    .replace(/Corridor/gi, "走廊")
+    .replace(/Stairwell/gi, "楼梯间")
+    .replace(/Lobby/gi, "门厅")
+    .replace(/Room/gi, "房间");
+}
+
+function confirmedMovementNarrative(from: string, to: string): string {
+  return `我离开${readableLocation(from)}，沿着相连的通路稳步前行，抵达${readableLocation(to)}。脚步在这里停下，我先确认身边的门、光线与来路，再决定下一步。`;
+}
+
 /**
  * Validates model-proposed locations and, for an explicit player movement
  * action, resolves only one canonical graph edge. Narrative never becomes a
@@ -97,9 +160,9 @@ export function applyAuthoredLocationMovementGuard(args: {
   const action = String(args.latestUserInput ?? "");
   const graph = buildWorldGraph({ includeLockedEdges: true });
   const rawFrom = String(args.clientState?.playerLocation ?? "");
-  const from = canonicalLocation(rawFrom);
+  const from = canonicalizeWorldLocationId(rawFrom);
   const rawCandidate = typeof args.dmRecord.player_location === "string" ? args.dmRecord.player_location : "";
-  const candidate = canonicalLocation(rawCandidate);
+  const candidate = canonicalizeWorldLocationId(rawCandidate);
   const movementRequested = isMovementAction(action);
   const synthesisEnabled = args.enableCanonicalLocationMovement !== false;
   const canMoveTo = (target: string) =>
@@ -114,7 +177,7 @@ export function applyAuthoredLocationMovementGuard(args: {
       return {
         ...args.dmRecord,
         player_location: synthesizedTarget,
-        narrative: `我沿着已登记的相邻通道从${from}进入${synthesizedTarget}。更远处的路线仍需逐段确认。`,
+        narrative: confirmedMovementNarrative(from, synthesizedTarget),
         _commit_flags: appendFlag(args.dmRecord, "canonical_location_transition_v1"),
       };
     }
@@ -129,7 +192,7 @@ export function applyAuthoredLocationMovementGuard(args: {
     return {
       ...args.dmRecord,
       player_location: candidate,
-      narrative: contradicted ? `我沿着已登记的相邻通道从${from}进入${candidate}，位置变化已确认。` : narrative,
+      narrative: contradicted ? confirmedMovementNarrative(from, candidate) : narrative,
       _commit_flags: appendFlag(args.dmRecord, "authored_location_transition_v1"),
     };
   }
@@ -138,7 +201,7 @@ export function applyAuthoredLocationMovementGuard(args: {
     return {
       ...args.dmRecord,
       player_location: synthesizedTarget,
-      narrative: `我沿着已登记的相邻通道从${from}进入${synthesizedTarget}。更远处的路线仍需逐段确认。`,
+      narrative: confirmedMovementNarrative(from, synthesizedTarget),
       _commit_flags: appendFlag(args.dmRecord, "canonical_location_transition_v1"),
     };
   }

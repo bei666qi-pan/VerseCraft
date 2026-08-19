@@ -32,14 +32,15 @@ export function AdminShadowGate() {
         action={formAction}
         className="z-10 w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_0_40px_rgba(168,85,247,0.2)] backdrop-blur-2xl"
       >
-        <h1 className="text-center text-lg font-semibold tracking-[0.2em] text-slate-100">
-          SHADOW ACCESS
+        <h1 className="text-center text-lg font-semibold tracking-[0.12em] text-slate-100">
+          后台登录
         </h1>
         <input
           name="password"
           type="password"
+          aria-label="管理密码"
           autoComplete="current-password"
-          placeholder="Enter shadow password"
+          placeholder="请输入管理密码"
           className="mt-6 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-purple-400/60"
           required
         />
@@ -51,7 +52,7 @@ export function AdminShadowGate() {
           disabled={pending}
           className="mt-5 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {pending ? "Verifying..." : "Enter"}
+          {pending ? "正在验证…" : "进入后台"}
         </button>
       </form>
     </main>

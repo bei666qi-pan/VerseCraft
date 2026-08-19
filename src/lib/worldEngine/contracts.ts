@@ -1,5 +1,12 @@
 import { z } from "zod";
 import { repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
+import {
+  DARK_MOON_MAP_ID,
+  DARK_MOON_WORLD_ID,
+  type MapId,
+  type WorldId,
+} from "@/lib/worlds/types";
+import { resolveWorldRuntime } from "@/lib/worlds/catalog";
 
 export type WorldEngineTrigger =
   | "in_game_day_elapsed"
@@ -14,6 +21,21 @@ export type WorldEngineTrigger =
   | "clue_threshold_reached"
   | "tension_too_low"
   | "tension_too_high";
+
+const WORLD_ENGINE_TRIGGER_SET = new Set<WorldEngineTrigger>([
+  "in_game_day_elapsed",
+  "multi_room_movement",
+  "key_story_node_hit",
+  "important_npc_state_changed",
+  "world_fact_threshold_reached",
+  "plot_stagnation_detected",
+  "repeated_investigation_loop",
+  "due_hook_reached",
+  "npc_agenda_due",
+  "clue_threshold_reached",
+  "tension_too_low",
+  "tension_too_high",
+]);
 
 export type DirectorPhase =
   | "quiet"
@@ -169,21 +191,174 @@ export type DirectorPlan = {
   player_private_hooks: DirectorPrivateHook[];
 };
 
+export type WorldRuntimeScope = {
+  worldId: WorldId;
+  mapId: MapId;
+  sessionId: string;
+};
+
+export type PacingChapterSignals = {
+  phase: DirectorPhase;
+  tension: number;
+  chapterId: string | null;
+  chapterIndex: number;
+  progress: number;
+};
+
+export type WorldStateSummary = {
+  day: number;
+  timeSlot: "dawn" | "day" | "dusk" | "night" | "unknown";
+  danger: "low" | "medium" | "high";
+  stateCodes: string[];
+};
+
+export type StructuredTurnSignals = {
+  actionKinds: Array<"exploration" | "dialogue" | "confrontation" | "movement" | "other">;
+  legal: boolean;
+  death: boolean;
+  riskTags: string[];
+};
+
+/**
+ * Persisted queue contract. Raw player input and full narrative are deliberately
+ * absent; the online path converts them to bounded structured signals first.
+ */
 export type WorldEngineTickPayload = {
+  version: 2;
   requestId: string;
   userId: string | null;
   sessionId: string;
-  latestUserInput: string;
+  worldId: WorldId;
+  mapId: MapId;
   triggerSignals: WorldEngineTrigger[];
   controlRiskTags: string[];
-  dmNarrativePreview: string;
-  playerLocation: string | null;
-  previousPlayerLocation?: string | null;
+  playerLocationBefore: string | null;
+  playerLocationAfter: string | null;
+  presentNpcIds: string[];
+  deadNpcIds: string[];
+  changedTaskIds: string[];
+  changedClueIds: string[];
+  pacingChapterSignals: PacingChapterSignals;
+  worldStateSummary: WorldStateSummary;
+  latestTurnSignals: StructuredTurnSignals;
   npcLocationUpdateCount: number;
   turnIndex: number;
   dedupKey: string;
   enqueuedAt: string;
 };
+
+export type LegacyWorldEngineTickPayload = Partial<WorldEngineTickPayload> & {
+  requestId?: unknown;
+  userId?: unknown;
+  sessionId?: unknown;
+  worldId?: unknown;
+  mapId?: unknown;
+  latestUserInput?: unknown;
+  dmNarrativePreview?: unknown;
+  playerLocation?: unknown;
+  previousPlayerLocation?: unknown;
+  triggerSignals?: unknown;
+  controlRiskTags?: unknown;
+  npcLocationUpdateCount?: unknown;
+  turnIndex?: unknown;
+  dedupKey?: unknown;
+  enqueuedAt?: unknown;
+};
+
+export type TickPayloadNormalizationResult =
+  | { ok: true; payload: WorldEngineTickPayload; migratedLegacyScope: boolean }
+  | { ok: false; reason: string };
+
+function boundedIds(value: unknown, cap = 64): string[] {
+  return uniqueStrings(value, cap, 128);
+}
+
+export function validatePacingChapterSignals(value: unknown): PacingChapterSignals {
+  const raw = asRecord(value) ?? {};
+  return {
+    phase: enumOr(raw.phase, PHASES, "quiet"),
+    tension: clamp01(raw.tension, 0.3),
+    chapterId: clampText(raw.chapterId, 128) || null,
+    chapterIndex: clampInt(raw.chapterIndex, 0, 999, 0),
+    progress: clamp01(raw.progress, 0),
+  };
+}
+
+/**
+ * Normalizes persisted jobs. Only a payload with both scope fields missing is
+ * eligible for the one-time Dark Moon compatibility mapping. Partial or
+ * mismatched scope is rejected and never guessed from content.
+ */
+export function normalizeWorldEngineTickPayload(value: unknown): TickPayloadNormalizationResult {
+  const raw = asRecord(value);
+  if (!raw) return { ok: false, reason: "payload_not_object" };
+  const sessionId = clampText(raw.sessionId, 191);
+  const requestId = clampText(raw.requestId, 191);
+  const dedupKey = clampText(raw.dedupKey, 128);
+  if (!sessionId || !requestId || !dedupKey) return { ok: false, reason: "missing_identity" };
+
+  const hasWorld = typeof raw.worldId === "string" && raw.worldId.length > 0;
+  const hasMap = typeof raw.mapId === "string" && raw.mapId.length > 0;
+  if (raw.version === 2 && (!hasWorld || !hasMap)) {
+    return { ok: false, reason: "v2_world_scope_required" };
+  }
+  if (hasWorld !== hasMap) return { ok: false, reason: "partial_world_scope" };
+  const migratedLegacyScope = !hasWorld && !hasMap;
+  const worldId = migratedLegacyScope ? DARK_MOON_WORLD_ID : raw.worldId;
+  const mapId = migratedLegacyScope ? DARK_MOON_MAP_ID : raw.mapId;
+  const resolved = resolveWorldRuntime(worldId, mapId, { allowLockedMap: false });
+  if (!resolved.ok) return { ok: false, reason: resolved.code };
+
+  const legacyLocation = clampText(raw.playerLocation, 128) || null;
+  const legacyPreviousLocation = clampText(raw.previousPlayerLocation, 128) || null;
+  const turnSignalsRaw = asRecord(raw.latestTurnSignals) ?? {};
+  const allowedKinds = new Set(["exploration", "dialogue", "confrontation", "movement", "other"]);
+  const actionKinds = boundedIds(turnSignalsRaw.actionKinds, 5)
+    .filter((kind) => allowedKinds.has(kind)) as StructuredTurnSignals["actionKinds"];
+  const worldSummaryRaw = asRecord(raw.worldStateSummary) ?? {};
+  const slot = enumOr(worldSummaryRaw.timeSlot, ["dawn", "day", "dusk", "night", "unknown"] as const, "unknown");
+  const danger = enumOr(worldSummaryRaw.danger, ["low", "medium", "high"] as const, "low");
+
+  return {
+    ok: true,
+    migratedLegacyScope,
+    payload: {
+      version: 2,
+      requestId,
+      userId: typeof raw.userId === "string" && raw.userId.trim() ? raw.userId.trim().slice(0, 191) : null,
+      sessionId,
+      worldId: resolved.world.id,
+      mapId: resolved.map.id,
+      triggerSignals: boundedIds(raw.triggerSignals, 16).filter((x): x is WorldEngineTrigger =>
+        WORLD_ENGINE_TRIGGER_SET.has(x as WorldEngineTrigger)
+      ),
+      controlRiskTags: boundedIds(raw.controlRiskTags, 16),
+      playerLocationBefore: clampText(raw.playerLocationBefore, 128) || legacyPreviousLocation,
+      playerLocationAfter: clampText(raw.playerLocationAfter, 128) || legacyLocation,
+      presentNpcIds: boundedIds(raw.presentNpcIds),
+      deadNpcIds: boundedIds(raw.deadNpcIds),
+      changedTaskIds: boundedIds(raw.changedTaskIds),
+      changedClueIds: boundedIds(raw.changedClueIds),
+      pacingChapterSignals: validatePacingChapterSignals(raw.pacingChapterSignals),
+      worldStateSummary: {
+        day: clampInt(worldSummaryRaw.day, 0, 1_000_000, 0),
+        timeSlot: slot,
+        danger,
+        stateCodes: boundedIds(worldSummaryRaw.stateCodes, 32),
+      },
+      latestTurnSignals: {
+        actionKinds: actionKinds.length ? actionKinds : ["other"],
+        legal: turnSignalsRaw.legal !== false,
+        death: turnSignalsRaw.death === true,
+        riskTags: boundedIds(turnSignalsRaw.riskTags ?? raw.controlRiskTags, 16),
+      },
+      npcLocationUpdateCount: clampInt(raw.npcLocationUpdateCount, 0, 1_000, 0),
+      turnIndex: clampInt(raw.turnIndex, 0, 1_000_000, 0),
+      dedupKey,
+      enqueuedAt: clampText(raw.enqueuedAt, 64) || new Date(0).toISOString(),
+    },
+  };
+}
 
 export type WorldEngineStructuredDelta = DirectorPlan & {
   social_events_to_schedule: DirectorSocialEvent[];

@@ -266,6 +266,69 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS admin_audit_logs_action_created_idx ON admin_audit_logs (action, created_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS admin_audit_logs_actor_created_idx ON admin_audit_logs (actor, created_at);`);
 
+    // ========= Managed AI configuration and usage =========
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_service_connections (
+        id VARCHAR(64) PRIMARY KEY, name VARCHAR(96) NOT NULL, base_url VARCHAR(1024) NOT NULL,
+        transport VARCHAR(32) NOT NULL DEFAULT 'openai_compatible', encrypted_api_key TEXT NOT NULL,
+        key_last_four VARCHAR(8) NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        last_test_status VARCHAR(24), last_tested_at TIMESTAMPTZ, last_test_message VARCHAR(191),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TIMESTAMPTZ
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS ai_service_connections_active_idx ON ai_service_connections(enabled, deleted_at);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_service_models (
+        id VARCHAR(64) PRIMARY KEY, service_id VARCHAR(64) NOT NULL REFERENCES ai_service_connections(id) ON DELETE CASCADE,
+        name VARCHAR(96) NOT NULL, upstream_model VARCHAR(191) NOT NULL,
+        capability VARCHAR(24) NOT NULL DEFAULT 'generation', embedding_dimension INTEGER,
+        input_price_cny_fen_per_million INTEGER, output_price_cny_fen_per_million INTEGER,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TIMESTAMPTZ,
+        UNIQUE(service_id, upstream_model)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS ai_service_models_service_idx ON ai_service_models(service_id, enabled);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_route_assignments (
+        id BIGSERIAL PRIMARY KEY, purpose VARCHAR(32) NOT NULL,
+        model_id VARCHAR(64) NOT NULL REFERENCES ai_service_models(id) ON DELETE CASCADE,
+        priority INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(purpose, priority), UNIQUE(purpose, model_id)
+      );
+    `);
+    await client.query(`CREATE TABLE IF NOT EXISTS ai_config_state (id INTEGER PRIMARY KEY DEFAULT 1 CHECK(id=1), version BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+    await client.query(`INSERT INTO ai_config_state(id, version) VALUES(1,0) ON CONFLICT(id) DO NOTHING;`);
+    await bootstrapDefaultManagedAiConfig(client);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_usage_events (
+        id BIGSERIAL PRIMARY KEY, idempotency_key VARCHAR(191) NOT NULL UNIQUE,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, request_id VARCHAR(191) NOT NULL,
+        purpose VARCHAR(32) NOT NULL, task VARCHAR(64) NOT NULL, service_id VARCHAR(64), service_name VARCHAR(96) NOT NULL,
+        model_id VARCHAR(64), model_name VARCHAR(191) NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0, cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0, usage_estimated BOOLEAN NOT NULL DEFAULT FALSE,
+        cost_cny_micros BIGINT, input_price_cny_fen_per_million INTEGER, output_price_cny_fen_per_million INTEGER,
+        latency_ms INTEGER, outcome VARCHAR(24) NOT NULL, error_category VARCHAR(64)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS ai_usage_events_occurred_idx ON ai_usage_events(occurred_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS ai_usage_events_purpose_occurred_idx ON ai_usage_events(purpose, occurred_at);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_usage_daily (
+        date_key DATE NOT NULL, purpose VARCHAR(32) NOT NULL, service_id VARCHAR(64) NOT NULL DEFAULT 'deleted',
+        service_name VARCHAR(96) NOT NULL, model_id VARCHAR(64) NOT NULL DEFAULT 'deleted', model_name VARCHAR(191) NOT NULL,
+        request_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0, estimated_count INTEGER NOT NULL DEFAULT 0,
+        input_tokens BIGINT NOT NULL DEFAULT 0, output_tokens BIGINT NOT NULL DEFAULT 0, cached_input_tokens BIGINT NOT NULL DEFAULT 0,
+        total_tokens BIGINT NOT NULL DEFAULT 0, cost_cny_micros BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(date_key, purpose, service_id, model_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS ai_usage_daily_date_idx ON ai_usage_daily(date_key);`);
+
     // ========= Analytics Data Foundation =========
     await client.query(`
       CREATE TABLE IF NOT EXISTS analytics_events (
@@ -718,6 +781,7 @@ export async function ensureRuntimeSchema(): Promise<void> {
         CREATE TABLE IF NOT EXISTS vc_jobs (
           job_id BIGSERIAL PRIMARY KEY,
           job_type TEXT NOT NULL,
+          idempotency_key TEXT,
           payload JSONB NOT NULL DEFAULT '{}'::jsonb,
           status TEXT NOT NULL DEFAULT 'pending',
           run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -734,6 +798,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
         CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
         ON vc_jobs (status, run_at, priority DESC, job_id);
       `);
+      await client.query(`ALTER TABLE vc_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;`);
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS vc_jobs_type_idempotency_unique ON vc_jobs (job_type, idempotency_key) WHERE idempotency_key IS NOT NULL;`);
 
       const candAlters = [
         "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS janitor_status TEXT NOT NULL DEFAULT 'pending'",
@@ -838,6 +904,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS world_knowledge_chunks (
         id SERIAL PRIMARY KEY,
         entity_id INTEGER NOT NULL REFERENCES world_entities(id) ON DELETE CASCADE,
+        world_id VARCHAR(64) NOT NULL DEFAULT 'dark_moon_prologue',
+        map_id VARCHAR(64),
         chunk_index INTEGER NOT NULL,
         content TEXT NOT NULL,
         content_tsv TSVECTOR NOT NULL,
@@ -851,9 +919,16 @@ export async function ensureRuntimeSchema(): Promise<void> {
         embedding_vector ${embeddingVectorType},
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT world_knowledge_chunks_entity_chunk_unique UNIQUE (entity_id, chunk_index)
+        CONSTRAINT world_knowledge_chunks_world_entity_chunk_unique UNIQUE (world_id, entity_id, chunk_index)
       );
     `);
+
+    await client.query(`ALTER TABLE world_knowledge_chunks ADD COLUMN IF NOT EXISTS world_id VARCHAR(64) NOT NULL DEFAULT 'dark_moon_prologue';`);
+    await client.query(`ALTER TABLE world_knowledge_chunks ADD COLUMN IF NOT EXISTS map_id VARCHAR(64);`);
+    await client.query(`UPDATE world_knowledge_chunks SET world_id = 'dark_moon_prologue' WHERE world_id IS NULL OR world_id = '';`);
+    await client.query(`ALTER TABLE world_knowledge_chunks DROP CONSTRAINT IF EXISTS world_knowledge_chunks_entity_chunk_unique;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS world_knowledge_chunks_world_entity_chunk_unique ON world_knowledge_chunks (world_id, entity_id, chunk_index);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_world_map_idx ON world_knowledge_chunks (world_id, map_id);`);
 
     await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_entity_idx ON world_knowledge_chunks (entity_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_visibility_scope_idx ON world_knowledge_chunks (visibility_scope);`);
@@ -928,6 +1003,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
         id SERIAL PRIMARY KEY,
         user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         session_id VARCHAR(191) NOT NULL,
+        world_id VARCHAR(64) NOT NULL DEFAULT 'dark_moon_prologue',
+        map_id VARCHAR(64) NOT NULL DEFAULT 'dark_moon_apartment',
         fact_type VARCHAR(32) NOT NULL,
         entity_id INTEGER REFERENCES world_entities(id) ON DELETE SET NULL,
         normalized_fact TEXT NOT NULL,
@@ -963,6 +1040,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
         request_id VARCHAR(191) NOT NULL,
         user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
         session_id VARCHAR(191) NOT NULL,
+        world_id VARCHAR(64) NOT NULL,
+        map_id VARCHAR(64) NOT NULL,
         trigger_signals JSONB NOT NULL DEFAULT '[]'::jsonb,
         model_task VARCHAR(64) NOT NULL,
         status VARCHAR(32) NOT NULL,
@@ -972,14 +1051,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    // `CREATE TABLE IF NOT EXISTS` does not retrofit the inline UNIQUE
-    // constraint on databases created by an older/partial schema push. The
-    // worker uses ON CONFLICT (dedup_key), so the standalone index is a
-    // runtime correctness requirement, not merely an optimization.
-    await client.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS world_engine_runs_dedup_unique
-       ON world_engine_runs (dedup_key);`
-    );
     await client.query(
       `CREATE INDEX IF NOT EXISTS world_engine_runs_session_created_idx ON world_engine_runs (session_id, created_at);`
     );
@@ -992,6 +1063,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
         id SERIAL PRIMARY KEY,
         run_id INTEGER NOT NULL REFERENCES world_engine_runs(run_id) ON DELETE CASCADE,
         session_id VARCHAR(191) NOT NULL,
+        world_id VARCHAR(64) NOT NULL,
+        map_id VARCHAR(64) NOT NULL,
         user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
         event_code VARCHAR(128) NOT NULL,
         title TEXT NOT NULL,
@@ -1028,21 +1101,17 @@ export async function ensureRuntimeSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS world_engine_event_queue_director_due_idx
        ON world_engine_event_queue (session_id, status, due_turn_index);`
     );
-    await client.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS world_engine_event_queue_director_dedup_unique
-       ON world_engine_event_queue (session_id, event_code, dedup_key);`
-    );
-
     await client.query(`
       CREATE TABLE IF NOT EXISTS world_engine_agenda_snapshots (
         id SERIAL PRIMARY KEY,
         run_id INTEGER NOT NULL REFERENCES world_engine_runs(run_id) ON DELETE CASCADE,
         session_id VARCHAR(191) NOT NULL,
+        world_id VARCHAR(64) NOT NULL,
+        map_id VARCHAR(64) NOT NULL,
         user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
         agenda_revision INTEGER NOT NULL,
         snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT world_engine_agenda_session_revision_unique UNIQUE (session_id, agenda_revision)
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await client.query(
@@ -1053,6 +1122,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS world_engine_director_state (
         id SERIAL PRIMARY KEY,
         session_id VARCHAR(191) NOT NULL,
+        world_id VARCHAR(64) NOT NULL,
+        map_id VARCHAR(64) NOT NULL,
         user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
         turn_index INTEGER NOT NULL DEFAULT 0,
         phase VARCHAR(24) NOT NULL DEFAULT 'quiet',
@@ -1063,10 +1134,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
       );
     `);
     await client.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS world_engine_director_state_session_unique
-       ON world_engine_director_state (session_id);`
-    );
-    await client.query(
       `CREATE INDEX IF NOT EXISTS world_engine_director_state_user_updated_idx
        ON world_engine_director_state (user_id, updated_at);`
     );
@@ -1075,6 +1142,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS npc_agent_state (
         id SERIAL PRIMARY KEY,
         session_id VARCHAR(191) NOT NULL,
+        world_id VARCHAR(64) NOT NULL,
+        map_id VARCHAR(64) NOT NULL,
         user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
         npc_id VARCHAR(128) NOT NULL,
         state_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -1085,10 +1154,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
       );
     `);
     await client.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS npc_agent_state_session_npc_unique
-       ON npc_agent_state (session_id, npc_id);`
-    );
-    await client.query(
       `CREATE INDEX IF NOT EXISTS npc_agent_state_session_status_eligible_idx
        ON npc_agent_state (session_id, status, next_eligible_turn);`
     );
@@ -1096,6 +1161,51 @@ export async function ensureRuntimeSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS npc_agent_state_user_updated_idx
        ON npc_agent_state (user_id, updated_at);`
     );
+
+    for (const table of [
+      "world_engine_runs",
+      "world_engine_event_queue",
+      "world_engine_agenda_snapshots",
+      "world_engine_director_state",
+      "npc_agent_state",
+    ]) {
+      await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS world_id VARCHAR(64);`);
+      await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS map_id VARCHAR(64);`);
+      await client.query(`UPDATE ${table} SET world_id = 'dark_moon_prologue' WHERE world_id IS NULL;`);
+      await client.query(`UPDATE ${table} SET map_id = 'dark_moon_apartment' WHERE map_id IS NULL;`);
+    }
+    // Runtime bootstrap performs only the additive/backfill phase for existing
+    // databases. Migration 0021 owns NULL verification, NOT NULL tightening,
+    // and removal of legacy session-only uniqueness.
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS world_engine_runs_scope_dedup_unique ON world_engine_runs (world_id, map_id, session_id, dedup_key);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS world_engine_runs_scope_session_created_idx ON world_engine_runs (world_id, map_id, session_id, created_at);`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS world_engine_director_state_scope_session_unique ON world_engine_director_state (world_id, map_id, session_id);`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS npc_agent_state_scope_session_npc_unique ON npc_agent_state (world_id, map_id, session_id, npc_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS npc_agent_state_scope_status_eligible_idx ON npc_agent_state (world_id, map_id, session_id, status, next_eligible_turn);`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS world_engine_event_queue_scope_director_dedup_unique ON world_engine_event_queue (world_id, map_id, session_id, event_code, dedup_key);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS world_engine_event_queue_scope_status_due_idx ON world_engine_event_queue (world_id, map_id, session_id, status, due_in_turns);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS world_engine_event_queue_scope_director_due_idx ON world_engine_event_queue (world_id, map_id, session_id, status, due_turn_index);`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS world_engine_agenda_scope_revision_unique ON world_engine_agenda_snapshots (world_id, map_id, session_id, agenda_revision);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS world_engine_agenda_scope_created_idx ON world_engine_agenda_snapshots (world_id, map_id, session_id, created_at);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS world_engine_hint_envelopes (
+        id SERIAL PRIMARY KEY,
+        hint_id VARCHAR(128) NOT NULL UNIQUE,
+        run_id INTEGER NOT NULL REFERENCES world_engine_runs(run_id) ON DELETE CASCADE,
+        world_id VARCHAR(64) NOT NULL,
+        map_id VARCHAR(64) NOT NULL,
+        session_id VARCHAR(191) NOT NULL,
+        world_revision BIGINT NOT NULL,
+        valid_from_turn INTEGER NOT NULL,
+        valid_through_turn INTEGER NOT NULL,
+        phase VARCHAR(24) NOT NULL,
+        envelope_json JSONB NOT NULL,
+        lifecycle VARCHAR(24) NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS world_engine_hint_envelopes_scope_turn_idx ON world_engine_hint_envelopes (world_id, map_id, session_id, lifecycle, valid_from_turn, valid_through_turn);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS npc_relation_edges (
@@ -1214,6 +1324,7 @@ async function ensureKgSchema(
       CREATE TABLE IF NOT EXISTS vc_jobs (
         job_id BIGSERIAL PRIMARY KEY,
         job_type TEXT NOT NULL,
+        idempotency_key TEXT,
         payload JSONB NOT NULL DEFAULT '{}'::jsonb,
         status TEXT NOT NULL DEFAULT 'pending',
         run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1230,6 +1341,8 @@ async function ensureKgSchema(
       CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
       ON vc_jobs (status, run_at, priority DESC, job_id);
     `);
+    await client.query(`ALTER TABLE vc_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS vc_jobs_type_idempotency_unique ON vc_jobs (job_type, idempotency_key) WHERE idempotency_key IS NOT NULL;`);
     await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS vc_world_meta (
@@ -1316,3 +1429,105 @@ async function ensureKgSchema(
     console.warn("[ensureSchema] ensureKgSchema skipped:", e);
   }
 }
+
+async function bootstrapDefaultManagedAiConfig(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows?: Array<Record<string, unknown>> }> }): Promise<void> {
+  try {
+    const { hasAiConfigEncryptionKey, encryptApiKey } = await import("@/lib/ai/managed/crypto");
+    if (!hasAiConfigEncryptionKey()) return;
+
+    const countRes = await client.query(`SELECT count(*)::int AS count FROM ai_service_connections WHERE deleted_at IS NULL;`);
+    const count = Number(countRes.rows?.[0]?.count ?? 0);
+    if (count > 0) return;
+
+    const deepseekKey = (process.env.DEEPSEEK_API_KEY || "").trim();
+    const arkEmbeddingKey = (process.env.ARK_EMBEDDING_API_KEY || process.env.AI_EMBEDDING_API_KEY || "").trim();
+    const arkGatewayKey = (process.env.ARK_GATEWAY_API_KEY || process.env.AI_GATEWAY_API_KEY || deepseekKey).trim();
+
+    if (arkGatewayKey || deepseekKey) {
+      const serviceId = "volcengine-ark-responses";
+      const modelId = "deepseek-v4-flash-ark";
+      const keyToUse = arkGatewayKey || deepseekKey;
+      const encrypted = encryptApiKey(keyToUse, serviceId);
+
+      await client.query(
+        `INSERT INTO ai_service_connections
+           (id, name, base_url, transport, enabled, encrypted_api_key, key_last_four, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, TRUE, $5, $6, NOW(), NOW())
+         ON CONFLICT (id) DO NOTHING;`,
+        [serviceId, "Volcengine Ark Responses (deepseek-v4-flash)", "https://ark.cn-beijing.volces.com/api/plan/v3", "openai_responses", encrypted, keyToUse.slice(-4)]
+      );
+
+      await client.query(
+        `INSERT INTO ai_service_models
+           (id, service_id, name, upstream_model, capability, enabled, embedding_dimension, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'generation', TRUE, NULL, NOW(), NOW())
+         ON CONFLICT (id) DO NOTHING;`,
+        [modelId, serviceId, "deepseek-v4-flash", "deepseek-v4-flash"]
+      );
+
+      if (deepseekKey) {
+        const directSvcId = "deepseek-direct";
+        const directModelId = "deepseek-v4-flash";
+        const directEncrypted = encryptApiKey(deepseekKey, directSvcId);
+        await client.query(
+          `INSERT INTO ai_service_connections
+             (id, name, base_url, transport, enabled, encrypted_api_key, key_last_four, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, TRUE, $5, $6, NOW(), NOW())
+           ON CONFLICT (id) DO NOTHING;`,
+          [directSvcId, "DeepSeek 直连", "https://api.deepseek.com", "openai_compatible", directEncrypted, deepseekKey.slice(-4)]
+        );
+        await client.query(
+          `INSERT INTO ai_service_models
+             (id, service_id, name, upstream_model, capability, enabled, embedding_dimension, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'generation', TRUE, NULL, NOW(), NOW())
+           ON CONFLICT (id) DO NOTHING;`,
+          [directModelId, directSvcId, "DeepSeek V4 Flash", "deepseek-v4-flash"]
+        );
+      }
+
+      if (arkEmbeddingKey) {
+        const embedSvcId = "volcengine-ark-embeddings";
+        const embedModelId = "doubao-embedding-vision";
+        const embedEncrypted = encryptApiKey(arkEmbeddingKey, embedSvcId);
+        await client.query(
+          `INSERT INTO ai_service_connections
+             (id, name, base_url, transport, enabled, encrypted_api_key, key_last_four, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, TRUE, $5, $6, NOW(), NOW())
+           ON CONFLICT (id) DO NOTHING;`,
+          [embedSvcId, "Volcengine Ark Embeddings (doubao-embedding-vision)", "https://ark.cn-beijing.volces.com/api/plan/v3", "openai_compatible", embedEncrypted, arkEmbeddingKey.slice(-4)]
+        );
+        await client.query(
+          `INSERT INTO ai_service_models
+             (id, service_id, name, upstream_model, capability, enabled, embedding_dimension, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'embedding', TRUE, 2048, NOW(), NOW())
+           ON CONFLICT (id) DO NOTHING;`,
+          [embedModelId, embedSvcId, "doubao-embedding-vision", "doubao-embedding-vision"]
+        );
+        await client.query(
+          `INSERT INTO ai_route_assignments (purpose, priority, model_id)
+           VALUES ('embedding', 0, $1)
+           ON CONFLICT (purpose, priority) DO NOTHING;`,
+          [embedModelId]
+        );
+      }
+
+      for (const purpose of ["story", "rules", "polish", "background", "judge"]) {
+        await client.query(
+          `INSERT INTO ai_route_assignments (purpose, priority, model_id)
+           VALUES ($1, 0, $2)
+           ON CONFLICT (purpose, priority) DO NOTHING;`,
+          [purpose, modelId]
+        );
+      }
+
+      await client.query(
+        `INSERT INTO ai_config_state (id, version, updated_at)
+         VALUES (1, 1, NOW())
+         ON CONFLICT (id) DO UPDATE SET version = ai_config_state.version + 1, updated_at = NOW();`
+      );
+    }
+  } catch (err) {
+    console.warn("[ensureSchema] bootstrapDefaultManagedAiConfig skipped:", err);
+  }
+}
+

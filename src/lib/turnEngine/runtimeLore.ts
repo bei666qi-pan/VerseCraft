@@ -4,6 +4,7 @@ import { getRuntimeLore } from "@/lib/worldKnowledge/runtime/getRuntimeLore";
 import type { LorePacket } from "@/lib/worldKnowledge/types";
 import { extractRecentEntities } from "@/lib/turnEngine/requestMetadata";
 import type { ChatPerfFlags, RiskLane } from "@/lib/turnEngine/types";
+import type { MapId, WorldId } from "@/lib/worlds/types";
 
 export type RuntimeLoreStageResult = {
   runtimeLoreCompact: string;
@@ -29,6 +30,9 @@ export async function loadRuntimeLoreStage(args: {
   sessionId: string | null;
   latestUserInput: string;
   playerContext: string;
+  worldId?: WorldId;
+  mapId?: MapId;
+  playerLocation?: string;
   getRuntimeLoreImpl?: typeof getRuntimeLore;
   logAiTelemetryImpl?: typeof logAiTelemetry;
   guessPlayerLocationImpl?: typeof guessPlayerLocationFromContext;
@@ -61,11 +65,13 @@ export async function loadRuntimeLoreStage(args: {
 
   try {
     const lorePromise = getRuntimeLoreFn({
+      worldId: args.worldId,
+      mapId: args.mapId,
       latestUserInput: args.latestUserInput,
       userId: args.userId,
       sessionId: args.sessionId ?? null,
       worldRevision: BigInt(0),
-      playerLocation: guessLocationFn(args.playerContext),
+      playerLocation: args.playerLocation ?? guessLocationFn(args.playerContext),
       playerContext: args.playerContext,
       recentlyEncounteredEntities: extractRecentEntitiesFn(args.latestUserInput),
       taskType: "PLAYER_CHAT",
@@ -86,7 +92,7 @@ export async function loadRuntimeLoreStage(args: {
       logAiTelemetryFn({
         requestId: args.requestId,
         task: "PLAYER_CHAT",
-        providerId: "oneapi",
+        providerId: "openai_compatible",
         logicalRole: "control",
         phase: "preflight_budget",
         latencyMs: loreRetrievalLatencyMs,
@@ -136,7 +142,7 @@ export async function loadRuntimeLoreStage(args: {
     logAiTelemetryFn({
       requestId: args.requestId,
       task: "PLAYER_CHAT",
-      providerId: "oneapi",
+      providerId: "openai_compatible",
       logicalRole: "control",
       phase: "preflight_budget",
       latencyMs: loreRetrievalLatencyMs,

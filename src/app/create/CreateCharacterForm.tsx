@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
@@ -29,6 +29,8 @@ import {
 import { validateCreateProfileBeforeLocalStart } from "./createSubmitPolicy";
 import { flushGameStorePersistenceDebouncedWrites } from "@/lib/idbDebouncedStorage";
 import { isLikelyAndroidMobileUa } from "@/lib/platform/isLikelyAndroidMobileUa";
+import { SPIRIT_ROOTS, type SpiritRoot } from "@/lib/worlds/xingni/progression";
+import { XINGNI_WORLD_ID } from "@/lib/worlds/types";
 
 const inputClass =
   "mt-2 h-11 w-full rounded-xl border border-vc-line bg-vc-paper-bright px-3.5 vc-reading-serif text-[17px] leading-none text-vc-ink outline-none transition placeholder:text-[15px] placeholder:text-vc-ink-faint focus:border-vc-ink-deep focus:shadow-[0_0_0_3px_rgba(47,116,106,0.12)]";
@@ -50,8 +52,10 @@ function buildRandomStats(): Record<StatType, number> {
   return next;
 }
 
-export function CreateCharacterForm() {
+export function CreateCharacterForm({ xingniEnabled = true }: { xingniEnabled?: boolean }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isXingni = searchParams.get("world") === XINGNI_WORLD_ID;
   const user = useGameStore((s) => s.user);
   const guestId = useGameStore((s) => s.guestId ?? "guest_create");
   const language = useGameStore((s) => s.language);
@@ -71,6 +75,7 @@ export function CreateCharacterForm() {
   const [heightFocused, setHeightFocused] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [selectedTalent, setSelectedTalent] = useState<EchoTalent | null>(null);
+  const [spiritRoot, setSpiritRoot] = useState<SpiritRoot>("青木");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submitInFlightRef = useRef(false);
@@ -84,13 +89,19 @@ export function CreateCharacterForm() {
     height >= 140 &&
     height <= 220 &&
     personalityValid &&
-    remaining === 0 &&
+    (isXingni || remaining === 0) &&
     selectedTalent !== null;
+
+  useEffect(() => {
+    if (isXingni && selectedTalent === null) setSelectedTalent(TALENTS[0].key);
+  }, [isXingni, selectedTalent]);
 
   const submitMessage =
     submitError ??
     (submitAttempted && !canSubmit
-      ? isEnglish
+      ? isXingni
+        ? "检查称呼、身高与性格格式，并确认星逆·太初当前可进入。"
+        : isEnglish
         ? "Check your name, height, personality, allocated points, and Echo talent."
         : "检查称呼、身高、性格格式；点数必须用完，并选择一项回响天赋。"
       : null);
@@ -123,7 +134,7 @@ export function CreateCharacterForm() {
   async function handleSubmit() {
     if (submitInFlightRef.current) return;
     setSubmitError(null);
-    if (!canSubmit || !selectedTalent) {
+    if (!xingniEnabled || !canSubmit || !selectedTalent) {
       setSubmitAttempted(true);
       return;
     }
@@ -149,10 +160,11 @@ export function CreateCharacterForm() {
       useGameStore.getState().initCharacter(
         { name: cleanName, gender, height: cleanHeight, personality: cleanPersonality },
         stats,
-        selectedTalent
+        selectedTalent,
+        { worldId: isXingni ? XINGNI_WORLD_ID : "dark_moon_prologue", spiritRoot }
       );
       try {
-        useGameStore.getState().saveGame("main_slot");
+        useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
       } catch (saveError) {
         console.warn("[create] main_slot save failed before play navigation", saveError);
       }
@@ -169,6 +181,8 @@ export function CreateCharacterForm() {
           name: cleanName,
           gender,
           height: cleanHeight,
+          worldId: isXingni ? XINGNI_WORLD_ID : "dark_moon_prologue",
+          ...(isXingni ? { spiritRoot } : {}),
         },
       }).catch(() => {});
       void validateCharacterProfile({
@@ -250,14 +264,46 @@ export function CreateCharacterForm() {
 
         <section className="mt-8 animate-fade-in-up">
           <p className="vc-reading-serif text-[12px] font-semibold uppercase tracking-[0.34em] text-vc-ink-faint">
-            {isEnglish ? "PROLOGUE · DARK MOON" : "序章 · 暗月"}
+            {isXingni ? "星逆 · 太初 / 青石县" : (isEnglish ? "PROLOGUE · DARK MOON" : "序章 · 暗月")}
           </p>
           <h1 className="mt-2.5 vc-reading-serif text-[32px] font-semibold leading-tight text-vc-ink-deep">{isEnglish ? "Before you enter" : "入卷之前"}</h1>
           <p className="mt-2 vc-reading-serif text-[15px] leading-relaxed text-vc-ink-soft">
-            {isEnglish ? "Give this body a shape. Under the Dark Moon, the apartment remembers every name that enters." : "写下这具身体的轮廓。暗月之下，公寓会记住每一个走进来的名字。"}
+            {isXingni ? "写下这名落魄散修的轮廓。气海虽损，仙途未绝。" : (isEnglish ? "Give this body a shape. Under the Dark Moon, the apartment remembers every name that enters." : "写下这具身体的轮廓。暗月之下，公寓会记住每一个走进来的名字。")}
           </p>
           <VerseCraftPaperDivider className="mt-5 w-[11rem]" />
         </section>
+
+        {isXingni ? (
+          <section className="vc-card mt-5 px-5 py-5" data-testid="create-spirit-root-selector">
+            <VerseCraftPaperSectionTitle>灵根方向</VerseCraftPaperSectionTitle>
+            <p className="mt-2 text-[14px] leading-6 text-vc-ink-soft">灵根决定首版修炼倾向；角色固定从气海受损的炼气二层开始。</p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {SPIRIT_ROOTS.map((root) => (
+                <button
+                  key={root}
+                  type="button"
+                  data-testid={`create-spirit-root-${root}`}
+                  aria-pressed={spiritRoot === root}
+                  onClick={() => setSpiritRoot(root)}
+                  className={`rounded-xl border px-3 py-3 vc-reading-serif text-[17px] font-semibold transition ${spiritRoot === root ? "border-vc-accent bg-vc-accent text-white" : "border-vc-line bg-vc-paper-bright text-vc-ink"}`}
+                >
+                  {root}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {isXingni && !xingniEnabled ? (
+          <section
+            className="mt-5 rounded-2xl border border-vc-seal/35 bg-vc-seal/5 px-5 py-4 text-vc-seal"
+            data-testid="create-world-disabled"
+            role="status"
+          >
+            <p className="vc-reading-serif text-[17px] font-semibold">星逆·太初暂不可进入</p>
+            <p className="mt-1 text-[14px] leading-6">已有玄幻存档会完整保留，世界重新开放后可继续游玩。</p>
+          </section>
+        ) : null}
 
         <section className="vc-card mt-6 px-5 py-5">
           <VerseCraftPaperSectionTitle>{isEnglish ? "Profile" : "基础档案"}</VerseCraftPaperSectionTitle>
@@ -332,7 +378,7 @@ export function CreateCharacterForm() {
           </div>
         </section>
 
-        <section className="vc-card mt-5 px-5 py-5">
+        {!isXingni ? <section className="vc-card mt-5 px-5 py-5">
           <div className="flex items-start justify-between gap-4">
             <VerseCraftPaperSectionTitle>{isEnglish ? "Attributes" : "潜能赋予"}</VerseCraftPaperSectionTitle>
             <div className="mt-0.5 flex shrink-0 items-center gap-2 rounded-full border border-vc-line bg-vc-paper-bright px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
@@ -353,12 +399,12 @@ export function CreateCharacterForm() {
             onIncrement={inc}
             onDecrement={dec}
           />
-        </section>
+        </section> : null}
 
-        <section className="vc-card mt-5 px-5 py-5">
+        {!isXingni ? <section className="vc-card mt-5 px-5 py-5">
           <VerseCraftPaperSectionTitle>{isEnglish ? "Echo talent" : "回响天赋"}</VerseCraftPaperSectionTitle>
           <CreateTalentGrid selectedTalent={selectedTalent} onSelectTalent={setSelectedTalent} />
-        </section>
+        </section> : null}
 
         <footer className="mt-5 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {submitMessage ? (
@@ -370,7 +416,7 @@ export function CreateCharacterForm() {
             type="submit"
             tone="ink"
             data-testid="create-submit-button"
-            disabled={!canSubmit || submitting}
+            disabled={!xingniEnabled || !canSubmit || submitting}
             className="h-[54px] min-h-[54px] touch-manipulation rounded-2xl text-[20px]"
           >
             <span className="absolute left-6 text-vc-paper-bright/50" aria-hidden>

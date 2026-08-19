@@ -115,7 +115,7 @@ export const mobileReadingTheme = {
   optionsToggleIconCollapsed: "h-[1.25rem] w-[1.25rem] min-[420px]:h-[1.35rem] min-[420px]:w-[1.35rem]",
   optionsToggleIconExpanded: "h-[1.25rem] w-[1.25rem]",
   sendButton:
-    "flex h-[2.35rem] w-[2.35rem] shrink-0 items-center justify-center rounded-[0.9rem] border border-[#b9cec8] bg-[linear-gradient(180deg,#fafffd,#edf7f3)] text-[#155c54] shadow-[0_8px_18px_rgba(45,117,107,0.16),inset_0_1px_0_rgba(255,255,255,0.96)] transition duration-300 enabled:hover:border-[#2d756b]/45 enabled:hover:bg-white enabled:active:scale-95 disabled:opacity-60 min-[420px]:h-[2.56rem] min-[420px]:w-[2.56rem]",
+    "flex h-[2.35rem] w-[2.35rem] shrink-0 items-center justify-center rounded-[0.9rem] border border-[#b9cec8] bg-[#f4faf7] text-[#155c54] shadow-[inset_0_1px_0_rgba(255,255,255,0.96)] transition duration-300 enabled:hover:border-[#2d756b]/45 enabled:hover:bg-white enabled:hover:shadow-[0_4px_10px_rgba(45,117,107,0.1),inset_0_1px_0_rgba(255,255,255,0.96)] enabled:active:scale-95 disabled:bg-[#f3f5f1] disabled:text-[#78948f] disabled:opacity-70 min-[420px]:h-[2.56rem] min-[420px]:w-[2.56rem]",
   sendButtonFlash: "scale-95 brightness-105",
   sendIcon: "ml-0.5 h-[1.45rem] w-[1.45rem]",
 
@@ -138,7 +138,7 @@ export const mobileReadingTheme = {
 
   bottomNav:
     "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[30px] border border-b-0 border-[#d6cfc4] bg-[rgba(255,253,249,0.94)] px-5 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_36px_rgba(46,40,32,0.1),inset_0_1px_0_rgba(255,255,255,0.96)] backdrop-blur-xl min-[420px]:px-7",
-  bottomNavGrid: "grid h-full grid-cols-5 items-end gap-1",
+  bottomNavGrid: "grid h-full items-end gap-1",
   bottomNavItem:
     "relative flex h-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-[#123f3c] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d756b]/30 active:scale-95",
   bottomNavItemActive: "bg-[#edf5f1] text-[#2d756b] shadow-[0_8px_20px_rgba(45,117,107,0.1)]",

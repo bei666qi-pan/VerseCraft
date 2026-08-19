@@ -3,13 +3,15 @@
  */
 // These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
 // transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
-process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
+process.env.AI_UPSTREAM_FORCE_HTTP1 = "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resetProviderCircuitsForTests } from "@/lib/ai/fallback/circuitBreaker";
 import { resetModelCircuitsForTests } from "@/lib/ai/fallback/modelCircuit";
 import type { ChatMessage } from "@/lib/ai/types/core";
 import { executeChatCompletion, executePlayerChatStream } from "@/lib/ai/router/execute";
+import { installManagedAiTestSnapshotFromEnv } from "@/lib/ai/managed/testFixtures";
+import { getManagedBindingsForTask } from "@/lib/ai/managed/state";
 
 // Kimi Code CLI 运行时注入的环境变量。测试期间需清除。
 const KIMI_INJECTED_VARS = [
@@ -42,7 +44,9 @@ function patchEnv(updates: Record<string, string | undefined>): () => void {
       delete process.env[k];
     }
   }
+  const restoreSnapshot = installManagedAiTestSnapshotFromEnv();
   return () => {
+    restoreSnapshot();
     for (const k of Object.keys(updates)) {
       const o = prev[k];
       if (o === undefined) delete process.env[k];
@@ -400,17 +404,18 @@ test("control-plane JSON disables provider thinking by default so output budget 
   assert.deepEqual(bodyExtra.thinking, { type: "disabled" });
 });
 
-test("codex-ds split routes PLAYER_CHAT to Flash with thinking disabled", async (t) => {
+test("managed PLAYER_CHAT route uses the configured Flash model with thinking disabled", async (t) => {
   const restore = patchEnv({
     ...baseGateway,
+    AI_MODEL_MAIN: "deepseek-v4-flash",
     VC_AI_DIRECT_MODEL: undefined,
     VC_AI_DIRECT_PLAYER_MODEL: "deepseek-v4-flash",
     VC_AI_DIRECT_MODEL_MAIN: "deepseek-v4-pro-202606",
     VC_AI_DIRECT_MODEL_CONTROL: "deepseek-v4-pro-202606",
     VC_AI_DIRECT_MODEL_ENHANCE: "deepseek-v4-pro-202606",
     VC_AI_DIRECT_MODEL_REASONER: "deepseek-v4-pro-202606",
-    AI_GATEWAY_MERGE_EXTRA_BODY: "1",
-    AI_GATEWAY_EXTRA_BODY_JSON:
+    AI_UPSTREAM_MERGE_EXTRA_BODY: "1",
+    AI_UPSTREAM_EXTRA_BODY_JSON:
       '{"enable_thinking":true,"thinking":{"type":"enabled"},"reasoning_effort":"max"}',
     AI_PLAYER_CHAT_DISABLE_THINKING: "1",
     AI_PLAYER_CHAT_MERGE_EXTRA_BODY: "1",
@@ -446,17 +451,18 @@ test("codex-ds split routes PLAYER_CHAT to Flash with thinking disabled", async 
   assert.equal("reasoning_effort" in captured, false);
 });
 
-test("codex-ds split routes EVAL_JUDGE to Pro with maximum thinking", async (t) => {
+test("managed EVAL_JUDGE route uses the configured Pro model with maximum thinking", async (t) => {
   const restore = patchEnv({
     ...baseGateway,
+    AI_MODEL_REASONER: "deepseek-v4-pro-202606",
     VC_AI_DIRECT_MODEL: undefined,
     VC_AI_DIRECT_PLAYER_MODEL: "deepseek-v4-flash",
     VC_AI_DIRECT_MODEL_MAIN: "deepseek-v4-pro-202606",
     VC_AI_DIRECT_MODEL_CONTROL: "deepseek-v4-pro-202606",
     VC_AI_DIRECT_MODEL_ENHANCE: "deepseek-v4-pro-202606",
     VC_AI_DIRECT_MODEL_REASONER: "deepseek-v4-pro-202606",
-    AI_GATEWAY_MERGE_EXTRA_BODY: "1",
-    AI_GATEWAY_EXTRA_BODY_JSON:
+    AI_UPSTREAM_MERGE_EXTRA_BODY: "1",
+    AI_UPSTREAM_EXTRA_BODY_JSON:
       '{"enable_thinking":true,"thinking":{"type":"enabled"},"reasoning_effort":"max"}',
     AI_PLAYER_CHAT_DISABLE_THINKING: "1",
     AI_ONLINE_SHORT_JSON_DISABLE_THINKING: "1",
@@ -569,8 +575,7 @@ test("NARRATIVE_EXPANSION is non-stream json without a max_tokens cap", async (t
   assert.equal(stream, false);
 });
 
-test("local vs production style base URL both normalize to chat completions path", async () => {
-  const { resolveAiEnv } = await import("@/lib/ai/config/envCore");
+test("managed test bindings normalize local and production-style base URLs", async () => {
   const restoreA = patchEnv({
     AI_GATEWAY_BASE_URL: "http://127.0.0.1:8080",
     AI_GATEWAY_API_KEY: "x",
@@ -580,7 +585,7 @@ test("local vs production style base URL both normalize to chat completions path
     AI_MODEL_REASONER: "r",
   });
   try {
-    assert.match(resolveAiEnv().gatewayBaseUrl, /\/v1\/chat\/completions$/);
+    assert.match(getManagedBindingsForTask("PLAYER_CHAT")[0]?.baseUrl ?? "", /\/v1\/chat\/completions$/);
   } finally {
     restoreA();
   }
@@ -594,7 +599,7 @@ test("local vs production style base URL both normalize to chat completions path
   });
   try {
     assert.equal(
-      resolveAiEnv().gatewayBaseUrl,
+      getManagedBindingsForTask("PLAYER_CHAT")[0]?.baseUrl,
       "https://coolify-prod.example/v1/chat/completions"
     );
   } finally {

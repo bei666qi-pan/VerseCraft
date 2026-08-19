@@ -62,8 +62,8 @@ actorSimulator:      19 tests ✓
 | Flag | Default |
 |------|---------|
 | `VERSECRAFT_ENABLE_DM_AGENT` | `false` |
-| `VERSECRAFT_ENABLE_ACTOR_SIMULATION` | `false` |
-| `VERSECRAFT_ACTOR_SIMULATION_MODE` | `batch_shadow` |
+| `VERSECRAFT_ENABLE_ACTOR_SIMULATION` | `true` |
+| `VERSECRAFT_ACTOR_SIMULATION_MODE` | `batch_soft` |
 
 ## Architecture: Actor Simulation Flow
 ```
@@ -80,7 +80,7 @@ WORLD_ENGINE_TICK
 ## Rollback
 - DM Agent: `VERSECRAFT_ENABLE_DM_AGENT=false`
 - Writer: Backward compatible (falls back to AI_MODEL_MAIN)
-- Actor Simulation: `VERSECRAFT_ENABLE_ACTOR_SIMULATION=false`
+- Actor Simulation: `VERSECRAFT_ENABLE_ACTOR_SIMULATION=true`，`batch_soft`；每 tick 至多一次 batch 调用和 3 个 NPC
 
 ## Remaining Issues
 - `benchmark:chat:mock` — macOS fetch() to localhost fails (platform, not code)

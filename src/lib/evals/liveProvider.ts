@@ -1,26 +1,23 @@
 /**
- * DeepSeek Live Provider for Eval Tools
+ * Live OpenAI-compatible provider for eval tools.
  *
  * 为 Playthrough 模拟器和 DeepEval 质量评估提供真实 LLM 调用能力。
- * 优先使用项目统一的 AI 网关，兜底直连 DeepSeek。
+ * 优先使用后台“后台推演”候选；独立评测进程可显式使用 PLAYTEST_LLM_*。
  *
  * 用途：
  * - Player Agent（模拟玩家生成动作）
  * - Narrative Judge（叙事质量裁判评分）
  *
  * 环境变量：
- * - `VC_AI_DIRECT_*`: codex-ds 注入的内网 OpenAI-compatible 绑定（最高优先级）
- * - AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL: 统一网关
- * - PLAYTEST_LLM_API_KEY / DEEPSEEK_API_KEY: 直连 DeepSeek（兜底）
- * - AI_MODEL_ENHANCE / AI_MODEL_MAIN: 网关模型名
- * - PLAYTEST_LLM_MODEL: 直连模型名
+ * - PLAYTEST_LLM_API_KEY / PLAYTEST_LLM_BASE_URL / PLAYTEST_LLM_MODEL:
+ *   独立评测进程的显式测试绑定，不参与生产应用路由。
  */
 
 // === 配置 ===
 
 import { tryConsumeBudget } from "./harness/budgetGuard";
 import { buildLiveResultCacheKey, readLiveResultCache, writeLiveResultCache } from "./harness/liveResultCache";
-import { resolveAiEnv } from "../ai/config/envCore";
+import { getManagedBindingsForTask } from "../ai/managed/state";
 
 type LiveProviderConfig = {
   apiKey: string;
@@ -36,37 +33,24 @@ function toChatCompletionsUrl(value: string): string {
   return `${base}/v1/chat/completions`;
 }
 
-/**
- * Keep eval calls on the same binding as the application. In particular,
- * `codex-ds` exports VC_AI_DIRECT_* for a local loopback gateway; consulting
- * raw AI_GATEWAY_* variables here used to bypass that binding and send judges
- * to an unrelated public endpoint.
- */
 export function resolveLiveProviderConfig(): LiveProviderConfig {
-  const ai = resolveAiEnv();
-  const gatewayModel = ai.modelsByRole.reasoner || ai.modelsByRole.enhance || ai.modelsByRole.main;
-  if (ai.gatewayBaseUrl && ai.gatewayApiKey && gatewayModel) {
+  const binding = getManagedBindingsForTask("EVAL_JUDGE")[0] ?? getManagedBindingsForTask("DEV_ASSIST")[0];
+  if (binding) {
     return {
-      apiKey: ai.gatewayApiKey,
-      endpoint: toChatCompletionsUrl(ai.gatewayBaseUrl),
-      // Evals and judges are offline work. Prefer the policy's reasoner lane,
-      // which codex-ds maps to DeepSeek Pro, rather than the Flash player lane.
-      model: gatewayModel,
-      extraBody: ai.gatewayExtraBody,
+      apiKey: binding.apiKey,
+      endpoint: toChatCompletionsUrl(binding.baseUrl),
+      model: binding.modelName,
     };
   }
 
-  // 兜底：直连 DeepSeek API
-  const apiKey = process.env.PLAYTEST_LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
+  const apiKey = process.env.PLAYTEST_LLM_API_KEY;
   if (!apiKey) {
-    throw new Error("AI_GATEWAY_API_KEY 或 PLAYTEST_LLM_API_KEY/DEEPSEEK_API_KEY 未设置。请在 .env.local 中配置。");
+    throw new Error("后台推演模型尚未预热；独立评测可显式设置 PLAYTEST_LLM_API_KEY。");
   }
   return {
     apiKey,
-    endpoint: toChatCompletionsUrl(
-      process.env.PLAYTEST_LLM_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1"
-    ),
-    model: process.env.PLAYTEST_LLM_MODEL ?? "deepseek-chat",
+    endpoint: toChatCompletionsUrl(process.env.PLAYTEST_LLM_BASE_URL ?? "https://api.openai.com/v1"),
+    model: process.env.PLAYTEST_LLM_MODEL ?? "gpt-4.1-mini",
   };
 }
 
@@ -202,13 +186,12 @@ async function executeSingleRequest(req: LiveCompletionRequest): Promise<LiveCom
         max_tokens: req.maxTokens ?? 1024,
         response_format: req.jsonMode ? { type: "json_object" } : undefined,
         stream: false,
-        // Normal standalone DeepSeek calls retain the historical no-thinking
-        // default. A codex-ds/unified binding deliberately supplies its own
-        // gateway extra body (Pro + thinking enabled for offline judges).
-        ...(config.extraBody ?? {
-          enable_thinking: false,
-          thinking: { type: "disabled" },
-        }),
+        // Always disable thinking as the base; an explicit extraBody
+        // can re-enable it for reasoning tasks (e.g. judge panels).
+        // The ?? fallback handles undefined extraBody; an empty-object
+        // extraBody ({}) would otherwise swallow the defaults.
+        ...{ enable_thinking: false, thinking: { type: "disabled" } },
+        ...(config.extraBody ?? {}),
       }),
       signal: controller.signal,
     });

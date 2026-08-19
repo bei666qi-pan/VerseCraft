@@ -73,6 +73,25 @@ function resolveItemLabel(raw: unknown): string {
   return String(raw);
 }
 
+function resolveRelationLabel(raw: unknown): string {
+  if (typeof raw === "string") return raw.trim();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  const o = raw as Record<string, unknown>;
+  const npc = [o.name, o.npcName, o.npc_name, o.npcId, o.npc_id, o.id]
+    .find((value) => typeof value === "string" && value.trim().length > 0);
+  const deltaRaw = o.delta ?? o.change ?? o.value_delta ?? o.relation_delta;
+  const delta = typeof deltaRaw === "number" && Number.isFinite(deltaRaw)
+    ? `${deltaRaw >= 0 ? "+" : ""}${deltaRaw}`
+    : "";
+  const relation = [o.relation, o.type, o.kind]
+    .find((value) => typeof value === "string" && value.trim().length > 0);
+  return [
+    typeof npc === "string" ? npc.trim() : "",
+    typeof relation === "string" ? relation.trim() : "",
+    delta,
+  ].filter(Boolean).join(" · ");
+}
+
 /** 规范化图鉴更新 → 名称 */
 function resolveCodexLabel(raw: unknown): string {
   if (!raw || typeof raw !== "object") return String(raw ?? "");
@@ -176,7 +195,7 @@ export function buildTurnDeltaDigest(
   if (Array.isArray(dm.relationship_updates) && dm.relationship_updates.length > 0) {
     for (const raw of dm.relationship_updates) {
       if (items.filter(i => i.kind === "relation").length >= maxPerDim) break;
-      const label = resolveItemLabel(raw);
+      const label = resolveRelationLabel(raw);
       if (label) items.push({ kind: "relation", label });
     }
   }

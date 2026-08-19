@@ -255,7 +255,7 @@ async function main(): Promise<void> {
     ?? process.env.PLAYWRIGHT_BASE_URL
     ?? "http://127.0.0.1:666";
   const casesPath = path.resolve(readOption(args, "--cases") ?? "benchmarks/narrative-safety/cases.json");
-  const outPath = path.resolve(readOption(args, "--json-out") ?? ".runtime-data/live-semantic-edge-canary.json");
+  const outPath = path.resolve(readOption(args, "--json-out") ?? ".runtime-data/eval/live-semantic-edge-canary/report.json");
   const allCases = JSON.parse(fs.readFileSync(casesPath, "utf8")) as NarrativeSafetyEvalCase[];
   const byId = new Map(allCases.map((testCase) => [testCase.id, testCase]));
   const selectedCases = SELECTED_CASE_IDS.map((id) => {
