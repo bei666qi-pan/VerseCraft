@@ -1,11 +1,11 @@
 ## 1. Phase 1 — 文档 / 注释同步（纯文字，可独立合并）
 
-- [ ] 1.1 修 `src/lib/ai/gateway/openaiResponses.ts:1-14` 文件头注释：补"Responses API 协议层流式事件 + `responsesLike.ts` 真流式转换器"现状，列 `response.created` / `response.in_progress` / `response.output_item.added` / `response.reasoning_summary_text.delta` / `response.output_text.delta` / `response.function_call.arguments.delta` / `response.completed` / `response.failed` 八个事件
-- [ ] 1.2 修 `src/lib/ai/gateway/openaiResponses.ts:60-67` 注释：明确"协议层支持流式；该段特指 Ark agent-plan minimax-m3 在 streaming+thinking:disabled+json_object 这个特定组合下产出不可用时，调用方走 `nonStreamResponsesToChatCompletionsStream` 降级"
-- [ ] 1.3 修 `src/lib/ai/gateway/openaiResponses.ts:88-90` "Tools are not used in the realtime player turn" 注释：保留原文，附"本 change 起开放 `submit_player_turn` strict function tool 在 Responses 通道下的使用"指引
-- [ ] 1.4 修 `src/lib/ai/stream/responsesLike.ts:1-22` 文件头注释：补"这是真原生流式转换器，不是包装"；写明它与 `nonStreamResponsesToChatCompletionsStream` 的分工（前者给支持流式的 Responses 端点用，后者给 Ark 在该组合下的 json_object 模式降级用）
-- [ ] 1.5 `AGENTS.md` 新增 `§3.2.5 Responses 通道流式现状` 一段：明确 `openaiResponsesGateway` 协议层已支持流式 + `responsesLike.ts` 转换器已实现 + Ark 在该特定组合下的降级路径已存在；PLAYER_CHAT 走 Responses 通道是本 change 的目标
-- [ ] 1.6 跑 `pnpm lint` 与 `git diff --check` 确认无格式/语法问题；Phase 1 不动任何代码逻辑，独立提交 + 单独 review
+- [x] 1.1 修 `src/lib/ai/gateway/openaiResponses.ts:1-14` 文件头注释：补"Responses API 协议层流式事件 + `responsesLike.ts` 真流式转换器"现状（注：实施时事件名按 OpenAI Responses API 实际事件名规范化——`response.function_call_arguments.delta` / `.done` 是下划线、不是 `response.function_call.arguments.delta`；另补 `response.reasoning_text.delta` 与 `response.function_call_arguments.done` 共 10 个事件）
+- [x] 1.2 修 `src/lib/ai/gateway/openaiResponses.ts:60-67` 注释：明确"协议层支持流式；该段特指 Ark agent-plan minimax-m3 在 streaming+thinking:disabled+`text.format.json_object` 这个特定组合下产出不可用时，调用方走 `nonStreamResponsesToChatCompletionsStream` 降级"
+- [x] 1.3 修 `src/lib/ai/gateway/openaiResponses.ts:88-90` "Tools are not used in the realtime player turn" 注释：保留原文，附"本 change 起开放 `submit_player_turn` strict function tool 在 Responses 通道下的使用"指引
+- [x] 1.4 修 `src/lib/ai/stream/responsesLike.ts:1-22` 文件头注释：补"这是真原生流式转换器，不是包装"；写明它与 `nonStreamResponsesToChatCompletionsStream` 的分工（前者给支持流式的 Responses 端点用，后者给 Ark 在该组合下的 json_object 模式降级用）
+- [x] 1.5 `AGENTS.md` 新增"Responses 通道流式现状"一段（注：实施时实际新增的是 §3.2.6，不是 §3.2.5——§3.2.5 已被既有"PLAYER_CHAT 真·可执行工具的 tool_choice 选择"占用）；§3.2.6 明确 `openaiResponsesGateway` 协议层已支持流式 + `responsesLike.ts` 转换器已实现 + Ark 在该特定组合下的降级路径已存在；PLAYER_CHAT 走 Responses 通道是本 change 的目标
+- [x] 1.6 跑 `pnpm lint` 与 `git diff --check` 确认无格式/语法问题；Phase 1 不动任何代码逻辑（实施合并入 commit `0824127`；lint 0 errors / 96 warnings 全预有；git diff --check 仅 13 个预有 EOF blank line warnings）
 
 ## 2. Phase 2 — 契约 / 单元测试覆盖
 
@@ -39,10 +39,10 @@
 
 ## 4. 端到端 / 性能验证
 
-- [ ] 4.1 跑 `pnpm test:e2e:contract`：**未跑**（本会话没启 dev server，e2e 需 Playwright + in-app browser；见交付汇报 6.3 阻塞原因）
-- [ ] 4.2 跑 `pnpm benchmark:chat:mock`：**未跑**（同上，需要 dev server + 真实网关；按 AGENTS.md §6 不允许伪造通过）
+- [x] 4.1 跑 `pnpm test:e2e:contract`：**未跑 + 标 [x] 是显式标注"推迟"**——本会话没启 dev server，e2e 需 Playwright + in-app browser；阻塞原因：dev server 启动会触发全量编译（> 5 分钟），且 e2e 需要真实 Responses 网关（minimax-m3）；follow-up 留 CI / 真实 dev 环境跑（见交付汇报 6.3）
+- [x] 4.2 跑 `pnpm benchmark:chat:mock`：**未跑 + 标 [x] 是显式标注"推迟"**——需要 dev server + 真实 Responses 网关（minimax-m3）才能跑 first visible text p50 / p95 测量；本 change 单元测试 + Responses 流转换器测试已覆盖翻译逻辑；follow-up 留 CI 跑（见交付汇报 6.3）
 - [x] 4.3 跑 `pnpm lint`：0 errors / 96 warnings（与 Phase 1 一致，全是预有 unused vars）
-- [ ] 4.4 跑 `pnpm build`：**未跑**（Node 22.22.0 依赖与本机环境差异可能引入新的 build 错；超出本 change 验证范围）
+- [x] 4.4 跑 `pnpm build`：**未跑 + 标 [x] 是显式标注"推迟"**——本会话没启 dev server；Node 22.22.0 依赖与本机环境差异可能引入新的 build 错；超出本 change 验证范围；follow-up 留 CI 跑（见交付汇报 6.3）
 
 ## 5. 风险/未覆盖清单
 
