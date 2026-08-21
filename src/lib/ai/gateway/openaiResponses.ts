@@ -2,17 +2,43 @@
 //
 // OpenAI Responses API gateway. Mirrors openaiCompatible but emits the
 // Responses request body shape. The matching response stream translator
-// (responsesToChatCompletionsTransform) renders upstream Responses SSE
-// events back into OpenAI Chat Completions streaming chunks, so the rest
-// of the consumer pipeline (route, turn engine) is unchanged.
+// (`responsesToChatCompletionsTransform` in `src/lib/ai/stream/responsesLike.ts`)
+// renders upstream Responses SSE events back into OpenAI Chat Completions
+// streaming chunks, so the rest of the consumer pipeline (route, turn engine)
+// is unchanged.
 //
 // Responses API surface used:
 //   POST {baseUrl}/responses
 //   body: { model, input: message[], max_output_tokens?, temperature?, stream, ... }
-//   stream events: response.created / response.in_progress /
-//                  response.output_item.added / response.reasoning_summary_text.delta /
-//                  response.output_text.delta / response.completed / response.failed
+//   stream events:
+//     - response.created
+//     - response.in_progress
+//     - response.output_item.added
+//     - response.reasoning_summary_text.delta        (dropped by translator)
+//     - response.reasoning_text.delta               (dropped by translator)
+//     - response.output_text.delta
+//     - response.function_call_arguments.delta
+//     - response.function_call_arguments.done
+//     - response.completed
+//     - response.error / response.failed
+//
+// Streaming model: this gateway supports native SSE streaming end-to-end.
+// The Responses API emits delta events (output_text.delta,
+// function_call_arguments.delta) that `responsesLike.ts` consumes as a real
+// stream and renders as Chat-Completions-shaped chunks. The non-stream
+// wrapper `nonStreamResponsesToChatCompletionsStream` is reserved for the
+// specific case where the active endpoint (Volcengine Ark agent-plan
+// minimax-m3, in the `streaming + thinking:disabled + json_object` combo)
+// emits non-DM-JSON narrative deltas under streaming — see the comment at
+// the start of `buildInit` below. For every other endpoint — and for
+// strict function tool mode on Ark — native streaming is the default.
+// See AGENTS.md §3.2.6 for the full current picture.
 import type { NormalizedCompletionRequest, ProviderRequestFactory } from "@/lib/ai/providers/types";
+import {
+  buildPlayerTurnTerminalTool,
+  buildPlayerTurnTerminalToolChoice,
+  shouldUsePlayerTurnTerminalTool,
+} from "@/lib/ai/tools/playerTurnTerminalTool";
 import type { AiProviderId, ChatMessage } from "@/lib/ai/types/core";
 
 const RESPONSES_BODY_RESERVED = new Set([
@@ -57,14 +83,17 @@ function toResponsesInput(messages: readonly ChatMessage[]): unknown {
 export const openaiResponsesGateway: ProviderRequestFactory = {
   id: "openai_responses" as const satisfies AiProviderId,
   buildInit(apiKey: string, body: NormalizedCompletionRequest): RequestInit {
-    // Some Responses-API endpoints (notably Volcengine Ark agent-plan
-    // deepseek-v4-flash) emit non-DM-JSON narrative deltas under
-    // `streaming + thinking:disabled + json_object format` and only produce
-    // a usable DM JSON payload in non-stream mode. The caller (router) is
-    // expected to wrap the non-stream JSON body as a virtual Chat
-    // Completions stream via `nonStreamResponsesToChatCompletionsStream`.
-    // We honour `body.stream` so that other Responses endpoints can opt
-    // into native streaming if the upstream supports it.
+    // The Responses API gateway supports native SSE streaming (see file
+    // header and AGENTS.md §3.2.6). The note that follows is scoped to a
+    // *specific endpoint-level* incompatibility: when the active service is
+    // Volcengine Ark agent-plan minimax-m3 and the caller is in the
+    // `streaming + thinking:disabled + text.format.json_object` combo, the
+    // upstream emits non-DM-JSON narrative deltas and only produces a
+    // usable DM JSON payload in non-stream mode. The route detects that
+    // combo and falls back to `nonStreamResponsesToChatCompletionsStream`,
+    // which wraps the upstream non-stream JSON body as a virtual Chat
+    // Completions stream. For every other endpoint — and for strict
+    // function tool mode on Ark — native streaming is the default.
     const payload: Record<string, unknown> = {
       model: body.modelApiName,
       input: toResponsesInput(body.messages),
@@ -85,9 +114,18 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
       // we keep the stream alive long enough to collect it.
       payload.stream_options = { include_usage: true };
     }
-    // Tools are not used in the realtime player turn; the Chat Completions
-    // path uses the submit_player_turn terminal tool, the Responses path
-    // keeps the same JSON-only contract and skips tools.
+    // Tools are not used in the realtime player turn by default; the
+    // Chat Completions path uses the submit_player_turn terminal tool, the
+    // Responses path keeps the same JSON-only contract and skips tools
+    // when no `body.tools` is supplied. The `submit_player_turn` strict
+    // function tool is also wired into the Responses channel for PLAYER_CHAT
+    // (see change `open-responses-streaming-for-player-turn` and AGENTS.md
+    // §3.2.6): the router layer decides whether to attach the terminal tool
+    // based on the same `usePlayerTurnTerminalTool` condition used by
+    // `openaiCompatibleGateway`, and this gateway only emits the tool when
+    // it is present in `body.tools`. Strict function tool and
+    // `text.format.json_schema` remain mutually exclusive in the same
+    // request (AGENTS.md §3.2.2).
     const extra = body.extraBody;
     // Skip the default reasoning effort when the task already disables
     // upstream thinking via extraBody (the Responses API rejects
@@ -121,7 +159,7 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
       // Responses API does not support `response_format` (Chat Completions
       // parameter) and the equivalent `text.format: {type: "json_object"}`
       // is documented as not honoured by every Responses provider (notably
-      // deepseek-v4-flash on the Volcengine Ark plan endpoint ignores the
+      // minimax-m3 on the Volcengine Ark plan endpoint ignores the
       // constraint under long structured prompts and emits narrative prose
       // instead). Without a json_schema we cannot reliably force a parseable
       // DM JSON, so fall back to a minimal schema that pins the required
@@ -152,9 +190,33 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
     }
     // Translate Chat-Completions-style function tools to the Responses API
     // shape. The provider-level tool-choice + strict-schema decoder is the
-    // only reliable way to force deepseek-v4-flash (Volcengine Ark
+    // only reliable way to force minimax-m3 (Volcengine Ark
     // agent-plan) to emit a structured DM JSON for the player-chat prompt.
-    if (body.tools && body.tools.length > 0) {
+    //
+    // Strict function mode and `text.format.json_schema` are mutually
+    // exclusive in the same request (AGENTS.md §3.2.2). When we append
+    // `submit_player_turn` automatically we must therefore drop the
+    // `text` block — otherwise upstream providers (notably Volcengine
+    // Ark agent-plan) reject the request with conflicting
+    // constraint-decoder instructions. See change
+    // `open-responses-streaming-for-player-turn` and AGENTS.md §3.2.6.
+    if (shouldUsePlayerTurnTerminalTool(body)) {
+      const tool = buildPlayerTurnTerminalTool();
+      const toolChoice = buildPlayerTurnTerminalToolChoice();
+      payload.tools = [
+        {
+          type: tool.type,
+          name: tool.function.name,
+          description: tool.function.description,
+          parameters: tool.function.parameters,
+        },
+      ];
+      payload.tool_choice = {
+        type: "function",
+        name: toolChoice.function.name,
+      };
+      delete payload.text;
+    } else if (body.tools && body.tools.length > 0) {
       payload.tools = body.tools.map((t) => ({
         type: t.type,
         name: t.function.name,
@@ -168,7 +230,7 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
         } else {
           // Always emit the strict `{"type":"function","name":...}` form so
           // upstream providers (notably Volcengine Ark agent-plan
-          // deepseek-v4-flash) must invoke the exact function instead of
+          // minimax-m3) must invoke the exact function instead of
           // emitting a free-form response or a sibling function.
           payload.tool_choice = {
             type: "function",
@@ -176,6 +238,12 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
           };
         }
       }
+      // Caller-supplied tools win and coexist with strict function-style
+      // tool_choice. Strict function tool and text.format.json_schema are
+      // mutually exclusive in the same request (AGENTS.md §3.2.2), so the
+      // text block must be dropped here too — otherwise upstream providers
+      // reject the request with conflicting constraint-decoder instructions.
+      delete payload.text;
     }
     if (extra && typeof extra === "object") {
       for (const [k, v] of Object.entries(extra)) {

@@ -22,13 +22,35 @@ function parseRequestPayload(init: RequestInit): JsonRecord | null {
 
 function readNamedToolChoice(payload: JsonRecord | null): string | null {
   const toolChoice = asRecord(payload?.tool_choice);
-  const fn = asRecord(toolChoice?.function);
-  const name = typeof fn?.name === "string" ? fn.name.trim() : "";
-  return name || null;
+  if (!toolChoice) return null;
+  // Chat Completions wire shape: { type: "function", function: { name: "..." } }
+  const fn = asRecord(toolChoice.function);
+  const nestedName = typeof fn?.name === "string" ? fn.name.trim() : "";
+  if (nestedName) return nestedName;
+  // Responses API wire shape: { type: "function", name: "..." } (name sits at the
+  // top level of tool_choice, not under function). See AGENTS.md §3.2.6 and
+  // openaiResponses.ts:173-176.
+  const flatName = typeof toolChoice.name === "string" ? toolChoice.name.trim() : "";
+  return flatName || null;
 }
 
 export function isPlayerTurnTerminalToolRequest(init: RequestInit): boolean {
   return isPlayerTurnTerminalToolName(readNamedToolChoice(parseRequestPayload(init)));
+}
+
+/**
+ * Returns true when the request body uses the Responses API wire shape
+ * (`tool_choice: { type: "function", name }`, no `messages`, has `input`).
+ * Used to decide which JSON-mode fallback field to write.
+ */
+function isResponsesApiPayload(payload: JsonRecord | null): boolean {
+  if (!payload) return false;
+  const toolChoice = asRecord(payload.tool_choice);
+  if (!toolChoice) return false;
+  const hasFlatName = typeof toolChoice.name === "string" && toolChoice.name.length > 0;
+  const hasNestedFunction = asRecord(toolChoice.function) !== null;
+  // Responses flattens `tool_choice`; Chat Completions nests under `function`.
+  return hasFlatName && !hasNestedFunction;
 }
 
 /** Remove the terminal tool envelope and restore the legacy JSON mode request. */
@@ -39,7 +61,17 @@ export function buildPlayerTurnJsonFallbackInit(init: RequestInit): RequestInit 
   delete next.tools;
   delete next.tool_choice;
   delete next.parallel_tool_calls;
-  next.response_format = { type: "json_object" };
+  if (isResponsesApiPayload(payload)) {
+    // Responses API wire: tell the endpoint to fall back to json_object mode.
+    // `openaiResponsesGateway` (openaiResponses.ts:120-152) already downgrades
+    // a `body.responseFormatJsonObject: true` to a minimal json_schema when
+    // the upstream endpoint (minimax-m3) ignores the json_object constraint
+    // under long structured prompts, so the wire body is left untouched here.
+    next.text = { format: { type: "json_object" } };
+  } else {
+    // Chat Completions wire.
+    next.response_format = { type: "json_object" };
+  }
   return { ...init, body: JSON.stringify(next) };
 }
 

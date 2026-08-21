@@ -1,19 +1,35 @@
 // src/lib/ai/stream/responsesLike.ts
 //
-// Translates an upstream OpenAI Responses API SSE stream into OpenAI Chat
-// Completions streaming chunks, so the rest of the VerseCraft consumer
-// pipeline (parseOpenAiLikeStreamData + the existing chat route) sees the
-// same wire format as before.
+// Real native streaming translator (not a wrapper): consumes an upstream
+// OpenAI Responses API SSE stream and renders it as OpenAI Chat Completions
+// streaming chunks, so the rest of the VerseCraft consumer pipeline
+// (`parseOpenAiLikeStreamData` + the existing chat route) sees the same
+// wire format as before.
 //
-// We only translate events that carry user-visible content:
-//   - response.output_text.delta            -> {choices:[{delta:{content:...}}]}
-//   - response.output_text.done             -> ignored (delta already delivered)
-//   - response.content_part.done            -> ignored
-//   - response.completed                    -> emits a final chunk with usage
-//                                                + finish_reason:"stop", then [DONE]
-//   - response.error / response.failed       -> emits an empty chunk with
-//                                                finish_reason:"stop" so the
-//                                                caller closes the read loop
+// This translator is the default for any Responses endpoint that supports
+// streaming. It is distinct from `nonStreamResponsesToChatCompletionsStream`
+// — the latter is a *fallback wrapper* reserved for the specific case where
+// the active endpoint (Volcengine Ark agent-plan minimax-m3, in the
+// `streaming + thinking:disabled + text.format.json_object` combo) emits
+// non-DM-JSON narrative deltas under streaming; that path issues a non-
+// stream request and wraps the upstream JSON body as a virtual Chat
+// Completions stream. Native streaming is preferred everywhere else,
+// including strict function tool mode for PLAYER_CHAT. See AGENTS.md
+// §3.2.6 and the change `open-responses-streaming-for-player-turn`.
+//
+// Events translated here:
+//   - response.output_text.delta              -> {choices:[{delta:{content:...}}]}
+//   - response.output_item.added              -> tool_calls header chunk
+//                                                  (id + name + empty args) when
+//                                                  item.type === "function_call"
+//   - response.function_call_arguments.delta  -> tool_calls args delta chunk
+//                                                  (args concatenated across events)
+//   - response.function_call_arguments.done   -> finish chunk (finish_reason:"tool_calls")
+//   - response.completed / response.incomplete -> final chunk with usage + finish_reason
+//                                                  then [DONE]
+//   - response.error / response.failed        -> empty content chunk with
+//                                                  finish_reason:"stop" so the
+//                                                  caller closes the read loop
 // Reasoning events (response.reasoning_summary_text.delta, response.reasoning_text.delta)
 // are intentionally dropped — Chat Completions has no equivalent and the
 // DM JSON parser must not see them.
@@ -408,7 +424,7 @@ export function extractResponsesNonStreamContent(data: unknown): {
  *
  * The current Volcengine Ark agent-plan endpoint emits non-DM-JSON delta
  * chunks when `streaming + thinking:disabled + json_object format` are all
- * active simultaneously (deepseek-v4-flash returns narrative prose instead of
+ * active simultaneously (minimax-m3 returns narrative prose instead of
  * structured JSON). Forcing non-stream and then synthesising a virtual stream
  * keeps the rest of the chat route, options_regen, narrative rendering,
  * validator and commit pipeline unchanged while guaranteeing we always see
