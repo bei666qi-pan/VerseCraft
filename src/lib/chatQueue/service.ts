@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { getChatQueueConfig } from "./config";
 import { getChatQueueStore, __resetChatQueueStoreForTests } from "./store";
+import { getAppRedisClient } from "@/lib/ratelimit";
 import {
   CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER,
   CHAT_QUEUE_ID_HEADER,
@@ -61,13 +62,26 @@ function disabledResult(): ChatQueueAdmissionResult {
   };
 }
 
+/**
+ * Queue tickets must be visible to both `/api/chat/queue` and `/api/chat`.
+ * When Redis is unavailable, issuing a process-local ticket can otherwise
+ * turn a valid player action into a 409 `invalid_ticket` on a different
+ * Next.js worker. In that condition, bypass the queue and let chat proceed.
+ */
+async function canUseChatQueue(): Promise<boolean> {
+  const config = getChatQueueConfig();
+  if (!config.enabled) return false;
+  if (config.allowMemoryFallback) return true;
+  return Boolean(await getAppRedisClient());
+}
+
 export async function enqueueChatRequest(args: {
   requestId: string;
   identity: ChatQueueIdentity;
   reason?: ChatQueueReason;
 }): Promise<ChatQueueAdmissionResult> {
   const config = getChatQueueConfig();
-  if (!config.enabled) return disabledResult();
+  if (!(await canUseChatQueue())) return disabledResult();
   const result = await getChatQueueStore().enqueue({
     requestId: args.requestId,
     identity: args.identity,
@@ -94,7 +108,7 @@ export async function enqueueChatRequest(args: {
 
 export async function shouldQueueChatRequest(): Promise<ChatQueueCapacityDecision> {
   const config = getChatQueueConfig();
-  if (!config.enabled) {
+  if (!(await canUseChatQueue())) {
     return {
       enabled: false,
       shouldQueue: false,
@@ -120,7 +134,7 @@ export async function shouldQueueChatRequest(): Promise<ChatQueueCapacityDecisio
 
 export async function getChatQueueStatus(queueId: string): Promise<ChatQueueStatusResult> {
   const config = getChatQueueConfig();
-  if (!config.enabled) {
+  if (!(await canUseChatQueue())) {
     return { ok: false, status: "missing", retryAfterSeconds: config.statusPollSeconds };
   }
   const ticket = await getChatQueueStore().getStatus(queueId, config, Date.now());
@@ -137,7 +151,7 @@ export async function claimChatQueueTicketForExecution(args: {
   identity: ChatQueueIdentity;
 }): Promise<ChatQueueAdmissionResult> {
   const config = getChatQueueConfig();
-  if (!config.enabled) return disabledResult();
+  if (!(await canUseChatQueue())) return disabledResult();
   const claimed = await getChatQueueStore().claimForExecution({
     queueId: args.queueId,
     identity: args.identity,
@@ -169,20 +183,20 @@ export async function claimChatQueueTicketForExecution(args: {
 export async function completeChatQueueTicket(queueId: string | null): Promise<void> {
   if (!queueId) return;
   const config = getChatQueueConfig();
-  if (!config.enabled) return;
+  if (!(await canUseChatQueue())) return;
   await getChatQueueStore().complete(queueId, config, Date.now());
 }
 
 export async function failChatQueueTicket(queueId: string | null): Promise<void> {
   if (!queueId) return;
   const config = getChatQueueConfig();
-  if (!config.enabled) return;
+  if (!(await canUseChatQueue())) return;
   await getChatQueueStore().fail(queueId, config, Date.now());
 }
 
 export async function cancelChatQueueTicket(queueId: string): Promise<ChatQueueTicket | null> {
   const config = getChatQueueConfig();
-  if (!config.enabled) return null;
+  if (!(await canUseChatQueue())) return null;
   return getChatQueueStore().cancel(queueId, config, Date.now());
 }
 

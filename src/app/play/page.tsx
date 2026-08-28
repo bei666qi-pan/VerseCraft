@@ -40,6 +40,7 @@ import {
   getMobileCodexUnreadCount,
   type MobileOptionsRegenStage,
 } from "@/features/play/mobileReading";
+import { shouldShowMobileActionDock } from "@/features/play/mobileReading/shouldShowMobileActionDock";
 import {
   ChapterEndSheet,
   ChapterNavigator,
@@ -5483,7 +5484,11 @@ function PlayContent() {
                 definition={chapterRuntime.activeDefinition}
                 progress={chapterRuntime.activeProgress}
               /> : null}
-              <MobileActionDock
+              {shouldShowMobileActionDock({
+                optionsExpanded,
+                optionsRegenBusy,
+                optionCount: currentOptions.length,
+              }) ? <MobileActionDock
                 inputMode={inputMode}
                 hasAnyGate={hasAnyGate}
                 gateMessage={gateMessage}
@@ -5564,7 +5569,7 @@ function PlayContent() {
                     : null
                 }
                 onUseProfessionActive={onUseProfessionActive}
-              />
+              /> : null}
               {optionsExpanded && currentOptions.length > 0 ? (
                 <MobileOptionsDropdown
                   options={currentOptions}

@@ -2,6 +2,11 @@ import { envBoolean, envNumber, envRaw } from "@/lib/config/envRaw";
 
 export type ChatQueueConfig = {
   enabled: boolean;
+  /**
+   * A memory queue is process-local. It is safe only when explicitly opted in
+   * for a single-process development or test run.
+   */
+  allowMemoryFallback: boolean;
   maxRunning: number;
   maxQueued: number;
   estimatedSecondsPerTurn: number;
@@ -24,6 +29,7 @@ function sanitizeRedisPrefix(value: string | undefined): string {
 export function getChatQueueConfig(): ChatQueueConfig {
   return {
     enabled: envBoolean("VC_CHAT_QUEUE_ENABLED", true),
+    allowMemoryFallback: envBoolean("VC_CHAT_QUEUE_ALLOW_MEMORY_FALLBACK", false),
     maxRunning: clampInt(envNumber("VC_CHAT_QUEUE_MAX_RUNNING", 12), 1, 100),
     maxQueued: clampInt(envNumber("VC_CHAT_QUEUE_MAX_QUEUED", 80), 0, 10_000),
     estimatedSecondsPerTurn: clampInt(envNumber("VC_CHAT_QUEUE_ESTIMATED_SECONDS_PER_TURN", 12), 1, 600),

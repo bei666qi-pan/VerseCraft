@@ -64,6 +64,7 @@ const BASE_ENV = {
   AUTH_SECRET: "chat-queue-contract-test-secret-32chars",
   REDIS_URL: "",
   VC_CHAT_QUEUE_ENABLED: "1",
+  VC_CHAT_QUEUE_ALLOW_MEMORY_FALLBACK: "1",
   VC_CHAT_QUEUE_MAX_RUNNING: "1",
   VC_CHAT_QUEUE_MAX_QUEUED: "5",
   VC_CHAT_QUEUE_ESTIMATED_SECONDS_PER_TURN: "12",
@@ -206,13 +207,13 @@ test("POST /api/chat/queue risk-control rejection does not enqueue", async () =>
   });
 });
 
-test("POST /api/chat/queue uses memory fallback when Redis is unavailable", async () => {
-  await withQueueEnv({ ...BASE_ENV, REDIS_URL: "redis://127.0.0.1:1" }, async () => {
+test("POST /api/chat/queue disables ticket admission when Redis is unavailable", async () => {
+  await withQueueEnv({ ...BASE_ENV, REDIS_URL: "redis://127.0.0.1:1", VC_CHAT_QUEUE_ALLOW_MEMORY_FALLBACK: "0" }, async () => {
     const { enqueueQueue } = await loadRoutes();
     const res = await enqueueQueue(queueRequest(chatBody("redis-off"), "203.0.113.41", "rq-redis-off"));
     assert.equal(res.status, 200);
     const payload = await res.json();
-    assert.equal(payload.status, "running");
-    assert.ok(payload.queueId);
+    assert.equal(payload.disabled, true);
+    assert.equal(payload.queueId, null);
   });
 });

@@ -485,6 +485,40 @@ test("commitTurn keeps described-person candidate untouched in shadow mode", () 
   assert.ok(!result.summary.commitFlags.includes("structured_updates_stripped"));
 });
 
+test("commitTurn preserves a valid narrative when only a generated option invents a person", () => {
+  const narrative = "柳三娘把账本合上，陈砚在门边停了一瞬，像是在等你追问。";
+  const result = commitTurn({
+    requestId: "req_unknown_person_option_only",
+    sessionId: "s_1",
+    turnIndex: 9,
+    candidateDmRecord: {
+      narrative,
+      options: ["跟上那个披着黑斗篷、在门边盯着你的男人"],
+      is_action_legal: true,
+      sanity_damage: 0,
+      is_death: false,
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([
+      {
+        code: "unknown_entity_surface",
+        invariant: "unknown_entity_surface",
+        severity: "high",
+        source: "entityAudit",
+        detail: "kind=npc|surface=男人|origin=options|context=generic_described_person",
+        anchor: "surface:npc:男人",
+      },
+    ], "block_commit"),
+    safetyPolicy: { kernelEnabled: true, mode: "hard", entityHardGateEnabled: true, pacingValidatorEnabled: true },
+  });
+
+  assert.equal(result.committedDmRecord.narrative, narrative);
+  assert.deepEqual(result.committedDmRecord.options, []);
+  assert.equal(result.summary.safeNarrativeFallbackApplied, false);
+  assert.equal(result.summary.optionsRewriteApplied, true);
+});
+
 test("commitTurn strips state but keeps narrative on high root cause leak", () => {
   const result = commitTurn({
     requestId: "req_root_cause",

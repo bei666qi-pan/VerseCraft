@@ -540,6 +540,10 @@ function collectStructuredWhitelistIssues(input: NarrativeSafetyInput): Narrativ
 function collectSurfaceWhitelistIssues(input: NarrativeSafetyInput): NarrativeSafetyIssue[] {
   const issues: NarrativeSafetyIssue[] = [];
   const surfaceText = extractSurfaceText(input);
+  const narrativeText = normalizeText(input.narrative ?? input.dmRecord?.narrative);
+  const narrativeSurfaceIds = new Set(
+    extractEntitySurfacesConservatively(narrativeText).map((reference) => reference.id)
+  );
   const authority = input.npcSceneAuthorityPacket ?? null;
   const presentNpcIds = new Set((authority?.presentNpcIds ?? []).map(normalizeNpcId));
   const offscreenNpcIds = new Set((authority?.offscreenNpcIds ?? []).map(normalizeNpcId));
@@ -597,7 +601,9 @@ function collectSurfaceWhitelistIssues(input: NarrativeSafetyInput): NarrativeSa
         code: "unknown_entity_surface",
         invariant: "unknown_entity_surface",
         source: "entityAudit",
-        detail: `kind=npc|surface=${ref.surface ?? ref.id}|context=${
+        detail: `kind=npc|surface=${ref.surface ?? ref.id}|origin=${
+          narrativeSurfaceIds.has(ref.id) ? "narrative" : "options"
+        }|context=${
           isGenericPersonSurface(ref.surface) ? "generic_described_person" : "strong_surface_action"
         }`,
         anchor: ref.id,

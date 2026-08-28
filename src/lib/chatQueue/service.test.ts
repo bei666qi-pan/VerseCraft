@@ -44,6 +44,7 @@ function identity(sessionId: string): ChatQueueIdentity {
 const BASE_ENV = {
   REDIS_URL: "",
   VC_CHAT_QUEUE_ENABLED: "1",
+  VC_CHAT_QUEUE_ALLOW_MEMORY_FALLBACK: "1",
   VC_CHAT_QUEUE_MAX_RUNNING: "1",
   VC_CHAT_QUEUE_MAX_QUEUED: "5",
   VC_CHAT_QUEUE_ESTIMATED_SECONDS_PER_TURN: "12",
@@ -124,6 +125,7 @@ test("chat queue expires stale active tickets and releases identity locks", asyn
   await withQueueEnv({ ...BASE_ENV, VC_CHAT_QUEUE_MAX_QUEUED: "2" }, async () => {
     const config: ChatQueueConfig = {
       enabled: true,
+      allowMemoryFallback: true,
       maxRunning: 1,
       maxQueued: 2,
       estimatedSecondsPerTurn: 9,
@@ -157,11 +159,11 @@ test("chat queue expires stale active tickets and releases identity locks", asyn
   });
 });
 
-test("chat queue falls back to memory when Redis is unavailable", async () => {
-  await withQueueEnv({ ...BASE_ENV, REDIS_URL: "redis://127.0.0.1:1" }, async () => {
+test("chat queue is disabled rather than issuing process-local tickets when Redis is unavailable", async () => {
+  await withQueueEnv({ ...BASE_ENV, REDIS_URL: "redis://127.0.0.1:1", VC_CHAT_QUEUE_ALLOW_MEMORY_FALLBACK: "0" }, async () => {
     const ticket = await enqueueChatRequest({ requestId: "r1", identity: identity("s1") });
     assert.equal(ticket.ok, true);
-    assert.equal(ticket.kind, "running");
-    assert.ok(ticket.ticket?.queueId);
+    assert.equal(ticket.kind, "disabled");
+    assert.equal(ticket.ticket, null);
   });
 });

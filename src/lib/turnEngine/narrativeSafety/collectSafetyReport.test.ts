@@ -175,6 +175,16 @@ test("entity whitelist flags an individually described unregistered generic pers
   assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.anchor === "surface:npc:男人"));
 });
 
+test("entity whitelist marks an unsafe generic person introduced only by options", () => {
+  const report = collectSafetyReport({
+    narrative: "柳三娘收起账本，没有立刻接话。",
+    options: ["跟上那个披着黑斗篷、在门边盯着你的男人"],
+    npcSceneAuthorityPacket: scenePacket(),
+  });
+
+  assert.ok(report.issues.some((issue) => issue.detail?.includes("origin=options")));
+});
+
 test("entity whitelist flags the live-style workwear stranger with direct speech", () => {
   const report = collectSafetyReport({
     narrative: "一个穿旧工装的男人靠在墙边，叼着烟，开口说：‘拿根铁管跟走廊过不去？’",

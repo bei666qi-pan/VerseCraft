@@ -416,4 +416,57 @@ test.describe("chat queue UI", () => {
       )
       .toBe(1);
   });
+
+  test("re-admits once after an invalid queue ticket and completes the original AI turn", async ({ page }) => {
+    test.setTimeout(60_000);
+    const action = "查看门后的动静";
+    let queueSubmissions = 0;
+    let chatSubmissions = 0;
+    const ticketHeaders: Array<string | null> = [];
+
+    await page.route("**/api/chat/queue", async (route) => {
+      queueSubmissions += 1;
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          queueId: queueSubmissions === 1 ? "vcq_e2e_stale" : "vcq_e2e_recovered",
+          requestId: `rq-e2e-stale-${queueSubmissions}`,
+          status: "running",
+          position: 0,
+          etaSeconds: 0,
+        }),
+      });
+    });
+
+    await page.route("**/api/chat", async (route) => {
+      chatSubmissions += 1;
+      ticketHeaders.push(route.request().headers()["x-versecraft-chat-queue-id"] ?? null);
+      if (chatSubmissions === 1) {
+        await route.fulfill({
+          status: 409,
+          headers: { "content-type": "application/json; charset=utf-8" },
+          body: JSON.stringify({ status: "rejected", reason: "invalid_ticket", retryAfterSeconds: 2 }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+        body: buildSseFinalFrame(),
+      });
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedPlayableState(page);
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+    await page.getByTestId("manual-action-input").fill(action);
+    await page.getByTestId("send-action-button").click();
+
+    await expect.poll(() => chatSubmissions, { timeout: 20_000 }).toBe(2);
+    expect(queueSubmissions).toBe(2);
+    expect(ticketHeaders).toEqual(["vcq_e2e_stale", "vcq_e2e_recovered"]);
+    await expect(page.locator("body")).toContainText("门后的摩擦声停住了", { timeout: 10_000 });
+    await expect(page.getByText("此前回合未完成生成")).toHaveCount(0);
+  });
 });
