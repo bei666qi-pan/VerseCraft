@@ -102,7 +102,7 @@
     "eval:director": "tsx scripts/eval-director.ts",
     "probe:director:live": "tsx --conditions=react-server scripts/probe-world-director-live.ts",
     "eval:social-world": "tsx scripts/eval-social-world.ts",
-    "eval:detectors:mock": "tsx scripts/eval-detectors.ts --mode mock --json-out .runtime-data/eval/detectors-mock/report.json",
+    "eval:detectors:mock": "tsx --conditions=react-server scripts/eval-detectors.ts --mode mock --json-out .runtime-data/eval/detectors-mock/report.json",
     "eval:detectors": "tsx scripts/eval-detectors.ts",
     "benchmark:world-retrieval": "tsx scripts/benchmark-world-retrieval.ts",
     "worker:kg": "tsx --conditions=react-server scripts/vc-worker.ts",
