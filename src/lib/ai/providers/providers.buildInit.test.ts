@@ -1,6 +1,48 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { openaiCompatibleGateway } from "@/lib/ai/gateway/openaiCompatible";
+import { openaiResponsesGateway } from "@/lib/ai/gateway/openaiResponses";
+import { getProviderFactory } from "@/lib/ai/providers/index";
+import { PLAYER_TURN_TERMINAL_TOOL_NAME } from "@/lib/ai/tools/playerTurnTerminalTool";
+
+test("getProviderFactory routes openai_responses transport to openaiResponsesGateway", () => {
+  assert.strictEqual(getProviderFactory("openai_responses"), openaiResponsesGateway);
+});
+
+test("getProviderFactory routes openai_compatible / ark_multimodal / mock / undefined to openaiCompatibleGateway", () => {
+  for (const transport of ["openai_compatible", "ark_multimodal", "mock", undefined] as const) {
+    assert.strictEqual(
+      getProviderFactory(transport),
+      openaiCompatibleGateway,
+      `transport=${String(transport)}`,
+    );
+  }
+});
+
+test("openaiResponsesGateway wires submit_player_turn into a Responses-flavored payload and drops text", () => {
+  // End-to-end snapshot: same `shouldUsePlayerTurnTerminalTool` decision that
+  // `openaiCompatibleGateway` uses, but rendered in Responses wire shape
+  // (flattened `tools`, `tool_choice: { type, name }`, no `messages`).
+  const init = openaiResponsesGateway.buildInit("k", {
+    modelApiName: "minimax-m3",
+    messages: [{ role: "user", content: "继续" }],
+    stream: true,
+    maxTokens: 10,
+    responseFormatJsonObject: true,
+  });
+  const body = JSON.parse(String(init.body)) as Record<string, unknown> & {
+    tools?: Array<Record<string, unknown>>;
+    tool_choice?: { type?: string; name?: string };
+  };
+  assert.equal(body.model, "minimax-m3");
+  assert.equal(body.stream, true);
+  // Responses wire: input (not messages), text absent, tools/tool_choice present
+  assert.ok(Array.isArray(body.input));
+  assert.equal("text" in body, false);
+  assert.equal(body.tools?.length, 1);
+  assert.equal(body.tools?.[0]?.name, PLAYER_TURN_TERMINAL_TOOL_NAME);
+  assert.deepEqual(body.tool_choice, { type: "function", name: PLAYER_TURN_TERMINAL_TOOL_NAME });
+});
 
 test("openaiCompatibleGateway sets Authorization and json_object when requested", () => {
   const init = openaiCompatibleGateway.buildInit("k", {

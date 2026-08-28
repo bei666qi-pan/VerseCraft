@@ -2,7 +2,7 @@ import type { NormalizedCompletionRequest, ProviderRequestFactory } from "@/lib/
 import {
   buildPlayerTurnTerminalTool,
   buildPlayerTurnTerminalToolChoice,
-  resolvePlayerChatFunctionCallingMode,
+  shouldUsePlayerTurnTerminalTool,
 } from "@/lib/ai/tools/playerTurnTerminalTool";
 import type { AiProviderId, ChatMessage } from "@/lib/ai/types/core";
 
@@ -53,9 +53,11 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
     // the model must submit one terminal `submit_player_turn` call. Its arguments
     // are rewritten back into the existing DM JSON stream by fetchWithRetry, so
     // the route keeps one model call and all downstream contracts stay unchanged.
-    const terminalToolMode = resolvePlayerChatFunctionCallingMode();
-    const usePlayerTurnTerminalTool =
-      body.stream && terminalToolMode !== "off" && (!body.tools || body.tools.length === 0);
+    // The decision is shared with `openaiResponsesGateway` via
+    // `shouldUsePlayerTurnTerminalTool` so both transports gate strict-function
+    // mode on the same condition (see change
+    // `open-responses-streaming-for-player-turn` and AGENTS.md §3.2.6).
+    const usePlayerTurnTerminalTool = shouldUsePlayerTurnTerminalTool(body);
 
     // Preserve the existing response-format contract even when the terminal tool
     // is enabled. The function parameter schema governs tool arguments; the
