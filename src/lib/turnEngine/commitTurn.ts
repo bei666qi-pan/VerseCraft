@@ -164,15 +164,24 @@ function getBlockedConflictSafeNarrative(language: GameLanguage, worldId?: World
     : languageText(language, BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH, BLOCKED_CONFLICT_SAFE_NARRATIVE_EN);
 }
 
-function hasDescribedUnknownPersonIssue(report: NarrativeSafetyReport | null | undefined): boolean {
+function hasDescribedUnknownPersonIssue(
+  report: NarrativeSafetyReport | null | undefined,
+  origin: "narrative" | "options"
+): boolean {
   return Boolean(
     report?.issues.some(
-      (issue) =>
-        issue.code === "unknown_entity_surface" &&
-        issue.source === "entityAudit" &&
-        (String(issue.detail ?? "").includes("context=generic_described_person") ||
-          String(issue.detail ?? "").includes("context=player_induced_anaphoric_person") ||
-          String(issue.detail ?? "").includes("context=unanchored_anaphoric_person"))
+      (issue) => {
+        if (issue.code !== "unknown_entity_surface" || issue.source !== "entityAudit") return false;
+        const detail = String(issue.detail ?? "");
+        const describesUnknownPerson =
+          detail.includes("context=generic_described_person") ||
+          detail.includes("context=player_induced_anaphoric_person") ||
+          detail.includes("context=unanchored_anaphoric_person");
+        if (!describesUnknownPerson) return false;
+        // Older reports did not include an origin. Treat them conservatively as
+        // narrative issues so an upgrade never weakens existing safeguards.
+        return detail.includes(`origin=${origin}`) || (!detail.includes("origin=") && origin === "narrative");
+      }
     )
   );
 }
@@ -550,6 +559,9 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     args.factCommitGateResult?.shouldBlockCommit === true;
   if (hardBlockFromSafety) flags.add("safety_hard_gate_blocked");
   if (hardBlockFromPacing) flags.add("pacing_hard_gate_blocked");
+  const hasUnknownPersonInNarrative = hasDescribedUnknownPersonIssue(args.safetyReport, "narrative");
+  const hasUnknownPersonOnlyInOptions =
+    !hasUnknownPersonInNarrative && hasDescribedUnknownPersonIssue(args.safetyReport, "options");
 
   const effectiveNarrativeOverride = validatorReport.narrativeOverride ?? null;
 
@@ -562,7 +574,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   } else if (
     hardBlockFromSafety &&
     safetyEnforcement.entityHardGateTriggered &&
-    hasDescribedUnknownPersonIssue(args.safetyReport)
+    hasUnknownPersonInNarrative
   ) {
     // Entity hard blocks must not leave an invented, player-visible person in
     // place merely because no asynchronous repair model answered. This stays
@@ -575,6 +587,12 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
       options: [],
     };
     flags.add("safe_narrative_fallback_applied");
+  } else if (hardBlockFromSafety && hasUnknownPersonOnlyInOptions) {
+    // A bad generated option must not erase an otherwise valid AI narrative.
+    // Drop that option set and let the normal option-regeneration flow create
+    // a safe replacement after the turn is committed.
+    committed = { ...committed, options: [] };
+    flags.add("options_rewrite_applied");
   } else if (hardBlockFromSafety && hasCandidateConflictOutcome(candidateDmRecord)) {
     // A hard safety block strips the candidate combat delta. The visible text
     // must not keep claiming a hit, suppression, or weapon loss that was not
