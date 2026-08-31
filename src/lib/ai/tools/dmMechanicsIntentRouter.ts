@@ -10,10 +10,19 @@
  * - narrative 意图（观察/对话/闲聊/探索）→ 禁止进入 Agent，走旧 DM 路径
  * - ambiguous 意图（模糊/混合/咨询方法）→ 保守走旧路径，不应擅自写状态
  *
+ * 跨世界（暗月 / 星逆）支持：
+ * - Per-world keyword signal 字典覆盖：暗月把"锻造/原石"视为 mechanics，
+ *   星逆则把"铸剑/灵石/灵草/修炼/灵根/储物袋"视为修仙专属 mechanics，
+ *   而"炼丹/渡劫/悟道/飞升"在星逆里属于 narrative。
+ * - 真 embedding 分类器见 `@/lib/ai/tools/dmIntentClassifier`，那里有 500ms
+ *   timeout + 30s LRU + per-world seed 向量；本模块仅做关键词纯函数快路径，
+ *   与 embedding 模块互不干扰。
+ *
  * 设计约束：
- * - 纯函数，不做 IO，不调用 LLM
+ * - 纯函数，无 IO，零网络请求（与 `/api/chat` first-packet budget 对齐）
  * - 确定性分类，不依赖外部状态
  * - 关键词匹配为主，保守优先
+ * - 不参与实时 embedding 调用；embedding 在 `dmIntentClassifier/` 单独管理
  */
 
 // ============================================================
@@ -136,11 +145,60 @@ const ANTI_MECHANICS_SIGNALS: readonly string[] = [
 ];
 
 // ============================================================
+// Per-world overrides (星逆 / 修仙)
+// ============================================================
+
+/** 星逆专属 mechanics：修仙系统的结构化动作 */
+const XINGNI_STRONG_MECHANICS_SIGNALS: readonly string[] = [
+  // 灵石/货币操作
+  "花费灵石", "消耗灵石", "支付灵石", "结算灵石", "交灵石",
+  // 灵草/炼丹/炼器材料
+  "炼丹药", "炼制丹药", "炼丹", "炼器", "炼法宝",
+  "服用丹药", "服用灵草", "服下丹药",
+  // 修炼/灵根操作
+  "服用灵草", "吞服丹药", "打坐修炼", "修炼功法", "修炼内功",
+  "运转灵力", "运功调息", "调息",
+  // 物品 / 储物袋
+  "查看储物袋", "打开储物袋", "取出储物袋", "从储物袋",
+  // 法宝 / 飞剑
+  "祭出飞剑", "祭出法宝", "驱动飞剑", "驱动法宝", "驾驭飞剑",
+  "锻造飞剑", "打造飞剑", "炼制飞剑", "锻造法宝",
+  "装备法宝", "装备飞剑", "卸下法宝",
+  // 战斗 / 阵法
+  "布阵", "设阵", "布设阵法", "启动阵法", "激活阵法",
+  "御敌", "对敌", "出手", "迎战妖兽", "斩杀妖兽",
+  // 任务
+  "接宗门任务", "领取悬赏", "交悬赏",
+];
+
+/** 星逆专属 weak mechanics：可能修仙动作，需要上下文 */
+const XINGNI_WEAK_MECHANICS_SIGNALS: readonly string[] = [
+  "灵石", "灵草", "丹药", "丹炉", "丹方", "法宝", "飞剑",
+  "储物袋", "阵法", "符箓", "符咒", "内功", "功法", "修为",
+  "灵兽", "妖兽",
+  "灵根", "境界",
+];
+
+/** 星逆专属 narrative：在星逆里这些词属于修仙叙事而非 mechanics */
+const XINGNI_STRONG_NARRATIVE_SIGNALS: readonly string[] = [
+  "悟道", "顿悟", "渡劫", "飞升", "化神", "入定",
+  "感悟天地", "感悟灵气", "灵气感应", "感应天地",
+  "灵气充盈", "灵台清明",
+];
+
+/** 星逆反 mechanics 信号：在星逆里"锻造/铸剑"等修仙动作常出现于叙事而非执行 */
+const XINGNI_ANTI_MECHANICS_SIGNALS: readonly string[] = [
+  "铸剑", "炼器", "炼丹",
+  // 修仙叙述常用词
+  "剑光", "法力", "真气", "灵气", "灵力",
+];
+
+// ============================================================
 // Router
 // ============================================================
 
 /**
- * 分类玩家输入的 mechanics 意图
+ * 分类玩家输入的 mechanics 意图（与 worldId 无关的默认实现）
  *
  * 算法：
  * 1. 检查强 narrative 信号 → 直接分类为 narrative
@@ -151,20 +209,36 @@ const ANTI_MECHANICS_SIGNALS: readonly string[] = [
  * 5. 默认 → narrative
  *
  * @param userInput 玩家原始输入文本
- * @param normalizedIntent 可选的规范化意图（来自 turnEngine）
  */
-export function classifyMechanicsIntent(
+export function classifyMechanicsIntent(userInput: string): MechanicsIntentResult {
+  return classifyMechanicsIntentForWorld(userInput, null);
+}
+
+/**
+ * 按 worldId 分类玩家输入的 mechanics 意图
+ *
+ * 星逆（xingni_taichu）会叠加修仙专属信号；其它 worldId 等价于默认行为。
+ *
+ * @param userInput 玩家原始输入文本
+ * @param worldId 当前回合 worldId（null/undefined = 与世界无关的默认行为）
+ */
+export function classifyMechanicsIntentForWorld(
   userInput: string,
-  __normalizedIntent?: { primaryVerb?: string; primaryTarget?: string } | null
+  worldId: string | null | undefined
 ): MechanicsIntentResult {
   const input = userInput.trim();
   const lowerInput = input.toLowerCase();
+  const isXingni = worldId === "xingni_taichu";
 
   const matchedSignals: string[] = [];
   const matchedNarrative: string[] = [];
 
   // Step 1: 强 narrative 信号 → 直接 narrative
-  for (const signal of STRONG_NARRATIVE_SIGNALS) {
+  // 星逆先检查：修仙特有 narrative 信号优先
+  const narrativeSignals = isXingni
+    ? [...STRONG_NARRATIVE_SIGNALS, ...XINGNI_STRONG_NARRATIVE_SIGNALS]
+    : STRONG_NARRATIVE_SIGNALS;
+  for (const signal of narrativeSignals) {
     if (lowerInput.includes(signal)) {
       matchedNarrative.push(signal);
     }
@@ -179,8 +253,6 @@ export function classifyMechanicsIntent(
   }
 
   // Step 1.5: 数据查询意图 — NPC 服务/商品查询 或 位置/楼层查询
-  // 这些是玩家向游戏系统查询结构化数据（而非世界内叙事），应路由到 DM Agent
-  // 以便调用 get_inventory / get_world_context 获取真实数据
   for (const signal of NPC_INQUIRY_SIGNALS) {
     if (lowerInput.includes(signal)) {
       return {
@@ -217,7 +289,10 @@ export function classifyMechanicsIntent(
   }
 
   // Step 2: 反 mechanics 信号 → ambiguous
-  for (const anti of ANTI_MECHANICS_SIGNALS) {
+  const antiSignals = isXingni
+    ? [...ANTI_MECHANICS_SIGNALS, ...XINGNI_ANTI_MECHANICS_SIGNALS]
+    : ANTI_MECHANICS_SIGNALS;
+  for (const anti of antiSignals) {
     if (lowerInput.includes(anti)) {
       return {
         classification: "ambiguous",
@@ -229,7 +304,6 @@ export function classifyMechanicsIntent(
   }
 
   // Step 2b: 疑问句检测 — 以"吗"或"？"结尾
-  // 但如果有叙事信号匹配，说明是角色对话（如"请问你是谁？"），不应降级
   if (matchedNarrative.length === 0 && (input.endsWith("吗") || input.endsWith("？") || input.endsWith("?"))) {
     return {
       classification: "ambiguous",
@@ -240,13 +314,30 @@ export function classifyMechanicsIntent(
   }
 
   // Step 3: 强 mechanics 信号 → mechanics
+  // 星逆专属强信号先匹配：修仙系统动作（储物袋/灵石/法宝/阵法）应当压制通用
+  // STRONG_NARRATIVE_SIGNALS 中的"检查/搜索"等动作，避免被错误降级为 ambiguous。
+  const genericStrongSignals: string[] = [];
+  const xingniStrongSignals: string[] = [];
   for (const signal of STRONG_MECHANICS_SIGNALS) {
-    if (lowerInput.includes(signal)) {
-      matchedSignals.push(signal);
+    if (lowerInput.includes(signal)) genericStrongSignals.push(signal);
+  }
+  if (isXingni) {
+    for (const signal of XINGNI_STRONG_MECHANICS_SIGNALS) {
+      if (lowerInput.includes(signal)) xingniStrongSignals.push(signal);
+    }
+    // 星逆专属信号命中 → 直接 mechanics（不再与通用 narrative 信号合并为 ambiguous）
+    if (xingniStrongSignals.length >= 1) {
+      matchedSignals.push(...xingniStrongSignals);
+      return {
+        classification: "mechanics",
+        matchedSignals: [...matchedSignals],
+        matchedNarrative: [],
+        reason: `检测到星逆专属 mechanics 信号: ${xingniStrongSignals.join(", ")}`,
+      };
     }
   }
+  matchedSignals.push(...genericStrongSignals);
   if (matchedSignals.length >= 1) {
-    // 如果有 narrative 信号同时存在 → ambiguous
     if (matchedNarrative.length > 0) {
       return {
         classification: "ambiguous",
@@ -259,15 +350,17 @@ export function classifyMechanicsIntent(
       classification: "mechanics",
       matchedSignals,
       matchedNarrative: [],
-      reason: `检测到 mechanics 信号: ${matchedSignals.join(", ")}`,
+      reason: `检测到 mechanics 信号: ${matchedSignals.join(", ")}${isXingni ? "（星逆 per-world）" : ""}`,
     };
   }
 
   // Step 3b: Task action patterns (accept/do/complete + quest/task)
-  // "我要接一个任务" → "接" near "任务"
   const taskActionVerbs = ["接", "接受", "做", "完成", "提交", "交", "领", "领取"];
   const hasTaskVerb = taskActionVerbs.some((v) => lowerInput.includes(v));
-  const hasTaskNoun = lowerInput.includes("任务") || lowerInput.includes("委托");
+  const taskNouns = isXingni
+    ? ["任务", "委托", "悬赏", "宗门任务"]
+    : ["任务", "委托"];
+  const hasTaskNoun = taskNouns.some((n) => lowerInput.includes(n));
   if (hasTaskVerb && hasTaskNoun) {
     return {
       classification: "mechanics",
@@ -278,21 +371,36 @@ export function classifyMechanicsIntent(
   }
 
   // Step 3c: Forge action patterns
-  // "帮我锻造" / "我要打造" → mechanics
-  const forgeVerbs = ["锻造", "打造", "制作", "修理", "改装", "强化", "修复"];
+  const forgeVerbs = isXingni
+    ? ["锻造", "打造", "制作", "修理", "改装", "强化", "修复", "炼制", "炼器", "炼丹"]
+    : ["锻造", "打造", "制作", "修理", "改装", "强化", "修复"];
   const hasForgeVerb = forgeVerbs.some((v) => lowerInput.includes(v));
-  const __hasWeaponNoun = lowerInput.includes("武器") || lowerInput.includes("装备") || lowerInput.includes("剑") || lowerInput.includes("刃");
+  const weaponNouns = isXingni
+    ? ["武器", "装备", "剑", "刃", "飞剑", "法宝", "丹", "丹药"]
+    : ["武器", "装备", "剑", "刃"];
+  const __hasWeaponNoun = weaponNouns.some((n) => lowerInput.includes(n));
   if (hasForgeVerb) {
+    // 星逆：若只是"炼丹"且无"武器/装备"上下文，可能属于修仙叙述，需结合 narrative 判定
+    if (isXingni && matchedNarrative.length > 0) {
+      return {
+        classification: "ambiguous",
+        matchedSignals: ["锻造/炼制操作"],
+        matchedNarrative,
+        reason: `星逆中同时检测到修仙动作与修仙叙述信号 (${matchedNarrative.join(", ")})，保守处理`,
+      };
+    }
     return {
       classification: "mechanics",
       matchedSignals: ["锻造操作"],
       matchedNarrative: [],
-      reason: "检测到锻造操作意图",
+      reason: isXingni ? "检测到炼制/锻造操作意图（星逆 per-world）" : "检测到锻造操作意图",
     };
   }
 
   // Step 3d: Combat action patterns
-  const combatVerbs = ["攻击", "战斗", "开战", "反击", "格挡", "闪避", "冲锋"];
+  const combatVerbs = isXingni
+    ? ["攻击", "战斗", "开战", "反击", "格挡", "闪避", "冲锋", "斩杀", "御敌", "祭出"]
+    : ["攻击", "战斗", "开战", "反击", "格挡", "闪避", "冲锋"];
   const hasCombatVerb = combatVerbs.some((v) => lowerInput.includes(v));
   if (hasCombatVerb) {
     return {
@@ -304,7 +412,6 @@ export function classifyMechanicsIntent(
   }
 
   // Step 3e: Inventory use patterns — 玩家意图使用背包中的特定物品
-  // 路由到 DM Agent 以便调用 get_inventory 验证物品存在
   for (const signal of INVENTORY_USE_SIGNALS) {
     if (lowerInput.includes(signal)) {
       return {
@@ -316,9 +423,28 @@ export function classifyMechanicsIntent(
     }
   }
 
+  // Step 3f: 星逆专属 mechanics 模式（灵石 / 储物袋 / 灵草 / 法宝）
+  if (isXingni) {
+    const xingniStorageVerbs = ["查看储物袋", "打开储物袋", "取出", "拿出"];
+    const xingniItemNouns = ["灵石", "丹药", "灵草", "法宝", "飞剑", "符箓"];
+    const hasStorageVerb = xingniStorageVerbs.some((v) => lowerInput.includes(v));
+    const hasXingniItem = xingniItemNouns.some((n) => lowerInput.includes(n));
+    if (hasStorageVerb || (hasXingniItem && (lowerInput.includes("使用") || lowerInput.includes("消耗") || lowerInput.includes("服用")))) {
+      return {
+        classification: "mechanics",
+        matchedSignals: ["星逆物品操作"],
+        matchedNarrative: [],
+        reason: "检测到星逆物品/储物袋操作意图",
+      };
+    }
+  }
+
   // Step 4: 弱 mechanics 信号 → ambiguous
+  const weakSignals = isXingni
+    ? [...WEAK_MECHANICS_SIGNALS, ...XINGNI_WEAK_MECHANICS_SIGNALS]
+    : WEAK_MECHANICS_SIGNALS;
   const weakMatches: string[] = [];
-  for (const signal of WEAK_MECHANICS_SIGNALS) {
+  for (const signal of weakSignals) {
     if (lowerInput.includes(signal)) {
       weakMatches.push(signal);
     }
@@ -344,18 +470,37 @@ export function classifyMechanicsIntent(
 }
 
 /**
- * 快速检查：是否应该尝试 DM Agent 路径
- * 这是 route.ts 中使用的便捷入口
+ * 快速检查：是否应该尝试 DM Agent 路径（与 worldId 无关）
+ *
+ * 这是 route.ts 历史入口的便捷包装，行为完全等价于
+ * `shouldAttemptDmAgentForWorld(input, undefined)`。
+ * 保留以避免破坏历史 import / 测试。
  */
 export function shouldAttemptDmAgent(userInput: string): boolean {
   const result = classifyMechanicsIntent(userInput);
   return result.classification === "mechanics";
 }
 
-// ============================================================
-// Self-Test: Ensure the router is deterministic
-// ============================================================
-
-if (import.meta.vitest) {
-  // vitest inline tests — not executed at runtime
+/**
+ * Per-world DM Agent 路径判定（纯关键词路径，与 first-packet budget 对齐）
+ *
+ * 工作流：
+ * 1. 用 `classifyMechanicsIntentForWorld` 做 per-world 关键词分类。
+ *    暗月时与 `classifyMechanicsIntent` 行为等价；星逆时叠加修仙专属信号。
+ * 2. classification === "mechanics" → true；其它 → false（保守）。
+ *
+ * 真 embedding 路径见 `@/lib/ai/tools/dmIntentClassifier`（500ms timeout +
+ * 30s LRU + per-world seed vectors）。本函数有意保持 sync + 纯函数，
+ * 不引入 IO，避免污染 `/api/chat` first-packet 预算。
+ */
+export function shouldAttemptDmAgentForWorld(
+  userInput: string,
+  worldId?: string | null
+): boolean {
+  return classifyMechanicsIntentForWorld(userInput, worldId).classification === "mechanics";
 }
+
+// ============================================================
+// Self-Test: 路由纯函数性质由 src/lib/ai/tools/dmMechanicsIntentRouter.test.ts 覆盖
+// （node:test describe/it 形式，CI 中由 `pnpm test:unit` 触发）
+// ============================================================

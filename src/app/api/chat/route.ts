@@ -302,7 +302,7 @@ import { detectPersonaMixup } from "@/lib/npcConsistency/personaMixupValidator";
 import { findOffscreenNpcDialogueViolations } from "@/lib/npcConsistency/validator";
 import { insertPacingLedgerRow } from "@/lib/turnEngine/pacing/pacingLedger";
 import { insertForeshadowLedgerRows, expireOverdueForeshadows } from "@/lib/narrativeGovernance/foreshadowLedger";
-import { shouldAttemptDmAgent } from "@/lib/ai/tools/dmMechanicsIntentRouter";
+import { shouldAttemptDmAgentForWorld } from "@/lib/ai/tools/dmMechanicsIntentRouter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -2201,18 +2201,25 @@ async function postChatInternal(req: Request) {
     await writeStatusFrame("routing", "姝ｅ湪杩炴帴娣辨笂");
 
     // ── DM Agent 路径（Feature Flag 控制：VERSECRAFT_ENABLE_DM_AGENT=true）──
+    // 路径同时覆盖暗月（dark_moon_prologue）与星逆（xingni_taichu）：
+    //   - Xingni 不再被 gate 排除（移除历史 !isXingniTurn 短路）
+    //   - worldId / playerLocation 不再硬编码，从 clientState 派生并以各自世界的默认 map 兜底
+    //   - 分类器按 worldId 选择 per-world 信号字典 + embedding 相似度（关键词 fallback 保留）
     const _dmAgentRollout = getVerseCraftRolloutFlags();
-    if (!isXingniTurn && _dmAgentRollout.enableDmAgent && shouldAttemptDmAgent(latestUserInput)) {
+    if (_dmAgentRollout.enableDmAgent && shouldAttemptDmAgentForWorld(latestUserInput, clientState?.worldId)) {
       const { tryRunDmAgentTurn, buildDmAgentDmJson } = await import(
         "@/lib/ai/tools/dmAgentRouteIntegration"
       );
       await writeStatusFrame("generating", "DM 正在思考…");
+      const _dmWorldId = clientState?.worldId ?? (isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID);
+      const _dmPlayerLocation =
+        clientState?.playerLocation ?? (isXingniTurn ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID);
       const _dmInput = {
         requestId,
         sessionId: sessionId ?? "unknown",
         userId,
-        playerLocation: (clientState as any)?.playerLocation ?? "1F_Lobby",
-        worldId: "dark_moon",
+        playerLocation: _dmPlayerLocation,
+        worldId: _dmWorldId,
         systemMessages: safeMessages.filter((m) => m.role === "system"),
         userMessage: { role: "user" as const, content: latestUserInput },
         signal: pipelineAbort.signal,

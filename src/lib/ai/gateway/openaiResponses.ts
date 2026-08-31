@@ -39,6 +39,12 @@ import {
   buildPlayerTurnTerminalToolChoice,
   shouldUsePlayerTurnTerminalTool,
 } from "@/lib/ai/tools/playerTurnTerminalTool";
+import {
+  buildPlayerNarrativeTerminalTool,
+  buildPlayerNarrativeTerminalToolChoice,
+  shouldUsePlayerNarrativeTerminalTool,
+} from "@/lib/ai/tools/playerNarrativeTerminalTool";
+import { envBoolean } from "@/lib/config/envRaw";
 import type { AiProviderId, ChatMessage } from "@/lib/ai/types/core";
 
 const RESPONSES_BODY_RESERVED = new Set([
@@ -200,9 +206,15 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
     // Ark agent-plan) reject the request with conflicting
     // constraint-decoder instructions. See change
     // `open-responses-streaming-for-player-turn` and AGENTS.md §3.2.6.
-    if (shouldUsePlayerTurnTerminalTool(body)) {
-      const tool = buildPlayerTurnTerminalTool();
-      const toolChoice = buildPlayerTurnTerminalToolChoice();
+    //
+    // Phase 5.B：flag 开启时优先 `submit_narrative`（4 字段 subset），否则
+    // fallback 到 `submit_player_turn` envelope path。两条分支都把 `text` 块删掉。
+    const useNarrative = shouldUsePlayerNarrativeTerminalTool(body);
+  if (useNarrative || shouldUsePlayerTurnTerminalTool(body)) {
+      const tool = useNarrative ? buildPlayerNarrativeTerminalTool() : buildPlayerTurnTerminalTool();
+      const toolChoice = useNarrative
+        ? buildPlayerNarrativeTerminalToolChoice()
+        : buildPlayerTurnTerminalToolChoice();
       payload.tools = [
         {
           type: tool.type,
@@ -215,6 +227,10 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
         type: "function",
         name: toolChoice.function.name,
       };
+      // Provider-level 强约束（A only — see AGENTS.md §3.2.5/§3.2.6）：
+      // 禁止 LLM 在 tool_call 之外另输出 prose。Ark agent-plan minimax-m3
+      // 支持此字段。fallback 投影降级不在这里做（冗余）。
+      payload.parallel_tool_calls = false;
       delete payload.text;
     } else if (body.tools && body.tools.length > 0) {
       payload.tools = body.tools.map((t) => ({

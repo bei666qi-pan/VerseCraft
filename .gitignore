@@ -143,3 +143,8 @@ dump.rdb
 /benchmarks/browser-playthrough/
 /benchmarks/mock-playthrough/
 /benchmarks/traces/
+# Local dev artifacts (2026-08-31)
+.tmp-vc-test.mjs
+.tmp-vc-test.mjs.bak
+.tmp-vc-test.mjs.bak2
+=

@@ -11,7 +11,7 @@ function asRecord(value: unknown): JsonRecord | null {
     : null;
 }
 
-function parseRequestPayload(init: RequestInit): JsonRecord | null {
+export function parseRequestPayload(init: RequestInit): JsonRecord | null {
   if (typeof init.body !== "string") return null;
   try {
     return asRecord(JSON.parse(init.body));
@@ -242,6 +242,32 @@ export async function normalizePlayerTurnTerminalToolResponse(
     return cloneResponse(response, rewriteSseBody(response.body, expectedToolName));
   }
 
+  try {
+    const parsed: unknown = await response.clone().json();
+    const state: ToolStreamState = { expectedToolName, nameByIndex: new Map() };
+    return cloneResponse(response, JSON.stringify(rewriteCompletionObject(parsed, state)));
+  } catch {
+    return response;
+  }
+}
+
+/**
+ * Phase 5.B：通用 terminal-tool response 投影。submit_player_turn (Phase 1)
+ * 和 submit_narrative (Phase 5.B) 共用同一投影逻辑，仅 `expectedToolName`
+ * 不同。
+ */
+export async function projectTerminalToolResponse(
+  response: Response,
+  init: RequestInit,
+  expectedToolName: string
+): Promise<Response> {
+  if (!response.ok) return response;
+  const payload = parseRequestPayload(init);
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const streamRequested = payload?.stream === true;
+  if ((streamRequested || contentType.includes("text/event-stream")) && response.body) {
+    return cloneResponse(response, rewriteSseBody(response.body, expectedToolName));
+  }
   try {
     const parsed: unknown = await response.clone().json();
     const state: ToolStreamState = { expectedToolName, nameByIndex: new Map() };

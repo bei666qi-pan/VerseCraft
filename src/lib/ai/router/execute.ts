@@ -15,6 +15,8 @@ import { getProviderFactory } from "@/lib/ai/providers";
 import type { NormalizedCompletionRequest } from "@/lib/ai/providers/types";
 import { responsesToChatCompletionsTransform } from "@/lib/ai/stream/responsesLike";
 import { completionEndpoint } from "@/lib/ai/managed/urlSafety";
+import { envBoolean } from "@/lib/config/envRaw";
+import { buildPlayerNarrativeJsonToolRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
 import { resilientFetch, forceHttp1ForGateway } from "@/lib/ai/resilience/fetchWithRetry";
 import { extractNonStreamContent } from "@/lib/ai/stream/openaiLike";
 import { extractResponsesNonStreamContent, nonStreamResponsesToChatCompletionsStream } from "@/lib/ai/stream/responsesLike";
@@ -462,7 +464,17 @@ export async function executePlayerChatStream(params: {
     // reliable way to force a parseable DM JSON payload is to wrap the
     // same schema in a single function tool with `tool_choice` pinning
     // that tool — see `buildPlayerDmJsonToolRequest`.
-    const toolRequest = isResponsesTransport ? buildPlayerDmJsonToolRequest() : null;
+    //
+    // Phase 5.B：flag 开启时优先用 `submit_narrative`（4 字段 subset，state
+    // 物理隔离）。否则 fallback 到 `submit_player_turn` envelope path。
+    // Provider-level strict tool_choice（A only — server-side 投影降级不放
+    // 在这里，冗余）。
+    const useNarrativeTool = envBoolean("VERSECRAFT_ENABLE_EXECUTABLE_TOOLS_PLAYER_CHAT", false);
+    const toolRequest = isResponsesTransport
+      ? useNarrativeTool
+        ? buildPlayerNarrativeJsonToolRequest()
+        : buildPlayerDmJsonToolRequest()
+      : null;
     const body = buildPlayerStreamBody(
       gatewayModel,
       params.messages,

@@ -34,6 +34,11 @@
  * 优雅降级。
  */
 
+import {
+  PLAYER_NARRATIVE_TERMINAL_TOOL_NAME,
+  PLAYER_NARRATIVE_JSON_SCHEMA,
+} from "@/lib/ai/tools/playerNarrativeTerminalTool";
+
 const rewardSchema = {
   type: "object",
   additionalProperties: true,
@@ -466,5 +471,47 @@ export function buildPlayerDmJsonToolRequest(): {
       },
     ],
     toolChoice: { type: "function", function: { name: "submit_player_dm" } },
+  };
+}
+
+/**
+ * Phase 5.B: submit_narrative 工具的 Responses API 形态 builder。
+ * 与 buildPlayerDmJsonToolRequest 形状相同，但 tool name + parameters 来自
+ * PLAYER_NARRATIVE_TERMINAL_TOOL_NAME / PLAYER_NARRATIVE_JSON_SCHEMA（4 字段 subset）。
+ *
+ * Provider-level strict tool_choice（A only，see AGENTS.md §3.2.5/§3.2.6）：
+ * - tool_choice = { type: "function", function: { name: "submit_narrative" } } 强制 LLM 调这个函数
+ * - parallel_tool_calls: false 防止 LLM 同时输出 prose + tool_call
+ * - strict: true provider 端 schema 约束
+ *
+ * 不做服务端 prose → tool_args 投影降级（冗余 — A 成功后永不触发；A 失败时
+ * 猜错风险 > 不做的成本）。
+ */
+export function buildPlayerNarrativeJsonToolRequest(): {
+  tools: ReadonlyArray<{
+    type: "function";
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      strict?: boolean;
+    };
+  }>;
+  toolChoice: { type: "function"; function: { name: string } };
+} {
+  return {
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: PLAYER_NARRATIVE_TERMINAL_TOOL_NAME,
+          description:
+            "Submit the player-turn narrative. Call this function exactly once with the narrative prose, 4 candidate options, turn_mode=\"decision_required\", and decision_required=true. Do not emit narrative prose outside the function arguments.",
+          parameters: PLAYER_NARRATIVE_JSON_SCHEMA,
+          strict: true,
+        },
+      },
+    ],
+    toolChoice: { type: "function", function: { name: PLAYER_NARRATIVE_TERMINAL_TOOL_NAME } },
   };
 }

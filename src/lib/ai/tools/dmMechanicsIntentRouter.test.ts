@@ -16,7 +16,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   classifyMechanicsIntent,
+  classifyMechanicsIntentForWorld,
   shouldAttemptDmAgent,
+  shouldAttemptDmAgentForWorld,
 } from "./dmMechanicsIntentRouter";
 
 describe("Intent Router — Mechanics Signals", () => {
@@ -303,6 +305,181 @@ describe("Intent Router — No Sensitive Leak in Reason", () => {
           `reason for "${input}" should not contain "${word}": ${result.reason}`
         );
       }
+    }
+  });
+});
+
+// ============================================================
+// Per-world classifier (dark_moon vs xingni)
+// ============================================================
+
+describe("Intent Router — Per-world: xingni mechanics signals", () => {
+  const xingniMechanicsInputs = [
+    "我要打开储物袋检查灵石和丹药",
+    "消耗三颗灵石兑换一瓶回气丹",
+    "祭出飞剑斩杀面前的妖兽",
+    "接一个宗门悬赏任务",
+    "布设九宫八卦阵抵御敌袭",
+    "服用灵草恢复修为",
+    "锻造一柄飞剑",
+    "启动阵法护住山谷",
+  ];
+
+  for (const input of xingniMechanicsInputs) {
+    it(`xingni "${input}" → mechanics`, () => {
+      const r = classifyMechanicsIntentForWorld(input, "xingni_taichu");
+      assert.strictEqual(
+        r.classification,
+        "mechanics",
+        `xingni "${input}" should be mechanics, got ${r.classification}: ${r.reason}`
+      );
+      assert.strictEqual(shouldAttemptDmAgentForWorld(input, "xingni_taichu"), true);
+    });
+  }
+});
+
+describe("Intent Router — Per-world: xingni narrative signals (修仙叙述)", () => {
+  const xingniNarrativeInputs = [
+    "我在山中悟道",
+    "突然灵气充盈，灵台清明",
+    "仿佛感应到天地之间的奥秘",
+    "与师尊坐而论道",
+    "观云卷云舒，心中一片空明",
+  ];
+
+  for (const input of xingniNarrativeInputs) {
+    it(`xingni "${input}" → narrative`, () => {
+      const r = classifyMechanicsIntentForWorld(input, "xingni_taichu");
+      assert.strictEqual(
+        r.classification,
+        "narrative",
+        `xingni "${input}" should be narrative, got ${r.classification}: ${r.reason}`
+      );
+      assert.strictEqual(shouldAttemptDmAgentForWorld(input, "xingni_taichu"), false);
+    });
+  }
+});
+
+describe("Intent Router — Per-world: dark_moon baseline unchanged", () => {
+  // 暗月世界不应被星逆信号干扰：原有 12 个 mechanics 输入仍然 mechanics
+  const darkMoonMechanics = [
+    "我要锻造一把武器",
+    "攻击面前的敌人",
+    "接受这个任务",
+    "强化装备",
+    "消耗材料锻造",
+    "修理我的武器",
+    "使用物品治疗自己",
+    "铁匠卖什么",
+    "一楼有什么",
+  ];
+
+  for (const input of darkMoonMechanics) {
+    it(`dark_moon "${input}" → mechanics`, () => {
+      const r = classifyMechanicsIntentForWorld(input, "dark_moon_prologue");
+      assert.strictEqual(
+        r.classification,
+        "mechanics",
+        `dark_moon "${input}" should be mechanics, got ${r.classification}: ${r.reason}`
+      );
+      assert.strictEqual(shouldAttemptDmAgentForWorld(input, "dark_moon_prologue"), true);
+    });
+  }
+});
+
+describe("Intent Router — Per-world: xingni 修仙叙述不被关键词误判为 mechanics", () => {
+  it("xingni 单纯悟道叙述不会被“锻” 字触发 mechanics", () => {
+    // 关键修复：在星逆里"锻剑" / "炼器"等词常出现在修仙叙述中
+    const r = classifyMechanicsIntentForWorld(
+      "我在炉火旁凝神铸剑，感受灵气在剑胚中流转",
+      "xingni_taichu"
+    );
+    assert.notStrictEqual(r.classification, "mechanics", `不应误判为 mechanics: ${r.reason}`);
+  });
+
+  it("xingni 渡劫叙述不会触发 mechanics", () => {
+    const r = classifyMechanicsIntentForWorld("天雷滚滚，我开始渡劫", "xingni_taichu");
+    assert.strictEqual(r.classification, "narrative");
+  });
+});
+
+describe("Intent Router — Per-world: shouldAttemptDmAgent 旧入口行为不变", () => {
+  it("不带 worldId 时等价于 dark_moon 默认", () => {
+    // 12 个原 mechanics 输入仍然 → true
+    assert.strictEqual(shouldAttemptDmAgent("我要锻造一把武器"), true);
+    assert.strictEqual(shouldAttemptDmAgent("你好"), false);
+    assert.strictEqual(shouldAttemptDmAgent("怎么锻造武器？"), false); // ambiguous → false
+    // 星逆特有信号在不传 worldId 时不应该被识别为 mechanics
+    assert.strictEqual(
+      shouldAttemptDmAgent("我要打开储物袋检查灵石"),
+      false,
+      "不传 worldId 时星逆信号不应被默认识别（避免误判暗月场景）"
+    );
+  });
+});
+
+describe("Intent Router — Per-world: 未知 worldId 与纯函数 fallback", () => {
+  // 2026-08 简化：router 只做关键词纯函数快路径；embedding 在 dmIntentClassifier/ 单独管理。
+  // 未知 worldId 应被静默忽略（不影响关键词结论），避免双标。
+
+  it("未知 worldId 下强 mechanics 关键词仍返回 true（暗月默认信号）", () => {
+    assert.strictEqual(
+      shouldAttemptDmAgentForWorld("锻造一把武器", "unknown_world"),
+      true,
+      "未知 worldId 下强 mechanics 关键词仍应返回 true"
+    );
+  });
+
+  it("未知 worldId 下 narrative 关键词仍返回 false", () => {
+    assert.strictEqual(
+      shouldAttemptDmAgentForWorld("你好", "unknown_world"),
+      false,
+      "未知 worldId 下 narrative 关键词仍应返回 false"
+    );
+  });
+
+  it("未知 worldId 下星逆关键词不会被默认启用（避免误判暗月场景）", () => {
+    // 关键修复：不传 worldId 时不能把星逆专属信号（如"灵石"）算成暗月 mechanics
+    assert.strictEqual(
+      shouldAttemptDmAgent("我要打开储物袋检查灵石"),
+      false,
+      "不传 worldId 时星逆信号不应被默认识别（避免误判暗月场景）"
+    );
+    // 但传 xingni_taichu 后必须识别
+    assert.strictEqual(
+      shouldAttemptDmAgentForWorld("我要打开储物袋检查灵石", "xingni_taichu"),
+      true
+    );
+  });
+
+  it("route.ts 入口函数在 embedding 抛错时仍稳定（不依赖外部 IO）", () => {
+    // router 现在是纯关键词路径，不再接受 embeddingFn；此用例固化"无 IO"契约
+    // 防止后续误把 IO 重新引入 gate。
+    for (const input of ["锻造一把武器", "你好", "观察周围", "嗯"]) {
+      const r1 = shouldAttemptDmAgent(input);
+      const r2 = shouldAttemptDmAgentForWorld(input, "xingni_taichu");
+      const r3 = shouldAttemptDmAgentForWorld(input, "dark_moon_prologue");
+      assert.strictEqual(typeof r1, "boolean");
+      assert.strictEqual(typeof r2, "boolean");
+      assert.strictEqual(typeof r3, "boolean");
+    }
+  });
+});
+
+describe("Intent Router — Per-world: determinism across worlds", () => {
+  it("相同输入多次调用结果一致", () => {
+    const inputs: Array<[string, string]> = [
+      ["锻造一把武器", "dark_moon_prologue"],
+      ["我要打开储物袋", "xingni_taichu"],
+      ["你好", "xingni_taichu"],
+      ["接一个悬赏", "xingni_taichu"],
+    ];
+    for (const [input, world] of inputs) {
+      const r1 = shouldAttemptDmAgentForWorld(input, world);
+      const r2 = shouldAttemptDmAgentForWorld(input, world);
+      const r3 = shouldAttemptDmAgentForWorld(input, world);
+      assert.strictEqual(r1, r2);
+      assert.strictEqual(r2, r3);
     }
   });
 });

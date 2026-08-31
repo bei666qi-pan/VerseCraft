@@ -4,6 +4,12 @@ import {
   buildPlayerTurnTerminalToolChoice,
   shouldUsePlayerTurnTerminalTool,
 } from "@/lib/ai/tools/playerTurnTerminalTool";
+import {
+  buildPlayerNarrativeTerminalTool,
+  buildPlayerNarrativeTerminalToolChoice,
+  shouldUsePlayerNarrativeTerminalTool,
+} from "@/lib/ai/tools/playerNarrativeTerminalTool";
+import { envBoolean } from "@/lib/config/envRaw";
 import type { AiProviderId, ChatMessage } from "@/lib/ai/types/core";
 
 /**
@@ -57,13 +63,23 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
     // `shouldUsePlayerTurnTerminalTool` so both transports gate strict-function
     // mode on the same condition (see change
     // `open-responses-streaming-for-player-turn` and AGENTS.md §3.2.6).
-    const usePlayerTurnTerminalTool = shouldUsePlayerTurnTerminalTool(body);
+    //
+    // Phase 5.B：flag 开启时优先 `submit_narrative`（4 字段 subset），否则
+    // fallback 到 `submit_player_turn` envelope path。两条都走 provider-level
+    // strict tool_choice（A only — server-side 投影降级不在这里做，冗余）。
+    const usePlayerNarrativeTerminalTool = shouldUsePlayerNarrativeTerminalTool(body);
+    const usePlayerTurnTerminalTool =
+      !usePlayerNarrativeTerminalTool && shouldUsePlayerTurnTerminalTool(body);
 
     // Preserve the existing response-format contract even when the terminal tool
     // is enabled. The function parameter schema governs tool arguments; the
     // response_format remains a compatibility signal for established gateways,
     // tests, metrics, and immediate prefer-mode rollback.
-    if (body.responseFormatJsonSchema && !usePlayerTurnTerminalTool) {
+    //
+    // Phase 5.B：submit_narrative 4 字段 schema 已经覆盖 narrative 全部需要的内容，
+    // 不再叠加 text.format.json_schema（避免双通道对同一字段给出不同值）。
+    // json_object 是宽松约束，与 terminal tool 共存无冲突 → 保留。
+    if (body.responseFormatJsonSchema && !usePlayerNarrativeTerminalTool) {
       payload.response_format = {
         type: "json_schema",
         json_schema: {
@@ -78,7 +94,10 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
     if (body.stream && body.streamIncludeUsage) {
       payload.stream_options = { include_usage: true };
     }
-    if (usePlayerTurnTerminalTool) {
+    if (usePlayerNarrativeTerminalTool) {
+      payload.tools = [buildPlayerNarrativeTerminalTool()];
+      payload.tool_choice = buildPlayerNarrativeTerminalToolChoice();
+    } else if (usePlayerTurnTerminalTool) {
       payload.tools = [buildPlayerTurnTerminalTool()];
       payload.tool_choice = buildPlayerTurnTerminalToolChoice();
     } else if (body.tools && body.tools.length > 0) {
