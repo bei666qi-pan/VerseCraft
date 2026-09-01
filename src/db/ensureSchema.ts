@@ -3,6 +3,10 @@ import "server-only";
 import { pool } from "@/db/index";
 import { env } from "@/lib/env";
 import { envNumber } from "@/lib/config/envRaw";
+import {
+  buildWorldKnowledgeChunksIvfflatIndexSql,
+  PG_VECTOR_IVFFLAT_MAX_DIMENSIONS,
+} from "./ensureSchema.ivfflat";
 
 let ensured = false;
 
@@ -967,12 +971,14 @@ export async function ensureRuntimeSchema(): Promise<void> {
       // Existing local databases can predate pgvector and keep this column as text.
       // Never retry an incompatible ivfflat create on startup/heartbeat.
       if (embeddingColumnType.startsWith("vector(")) {
-        await client.query(`
-          CREATE INDEX IF NOT EXISTS world_knowledge_chunks_embedding_ivfflat
-          ON world_knowledge_chunks USING ivfflat (embedding_vector vector_cosine_ops)
-          WITH (lists = 100)
-          WHERE embedding_vector IS NOT NULL AND embedding_status = 'ready';
-        `);
+        const ivfflatSql = buildWorldKnowledgeChunksIvfflatIndexSql(worldKnowledgeEmbeddingDimension);
+        if (ivfflatSql) {
+          await client.query(ivfflatSql);
+        } else {
+          console.warn(
+            `[ensureSchema] skip world_knowledge_chunks_embedding_ivfflat: dimension ${worldKnowledgeEmbeddingDimension} > ${PG_VECTOR_IVFFLAT_MAX_DIMENSIONS}`,
+          );
+        }
       }
 
       // `CREATE TABLE IF NOT EXISTS` 不会改动已存在表的列类型——如果之前用旧维度建过表
@@ -986,12 +992,14 @@ export async function ensureRuntimeSchema(): Promise<void> {
           await client.query(
             `ALTER TABLE world_knowledge_chunks ALTER COLUMN embedding_vector TYPE ${targetTypeStr}`
           );
-          await client.query(`
-            CREATE INDEX IF NOT EXISTS world_knowledge_chunks_embedding_ivfflat
-            ON world_knowledge_chunks USING ivfflat (embedding_vector vector_cosine_ops)
-            WITH (lists = 100)
-            WHERE embedding_vector IS NOT NULL AND embedding_status = 'ready';
-          `);
+          const migratedIvfflatSql = buildWorldKnowledgeChunksIvfflatIndexSql(worldKnowledgeEmbeddingDimension);
+          if (migratedIvfflatSql) {
+            await client.query(migratedIvfflatSql);
+          } else {
+            console.warn(
+              `[ensureSchema] skip world_knowledge_chunks_embedding_ivfflat (post-migration): dimension ${worldKnowledgeEmbeddingDimension} > ${PG_VECTOR_IVFFLAT_MAX_DIMENSIONS}`,
+            );
+          }
         }
       } catch {
         /* 迁移失败不阻塞启动；下次自愈会重试 */
@@ -1530,4 +1538,3 @@ async function bootstrapDefaultManagedAiConfig(client: { query: (sql: string, pa
     console.warn("[ensureSchema] bootstrapDefaultManagedAiConfig skipped:", err);
   }
 }
-
