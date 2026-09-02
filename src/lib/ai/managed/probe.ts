@@ -13,12 +13,16 @@ export async function probeManagedModel(input: {
     const timer = setTimeout(() => controller.abort(), Math.max(1000, Math.min(10_000, input.timeoutMs ?? 6000)));
     try {
       const isEmbedding = input.model.capability === "embedding";
-      const url = isEmbedding ? embeddingEndpoint(input.baseUrl, input.transport) : completionEndpoint(input.baseUrl);
+      const url = isEmbedding
+        ? embeddingEndpoint(input.baseUrl, input.transport)
+        : completionEndpoint(input.baseUrl, input.transport);
       const body = isEmbedding
         ? input.transport === "ark_multimodal"
           ? { model: input.model.upstreamModel, input: [{ type: "text", text: "连接测试" }], dimensions: input.model.embeddingDimension, encoding_format: "float" }
           : { model: input.model.upstreamModel, input: "连接测试" }
-        : { model: input.model.upstreamModel, messages: [{ role: "user", content: "只回复 OK" }], max_tokens: 4, temperature: 0 };
+        : input.transport === "openai_responses"
+          ? { model: input.model.upstreamModel, input: "只回复 OK", max_output_tokens: 16 }
+          : { model: input.model.upstreamModel, messages: [{ role: "user", content: "只回复 OK" }], max_tokens: 16, temperature: 0 };
       const res = await resilientFetch(url, {
         method: "POST", redirect: "manual",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${input.apiKey}` }, body: JSON.stringify(body),

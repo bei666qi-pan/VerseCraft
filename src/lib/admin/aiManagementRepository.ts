@@ -7,7 +7,12 @@ import { aiConfigState, aiRouteAssignments, aiServiceConnections, aiServiceModel
 import { decryptApiKey, encryptApiKey, keyLastFour } from "@/lib/ai/managed/crypto";
 import { invalidateManagedAiSnapshot } from "@/lib/ai/managed/runtime";
 import { getManagedAiSnapshot } from "@/lib/ai/managed/state";
-import { AI_PURPOSE_LABELS, AI_PURPOSES, type ManagedTransport } from "@/lib/ai/managed/types";
+import {
+  AI_PURPOSE_LABELS,
+  AI_PURPOSES,
+  normalizeManagedTransportInput,
+  type ManagedTransport,
+} from "@/lib/ai/managed/types";
 import { probeManagedModel } from "@/lib/ai/managed/probe";
 import { parseManagedServiceUrl } from "@/lib/ai/managed/urlSafety";
 import { probeAllBeforeCommit } from "@/lib/admin/aiManagementActivation";
@@ -61,7 +66,10 @@ export async function saveAiService(raw: AdminAiServiceInput): Promise<{ service
   if (raw.id && !existing) throw new Error("service_not_found");
   const name = cleanText(raw.name, 96); const baseUrl = cleanText(raw.baseUrl, 1024);
   if (!name || !baseUrl) throw new Error("service_fields_required");
-  const transport: ManagedTransport = raw.transport === "ark_multimodal" ? "ark_multimodal" : raw.transport === "mock" && process.env.NODE_ENV !== "production" ? "mock" : "openai_compatible";
+  const transport: ManagedTransport = normalizeManagedTransportInput(
+    raw.transport,
+    process.env.NODE_ENV !== "production",
+  );
   parseManagedServiceUrl(baseUrl, { allowLocalhost: process.env.NODE_ENV !== "production" });
   const submittedKey = cleanText(raw.apiKey, 4096);
   const apiKey = submittedKey || (existing ? decryptApiKey(existing.encryptedApiKey, existing.id) : "");
