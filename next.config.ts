@@ -17,6 +17,12 @@ const nextConfig: NextConfig = {
   distDir: process.env.VERSECRAFT_NEXT_DIST_DIR?.trim() || ".next",
   transpilePackages: ["lucide-react", "idb-keyval", "zustand"],
   devIndicators: false,
+  // Coolify 与生产应用共用 2 核主机。Next 16 默认会启动 4 个构建 worker，
+  // 会在镜像构建期间饿死 Traefik、SSH 和现有应用；固定为单 worker 保持线上可用。
+  experimental: {
+    cpus: 1,
+    staticGenerationMaxConcurrency: 1,
+  },
   // Dev-only: allow requests when the browser host differs from the server's
   // canonical host (e.g. http://127.0.0.1:666 vs http://localhost:666, or VPN/LAN hosts).
   allowedDevOrigins: ["localhost", "127.0.0.1", ...envDevOrigins],

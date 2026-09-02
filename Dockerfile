@@ -70,8 +70,8 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
-ENV NEXT_CPU_COUNT=2
-ENV NEXT_PRIVATE_TURBOPACK_WORKERS=2
+# Next 16 不读取旧的 NEXT_CPU_COUNT / NEXT_PRIVATE_TURBOPACK_WORKERS；
+# 构建并发由 next.config.ts 的 experimental.cpus 权威限制。
 
 RUN pnpm run build
 
