@@ -1456,7 +1456,9 @@ export const useGameStore = create<GameState>()(
           });
           // Director 计划门控：chapter ≥ 2 必须先有有效的 nextChapterSeed 才能 advance。
           const directorChapter = (s as any).storyDirector?.chapter ?? null;
-          const currentDefinition = getChapterDefinition(normalized.activeChapterId);
+          const currentDefinition = getChapterDefinition(
+            normalized.pendingChapterEndId ?? normalized.activeChapterId
+          );
           const nextDefinition = currentDefinition?.nextChapterId
             ? getChapterDefinition(currentDefinition.nextChapterId)
             : null;

@@ -2,6 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyRegisteredMechanicsGuard, REGISTERED_TASK_IDS } from "./registeredMechanicsGuard";
 
+test("talent system formatting instructions are not parsed as an unowned item", () => {
+  const narrative = "洞察之眼标出了走廊尽头一条可靠的逃生路线。";
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      consumes_time: true,
+      narrative,
+      options: ["沿标记路线前进", "先观察路线两侧"],
+    },
+    latestUserInput:
+      '【系统强制干预：玩家发动了"洞察之眼"。请在接下来的叙事中，明确且直白地用红色加粗字体，为玩家标记出一个必定收益的选择或逃生路线。】',
+    clientState: { playerLocation: "B1_SafeZone", inventoryItemIds: [] },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, narrative);
+  assert.doesNotMatch(String(out.narrative), /不能凭空拿出或使用/);
+});
+
 test("profession trial completes only at authored location", () => {
   const clientState = { playerLocation: "B1_配电间", activeTaskIds: ["prof_trial_lampkeeper"], journalClueIds: ["clue:trial:lampkeeper:verified_record"] };
   const trial = applyRegisteredMechanicsGuard({ dmRecord: {}, latestUserInput: "向老刘提交试炼记录", clientState });
