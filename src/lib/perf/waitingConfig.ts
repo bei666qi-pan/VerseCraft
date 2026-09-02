@@ -191,7 +191,7 @@ export const VC_WAITING = {
  * `/play` `/api/chat` transport: widen first-chunk stall and header deadline on Android
  * where SSE first bytes arrive later (weak radio + heavier preflight).
  */
-export function resolvePlayChatTransportTimeouts(): {
+export function resolvePlayChatTransportTimeouts(isSystemTalentTurn = false): {
   firstChunkStallMs: number;
   fetchDeadlineMs: number;
 } {
@@ -200,6 +200,12 @@ export function resolvePlayChatTransportTimeouts(): {
   if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "")) {
     firstChunkStallMs = Math.max(firstChunkStallMs, 34_000);
     fetchDeadlineMs = Math.max(fetchDeadlineMs, 105_000);
+  }
+  // A talent activation is an explicit, consumable player action. Responses
+  // providers may take longer to emit their first token than a normal turn;
+  // do not start a duplicate request while the authoritative one is live.
+  if (isSystemTalentTurn) {
+    firstChunkStallMs = Math.max(firstChunkStallMs, 45_000);
   }
   return { firstChunkStallMs, fetchDeadlineMs };
 }

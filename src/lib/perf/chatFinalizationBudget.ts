@@ -44,7 +44,16 @@ export function resolveChatTurnWatchdogMs(configuredMs: number): number {
     1_000,
     CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms - CHAT_WATCHDOG_DELIVERY_RESERVE_MS,
   );
-  return Math.max(1_000, Math.min(latestSafeMs, configuredMs));
+  const requestedMs = Number.isFinite(configuredMs) ? Math.trunc(configuredMs) : latestSafeMs;
+  if (requestedMs <= 0) return latestSafeMs;
+  // Responses providers can legitimately exceed the interactive p95 before
+  // producing their first token. An explicit production override must remain
+  // effective; otherwise the watchdog races a successful upstream response
+  // and commits a no-op fallback for a paid player action.
+  if (requestedMs <= CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms) {
+    return Math.max(1_000, Math.min(latestSafeMs, requestedMs));
+  }
+  return Math.max(1_000, requestedMs);
 }
 
 export function resolveOptionalEnhanceBudgetMs(args: {

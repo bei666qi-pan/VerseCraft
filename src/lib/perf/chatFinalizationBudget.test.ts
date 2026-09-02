@@ -18,6 +18,10 @@ test("watchdog reserves time to deliver a parseable fallback before the client d
   assert.equal(resolveChatTurnWatchdogMs(7_000), 7_000);
 });
 
+test("watchdog honors an explicit slower Responses upstream override", () => {
+  assert.equal(resolveChatTurnWatchdogMs(35_000), 35_000);
+});
+
 test("provider stream rounds share an absolute cap that leaves finalization reserve", () => {
   assert.equal(
     resolveChatStreamHardCapMs(0),

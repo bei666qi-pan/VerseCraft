@@ -3262,7 +3262,9 @@ function PlayContent() {
     }
     streamAbortRef.current = ac;
     let queueIdForChat: string | null = null;
-    const transportTimeouts = resolvePlayChatTransportTimeouts();
+    const transportTimeouts = resolvePlayChatTransportTimeouts(
+      Boolean(isSystemAction && /^【系统强制干预：玩家发动了["“]/u.test(trimmed)),
+    );
 
     const queueAdmissionArgs = {
       body: chatRequestBody,

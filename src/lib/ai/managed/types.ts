@@ -5,6 +5,16 @@ export const AI_PURPOSES = ["story", "rules", "polish", "background", "embedding
 export type AiPurpose = (typeof AI_PURPOSES)[number];
 export type ManagedTransport = "openai_compatible" | "openai_responses" | "ark_multimodal" | "mock";
 
+export function normalizeManagedTransportInput(
+  value: unknown,
+  allowMock = false,
+): ManagedTransport {
+  if (value === "openai_responses") return "openai_responses";
+  if (value === "ark_multimodal") return "ark_multimodal";
+  if (allowMock && value === "mock") return "mock";
+  return "openai_compatible";
+}
+
 export type ManagedAiBinding = Readonly<{
   serviceId: string;
   serviceName: string;

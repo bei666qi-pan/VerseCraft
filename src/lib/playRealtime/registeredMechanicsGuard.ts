@@ -119,6 +119,8 @@ const EXPLICIT_NEVER_OWNED_ITEM_RE =
   /(?:从未|从来没|并未|没有)(?:真正)?(?:拥有|获得|拿到|持有|捡到|买到|得到).{0,12}(?:钥匙|物品|道具|卡|票|药|符|工具|武器)|(?:钥匙|物品|道具|卡|票|药|符|工具|武器).{0,12}(?:从未|从来没|并未|没有)(?:真正)?(?:拥有|获得|拿到|持有|捡到|买到|得到)/u;
 const EXPLICIT_ITEM_USE_RE =
   /(?:拿出|取出|掏出|使用|用|插入|递出|交出|装备|服用|打开|解锁|挥动)/u;
+const SYSTEM_TALENT_ACTION_RE =
+  /^【系统强制干预：玩家发动了["“][^"”]{2,16}["”]。/u;
 const BODY_OR_ABSTRACT_TOOL_TERMS = new Set(["双手", "单手", "左手", "右手", "眼睛", "目光", "力气", "身体", "声音"]);
 
 function extractExplicitUsedItem(action: string): string | null {
@@ -457,14 +459,15 @@ export function applyRegisteredMechanicsGuard(args: {
   const registeredActiveThreatIds = activeThreatIds.filter((id) => getAnomalyCombatStat(id) !== null);
   const journalClueIds = strings(args.clientState?.journalClueIds);
   const inventoryItemIds = new Set(strings(args.clientState?.inventoryItemIds));
+  const isSystemTalentAction = SYSTEM_TALENT_ACTION_RE.test(action);
   // Profession outcomes are server-adjudicated only; never trust a candidate
   // model field or replay it after the task has already reached a terminal state.
   delete record.profession_trial_result;
 
-  if (EXPLICIT_NEVER_OWNED_ITEM_RE.test(action) && EXPLICIT_ITEM_USE_RE.test(action)) {
+  if (!isSystemTalentAction && EXPLICIT_NEVER_OWNED_ITEM_RE.test(action) && EXPLICIT_ITEM_USE_RE.test(action)) {
     return rejectExplicitPhantomItem(record);
   }
-  const explicitUsedItem = extractExplicitUsedItem(action);
+  const explicitUsedItem = isSystemTalentAction ? null : extractExplicitUsedItem(action);
   if (explicitUsedItem && !ownsExplicitItem({
     term: explicitUsedItem,
     inventoryItemIds,
