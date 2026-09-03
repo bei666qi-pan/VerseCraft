@@ -87,6 +87,7 @@ import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import { CHAT_LATENCY_BUDGET } from "@/lib/perf/waitingConfig";
 import {
   resolveChatStreamHardCapMs,
+  resolveChatStreamIdleTimeoutMs,
   resolveChatTurnWatchdogMs,
 } from "@/lib/perf/chatFinalizationBudget";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
@@ -1980,16 +1981,11 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
    * cancels the reader, attempts one bounded reconnect, and otherwise closes
    * with the parseable site-failure fallback final frame.
    */
-  const streamIdleTimeoutMs = Math.max(
-    1_000,
-    Math.min(
-      CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
-      // firstVisibleTextP95Ms is a statistical target, not a per-request
-      // cancellation threshold. Use the shared normal-turn p50 as the hard
-      // idle ceiling so slower samples remain measurable instead of becoming
-      // artificial site failures; the absolute watchdog still closes at 19s.
-      envNumber("VC_CHAT_STREAM_IDLE_TIMEOUT_MS", CHAT_LATENCY_BUDGET.normalTurnFinalP50Ms),
-    )
+  const streamIdleTimeoutMs = resolveChatStreamIdleTimeoutMs(
+    // A p50 target is not a cancellation boundary. The request watchdog still
+    // closes at 19s, so this prevents false 12s failures without extending the
+    // 20s public final budget.
+    envNumber("VC_CHAT_STREAM_IDLE_TIMEOUT_MS", CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms),
   );
   const streamHardCapMs = resolveChatStreamHardCapMs(
     envNumber("VC_CHAT_STREAM_HARD_CAP_MS", CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms),

@@ -39,6 +39,18 @@ export function resolveChatStreamHardCapMs(configuredMs: number): number {
   return Math.max(1_000, requestedMs);
 }
 
+/**
+ * A p50 target is not a cancellation boundary. Keep silence bounded by the
+ * public p95 final budget; the earlier request watchdog still reserves time
+ * to emit a deterministic FINAL if the provider never resumes.
+ */
+export function resolveChatStreamIdleTimeoutMs(configuredMs: number): number {
+  const requestedMs = Number.isFinite(configuredMs)
+    ? Math.trunc(configuredMs)
+    : CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms;
+  return Math.max(1_000, Math.min(CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms, requestedMs));
+}
+
 export function resolveChatTurnWatchdogMs(configuredMs: number): number {
   const latestSafeMs = Math.max(
     1_000,
