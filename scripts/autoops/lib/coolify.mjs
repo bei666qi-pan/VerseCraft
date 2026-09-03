@@ -87,11 +87,12 @@ export function coolifyBaseCandidates(baseUrl = env("COOLIFY_BASE_URL")) {
 }
 
 export class CoolifyClient {
-  constructor({ baseUrl = env("COOLIFY_BASE_URL"), apiKey = env("COOLIFY_API_KEY"), dryRun = false, requestTimeoutMs = 15000 } = {}) {
+  constructor({ baseUrl = env("COOLIFY_BASE_URL"), apiKey = env("COOLIFY_API_KEY"), dryRun = false, requestTimeoutMs = 15000, retryDelayMs = 1000 } = {}) {
     this.baseCandidates = coolifyBaseCandidates(baseUrl);
     this.apiKey = apiKey;
     this.dryRun = dryRun;
     this.requestTimeoutMs = requestTimeoutMs;
+    this.retryDelayMs = retryDelayMs;
   }
 
   async request(path, { method = "GET", body = undefined, allow404 = false, timeoutMs = this.requestTimeoutMs } = {}) {
@@ -102,51 +103,60 @@ export class CoolifyClient {
       throw new Error("COOLIFY_BASE_URL is required for Coolify API calls");
     }
     let lastError = null;
-    for (const base of this.baseCandidates) {
-      const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const response = await fetch(url, {
-          method,
-          signal: controller.signal,
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-            "User-Agent": "VerseCraft-AutoOps",
-          },
-          body: body == null ? undefined : JSON.stringify(body),
-        });
-        const text = await response.text();
-        let data = null;
-        if (text) {
-          try {
-            data = JSON.parse(text);
-          } catch {
-            data = { raw: text };
+    const retryableMethod = method === "GET" || method === "PATCH" || method === "PUT";
+    const maxAttempts = retryableMethod ? 3 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      let transientFailure = false;
+      for (const base of this.baseCandidates) {
+        const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(url, {
+            method,
+            signal: controller.signal,
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${this.apiKey}`,
+              "Content-Type": "application/json",
+              "User-Agent": "VerseCraft-AutoOps",
+            },
+            body: body == null ? undefined : JSON.stringify(body),
+          });
+          const text = await response.text();
+          let data = null;
+          if (text) {
+            try {
+              data = JSON.parse(text);
+            } catch {
+              data = { raw: text };
+            }
           }
+          if (response.status === 404 && allow404) {
+            return null;
+          }
+          if (!response.ok) {
+            lastError = new Error(`Coolify ${method} ${path} failed at ${base}: ${response.status} ${text.slice(0, 400)}`);
+            transientFailure ||= response.status === 429 || response.status >= 500;
+            continue;
+          }
+          // A base URL without the API suffix can return the Coolify SPA with
+          // HTTP 200. Treat that HTML as a failed candidate so the next API base
+          // is tried instead of later interpreting it as an empty deployment.
+          if (/^\s*<!doctype html/i.test(text) || /^\s*<html[\s>]/i.test(text)) {
+            lastError = new Error(`Coolify ${method} ${path} returned HTML at ${base}`);
+            continue;
+          }
+          return data;
+        } catch (error) {
+          lastError = error;
+          transientFailure = true;
+        } finally {
+          clearTimeout(timeout);
         }
-        if (response.status === 404 && allow404) {
-          return null;
-        }
-        if (!response.ok) {
-          lastError = new Error(`Coolify ${method} ${path} failed at ${base}: ${response.status} ${text.slice(0, 400)}`);
-          continue;
-        }
-        // A base URL without the API suffix can return the Coolify SPA with
-        // HTTP 200. Treat that HTML as a failed candidate so the next API base
-        // is tried instead of later interpreting it as an empty deployment.
-        if (/^\s*<!doctype html/i.test(text) || /^\s*<html[\s>]/i.test(text)) {
-          lastError = new Error(`Coolify ${method} ${path} returned HTML at ${base}`);
-          continue;
-        }
-        return data;
-      } catch (error) {
-        lastError = error;
-      } finally {
-        clearTimeout(timeout);
       }
+      if (!transientFailure || attempt === maxAttempts) break;
+      await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs * attempt));
     }
     throw lastError || new Error(`Coolify ${method} ${path} failed`);
   }
