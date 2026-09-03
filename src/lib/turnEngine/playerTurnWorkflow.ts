@@ -115,6 +115,7 @@ import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
 import { normalizeFinishReason, normalizeUsage } from "@/lib/ai/stream/openaiLike";
+import { projectPlayerCandidateStreamDelta } from "@/lib/turnEngine/playerCandidateStreamProjection";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
 import type {
   ChatMessage,
@@ -4927,8 +4928,11 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
               if (args) toolArgsDelta += args;
             }
           }
-          const effectiveDelta =
-            deltaContent.length > 0 ? deltaContent : toolArgsDelta;
+          const projectedDelta = projectPlayerCandidateStreamDelta({
+            deltaContent,
+            toolArgsDelta,
+          });
+          const effectiveDelta = projectedDelta.accumulatedDelta;
 
           if (typeof effectiveDelta === "string" && effectiveDelta.length > 0) {
             const nowMod = nowMs();
@@ -4986,15 +4990,11 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
             }
             accumulated += effectiveDelta;
             await markFirstVisibleStreamChunk();
-            // Tool-call arguments are structured DM JSON; do not stream them
-            // to the player as visible text. The final narrative (resolved by
-            // the DM JSON parser downstream) is the only thing the client
-            // should see on this round.
-            if (toolArgsDelta.length === 0) {
-              await writeToStream(effectiveDelta);
-            } else {
-              await writeToStream("");
-            }
+            // The narrow terminal arguments are the non-authoritative
+            // TurnCandidate JSON. The client already incrementally extracts
+            // only `narrative`; FINAL still replaces this preview after the
+            // deterministic finalizer validates and commits the turn.
+            await writeToStream(projectedDelta.visibleDelta);
           }
 
           const finishReason = normalizeFinishReason(json);

@@ -160,6 +160,7 @@ function getSafeNarrativeVariant(language: GameLanguage, turnIndex: number, worl
 
 const ITEM_ACQUISITION_INTENT_RE = /(捡起|拾起|获得|拿到|收入背包|加入背包|pick up|obtain|add to inventory)/i;
 const ITEM_ACTION_RE = /(捡起|拾起|获得|拿到|收入背包|加入背包|装备|pick up|obtain|add to inventory|equip)/i;
+const RELATIONSHIP_FORCING_INTENT_RE = /(亲兄妹|亲姐妹|亲姐弟|亲兄弟|亲属|旧识|早就认识|关系成立|承认.{0,24}(?:认识|关系)|siblings?|related|old acquaintance)/i;
 const UNKNOWN_PERSON_INTENT_RE = /(?:(?:旁边|身边|那个|那位|这位|神秘|陌生|银发).{0,16}(?:女孩|女子|少女|姑娘|男人|男子|老人|孩子|人影|人物)|(?:女孩|女子|少女|姑娘|男人|男子|老人|孩子|人影|人物).{0,12}(?:是谁|身份)|who\s+is\s+(?:that|the).{0,24}(?:girl|woman|man|person))/i;
 const UNKNOWN_PERSON_BOUNDARY_RE = /(?:(?:无法|不能|尚难|未能|不足以).{0,18}(?:确认|核实|辨认).{0,18}(?:身份|人物|来者|女孩|女子|少女|姑娘|男人|男子|人影)|(?:identity|person).{0,24}(?:unverified|cannot be confirmed))/i;
 
@@ -185,13 +186,13 @@ function getIntentAwareSafetyOptions(args: {
   language: GameLanguage;
   latestUserInput?: string;
   report?: NarrativeSafetyReport | null;
-  forcedIntent?: "item" | "person";
+  forcedIntent?: "item" | "person" | "relationship";
 }): string[] {
   const issueCodes = new Set((args.report?.issues ?? []).map((issue) => issue.code));
   const issueDetails = (args.report?.issues ?? []).map((issue) => String(issue.detail ?? ""));
   const input = String(args.latestUserInput ?? "");
 
-  if (issueCodes.has("unsupported_relationship_claim")) {
+  if (args.forcedIntent === "relationship" || issueCodes.has("unsupported_relationship_claim")) {
     return args.language === "en-US"
       ? ["Ask for verifiable relationship evidence", "Withdraw the unsupported relationship claim", "Observe how the people present actually respond"]
       : ["请对方提供可核验的关系证据", "撤回未经证实的关系判断", "观察当前在场人物的实际反应"];
@@ -225,8 +226,11 @@ function getIntentAwareSafetyOptions(args: {
 function hasUnsupportedItemAcquisition(report?: NarrativeSafetyReport | null): boolean {
   return Boolean(report?.issues.some((issue) => {
     if (issue.code === "inventory_conflict") return true;
-    if (issue.code !== "unsupported_new_fact") return false;
-    return String(issue.detail ?? "").includes("item_acquisition_without_fact_or_award");
+    // The public fact reason is intentionally coarse and may be reported as
+    // `strong_fact_without_evidence`. The caller already established an
+    // explicit item action, so any unsupported fact in this branch rejects
+    // acquisition prose when no authoritative award exists.
+    return issue.code === "unsupported_new_fact";
   }));
 }
 
@@ -684,8 +688,38 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     !hasUnknownPersonInNarrative && hasDescribedUnknownPersonIssue(args.safetyReport, "options");
 
   const effectiveNarrativeOverride = validatorReport.narrativeOverride ?? null;
+  const hardIntentSafetyOptions = hardBlockFromSafety
+    ? getIntentAwareSafetyOptions({
+        language: gameLanguage,
+        latestUserInput: args.latestUserInput,
+        report: args.safetyReport,
+      })
+    : [];
+  const relationshipForcingUnsupportedFact =
+    safetyEnforcement.enabled &&
+    safetyEnforcement.mode !== "shadow" &&
+    RELATIONSHIP_FORCING_INTENT_RE.test(String(args.latestUserInput ?? "")) &&
+    Boolean(args.safetyReport?.issues.some((issue) =>
+      issue.code === "unsupported_relationship_claim" || issue.code === "unsupported_new_fact"
+    ));
 
-  if (effectiveNarrativeOverride) {
+  if (relationshipForcingUnsupportedFact) {
+    committed = {
+      ...committed,
+      narrative: languageText(
+        gameLanguage,
+        "对方没有确认你提出的亲属或旧识关系；没有可核验线索前，这种关系不能成为事实。",
+        "They do not confirm the family or prior-acquaintance claim. Without verifiable evidence, that relationship cannot become fact."
+      ),
+      options: getIntentAwareSafetyOptions({
+        language: gameLanguage,
+        latestUserInput: args.latestUserInput,
+        report: args.safetyReport,
+        forcedIntent: "relationship",
+      }),
+    };
+    flags.add("safe_narrative_fallback_applied");
+  } else if (effectiveNarrativeOverride && hardIntentSafetyOptions.length === 0) {
     const isFallbackEnvelope = effectiveNarrativeOverride.trim().startsWith("{");
     committed = applyNarrativeOverride(committed, effectiveNarrativeOverride, {
       preserveStateFields: !hardBlockCommit,

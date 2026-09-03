@@ -81,7 +81,7 @@ Variables:
 - `GET/POST /applications/{uuid}/restart`
 - `GET/POST /applications/{uuid}/start`
 
-Current default is `AUTOOPS_DEPLOY_MODE=observe` because this repo already has `Sync Gitee Branches` triggering Coolify after CI success. Switch to `api` only after confirming there is no duplicate deploy path.
+Current default is `AUTOOPS_DEPLOY_MODE=observe` because this repo already has `Sync Gitee Branches` triggering Coolify only after the exact main SHA passes both `CI` and `AI Quality Gate`. Switch to `api` only after confirming there is no duplicate deploy path.
 
 ## Scheduled Checks (replaces CloudMonitor + APIG + VeFaaS)
 

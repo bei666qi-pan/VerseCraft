@@ -72,6 +72,24 @@ test("narrative safety rubric passes a safe final envelope", () => {
   assert.deepEqual(result.failures, []);
 });
 
+test("narrative safety rubric hard-fails concrete narrative that starts after eight seconds", () => {
+  const delayed = metrics({
+    narrative: "安全叙事。",
+    options: ["a", "b", "c", "d"],
+  });
+  delayed.firstNarrativeContentMs = 8_001;
+  delayed.firstTokenMs = 8_001;
+
+  const result = evaluateNarrativeSafetyCase(baseCase(), delayed);
+  const summary = summarizeNarrativeSafetyEval([result]);
+
+  assert.equal(result.latencyPass, false);
+  assert.ok(result.failures.includes("first_concrete_narrative_latency_exceeded:8001>8000"));
+  assert.equal(result.severeError, true);
+  assert.equal(summary.latencyPassRate, 0);
+  assert.equal(summary.gatePass, false);
+});
+
 test("narrative safety rubric fails unknown NPC creation in visible and structured output", () => {
   const result = evaluateNarrativeSafetyCase(
     baseCase(),
