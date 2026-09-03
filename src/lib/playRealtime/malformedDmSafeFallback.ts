@@ -65,18 +65,32 @@ export function buildMalformedDmSafeFallback(args: {
   requestId: string;
   language?: string;
   repairFailureReason?: string;
+  latestUserInput?: string;
 }): RecordLike {
   const english = args.language === "en-US";
+  const isItemAction = /(捡起|拾起|获得|拿到|收入背包|加入背包|装备|pick up|obtain|add to inventory|equip)/i.test(
+    String(args.latestUserInput ?? ""),
+  );
+  const narrative = isItemAction
+    ? english
+      ? "This response cannot reliably confirm whether I picked up or equipped the item. To avoid an incorrect state change, inventory and equipment remain unchanged. I can inspect the scene again before retrying."
+      : "本次响应无法可靠确认我是否拿到或装备该物品；为避免错误改动，背包与装备保持不变。我会重新确认现场物品后再试。"
+    : english
+      ? "I pause at the current location and verify my surroundings. This turn commits no unconfirmed state change."
+      : "我停在当前地点重新确认周围状况；本回合没有提交任何未经确认的状态变化。";
+  const options = isItemAction
+    ? english
+      ? ["Inspect the current scene again", "Review existing items and records", "Try a clear, verifiable action"]
+      : ["重新观察当前场景", "检查已有物品和记录", "换一个明确、可核验的行动"]
+    : [];
   return {
     is_action_legal: false,
     sanity_damage: 0,
-    narrative: english
-      ? "I pause at the current location and verify my surroundings. This turn commits no unconfirmed state change."
-      : "我停在当前地点重新确认周围状况；本回合没有提交任何未经确认的状态变化。",
+    narrative,
     is_death: false,
     consumes_time: false,
     time_cost: "none",
-    options: [],
+    options,
     currency_change: 0,
     consumed_items: [],
     consumed_warehouse_items: [],

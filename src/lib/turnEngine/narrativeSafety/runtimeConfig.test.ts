@@ -209,6 +209,28 @@ test("soft mode still blocks zero-tolerance entity issues", () => {
   assert.equal(plan.shouldBlockCommit, true);
 });
 
+test("hard mode blocks a narrative inventory acquisition that has no committed award", () => {
+  const plan = planNarrativeSafetyEnforcement({
+    safetyReport: safetyReport([
+      issue({
+        code: "inventory_conflict",
+        invariant: "narrative_state_delta_conflict",
+        severity: "medium",
+        source: "validateNarrative",
+      }),
+    ]),
+    policy: {
+      kernelEnabled: true,
+      mode: "hard",
+      entityHardGateEnabled: true,
+      pacingValidatorEnabled: true,
+    },
+  });
+
+  assert.equal(plan.decision, "block_commit");
+  assert.equal(plan.shouldBlockCommit, true);
+});
+
 test("disabled kernel returns to the old no-op safety path", () => {
   const plan = planNarrativeSafetyEnforcement({
     safetyReport: safetyReport([issue()]),

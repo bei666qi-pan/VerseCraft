@@ -77,3 +77,16 @@ test("malformed DM safe fallback records a bounded structured repair reason", ()
     "malformed_dm_repair_normalization_rejected",
   );
 });
+
+test("malformed DM fallback explains the affected action and offers deterministic recovery", () => {
+  const out = buildMalformedDmSafeFallback({
+    requestId: "req-item-malformed",
+    language: "zh-CN",
+    latestUserInput: "我捡起龙骨圣剑，把它加入背包并装备。",
+  });
+
+  assert.match(String(out.narrative), /无法可靠确认.*拿到或装备/);
+  assert.match(String(out.narrative), /背包与装备保持不变/);
+  assert.doesNotMatch(String(out.narrative), /龙骨圣剑/);
+  assert.deepEqual(out.options, ["重新观察当前场景", "检查已有物品和记录", "换一个明确、可核验的行动"]);
+});

@@ -191,7 +191,8 @@ function getIntentAwareSafetyNarrative(args: {
   }
   if (
     ITEM_ACTION_RE.test(input) &&
-    issueDetails.some((detail) => detail.includes("kind=item") || detail.includes("item_acquisition_without_fact_or_award"))
+    (issueCodes.has("inventory_conflict") ||
+      issueDetails.some((detail) => detail.includes("kind=item") || detail.includes("item_acquisition_without_fact_or_award")))
   ) {
     return languageText(
       args.language,

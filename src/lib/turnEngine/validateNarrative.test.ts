@@ -555,6 +555,21 @@ test("validateNarrative flags location transition without fact or delta", () => 
   assert.ok(report.issues.some((issue) => issue.code === "unsupported_location_claim" && issue.severity === "medium"));
 });
 
+test("validateNarrative catches anaphoric pickup and equipment without a structured award", () => {
+  const report = validateNarrative(
+    baseArgs({
+      latestUserInput: "我捡起龙骨圣剑，把它加入背包并装备。",
+      dmRecord: {
+        narrative: "我把它从地上提起来。背包拉链被我拉开，剑身比想象中轻。我把剑插在腰间。",
+        options: ["继续"],
+        awarded_items: [],
+        awarded_warehouse_items: [],
+      },
+    })
+  );
+  assert.ok(report.issues.some((issue) => issue.code === "inventory_conflict"));
+});
+
 test("validateNarrative maps missing used fact id to medium issue", () => {
   const report = validateNarrative(
     baseArgs({

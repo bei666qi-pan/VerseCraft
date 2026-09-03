@@ -553,6 +553,33 @@ test("commitTurn explains an unknown item rejection without echoing the invented
   assert.doesNotMatch(String(result.committedDmRecord.narrative), /龙骨圣剑/);
 });
 
+test("commitTurn rejects an anaphoric inventory claim detected by the validator", () => {
+  const result = commitTurn({
+    requestId: "req_anaphoric_item",
+    sessionId: "s_1",
+    turnIndex: 0,
+    latestUserInput: "我捡起龙骨圣剑，把它加入背包并装备。",
+    candidateDmRecord: {
+      narrative: "我把它从地上提起来，拉开背包，把剑插在腰间。",
+      options: ["挥剑"],
+      awarded_items: [],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "inventory_conflict",
+      invariant: "narrative_state_delta_conflict",
+      severity: "medium",
+      source: "validateNarrative",
+      detail: "narrative_claims_acquisition_without_awarded_items",
+    }], "repair"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有在现场找到.*已登记物品/);
+  assert.equal(result.committedDmRecord.awarded_items, undefined);
+  assert.deepEqual(result.committedDmRecord.options, []);
+});
+
 test("commitTurn gives an intent-aware knowledge-boundary response", () => {
   const result = commitTurn({
     requestId: "req_secret",

@@ -398,6 +398,26 @@ test("entity whitelist allows denial of player-mentioned unknown silver-haired g
   assert.deepEqual(report.issues, []);
 });
 
+test("entity whitelist blocks invented rules about a player-proposed second person", () => {
+  const report = collectSafetyReport({
+    narrative: "登记表写着：银发者非住户，禁止单独接触。老板说，你看的那个不是住户。",
+    intent: {
+      rawText: "老板旁边那个神秘银发女孩是谁",
+      normalizedText: "老板旁边那个神秘银发女孩是谁",
+      kind: "dialogue",
+      slots: {},
+      riskTags: [],
+      isSystemTransition: false,
+      isFirstAction: false,
+      clientPurpose: "normal",
+    },
+    speakerNpcId: "N-001",
+    npcSceneAuthorityPacket: scenePacket(),
+  });
+
+  assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.detail?.includes("player_proposed_second_person_rule")));
+});
+
 test("entity whitelist exported extractors read narrative, options, dmRecord and surfaces", () => {
   assert.deepEqual(extractNpcIdsFromNarrative("N-001 和 n-002 都被提到"), ["N-001", "N-002"]);
   assert.deepEqual(extractNpcIdsFromOptions(["去找 N-003", { label: "问 N-004" }]), ["N-003", "N-004"]);
