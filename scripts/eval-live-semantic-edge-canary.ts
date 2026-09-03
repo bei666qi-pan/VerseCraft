@@ -12,7 +12,10 @@ import {
   type NarrativeSafetyEvalCase,
   type NarrativeSafetyExpect,
 } from "../src/lib/evals/narrativeSafetyRubric";
-import type { ModelNarrativeReviewTarget } from "../src/lib/evals/modelNarrativeReview";
+import type {
+  ModelNarrativeReviewResult,
+  ModelNarrativeReviewTarget,
+} from "../src/lib/evals/modelNarrativeReview";
 import { appendHistory, getGitSha } from "../src/lib/evals/harness";
 import { tryConsumeBudget } from "../src/lib/evals/harness/budgetGuard";
 import {
@@ -132,6 +135,36 @@ export function findStructuredForbiddenHits(finalJson: unknown, expect: Narrativ
     }
   }
   return hits;
+}
+
+/**
+ * A semantic judge may review only a real, protocol-complete SUT result.
+ * Provider/site failures and malformed-response salvage are useful
+ * infrastructure evidence, but never content-quality evidence.
+ */
+export function detectSutInfrastructureFailure(args: {
+  finalJson: Record<string, unknown>;
+  metrics: Pick<ChatSseProbeMetrics, "httpStatus" | "finalJsonParseSuccess">;
+}): string | null {
+  if (args.metrics.httpStatus !== 200) return `http_status:${args.metrics.httpStatus}`;
+  if (!args.metrics.finalJsonParseSuccess) return "final_json_parse_failed";
+
+  const internalMeta = asRecord(args.finalJson.internal_meta);
+  const action = String(internalMeta?.action ?? "").trim();
+  const kind = String(internalMeta?.kind ?? "").trim();
+  const reason = String(internalMeta?.reason ?? "").trim();
+  if (/^(?:site_unavailable|site_busy|network_or_gateway)$/i.test(kind) || action === "site_service_msg") {
+    return `${kind || action}:${reason || "unknown"}`;
+  }
+  if (
+    action === "validated_partial_narrative_after_malformed_dm" ||
+    action === "deterministic_safety_net_after_malformed_dm" ||
+    (Array.isArray(args.finalJson._commit_flags) &&
+      args.finalJson._commit_flags.some((flag) => String(flag).includes("malformed_dm")))
+  ) {
+    return `malformed_dm_salvage:${reason || action || "unknown"}`;
+  }
+  return null;
 }
 
 export function findLongestNonOverlappingNpcReferences(sentence: string): ReferenceMatch[] {
@@ -289,11 +322,32 @@ async function main(): Promise<void> {
   }
 
   const deterministicSummary = summarizeNarrativeSafetyEval(evidence.map((entry) => entry.deterministic));
+  const sutInfrastructureFailures = evidence.flatMap((entry) => {
+    const reason = detectSutInfrastructureFailure(entry);
+    return reason ? [{ caseId: entry.testCase.id, reason }] : [];
+  });
   const deterministicPass = deterministicSummary.gatePass
+    && sutInfrastructureFailures.length === 0
     && evidence.every((entry) => entry.structuredHits.length === 0 && !entry.secondNpc.matched);
 
   const { reviewModelNarrative, summarizeModelNarrativeReviews } = await import("../src/lib/evals/modelNarrativeReview");
-  const semanticReview = await reviewModelNarrative(buildCombinedSemanticReviewTarget(evidence), { liveRequested: true });
+  const semanticReview: ModelNarrativeReviewResult = sutInfrastructureFailures.length > 0
+    ? {
+        caseId: "live-semantic-safety-combined",
+        contentHash: "",
+        rubricVersion: "model-narrative-review-v2",
+        provenance: "inconclusive",
+        reason: "gateway_error",
+        logicalTask: "EVAL_JUDGE",
+        cacheHit: false,
+        failure: {
+          code: "SUT_INFRASTRUCTURE_FAILURE",
+          lastFailureSummary: sutInfrastructureFailures
+            .map((failure) => `${failure.caseId}:${failure.reason}`)
+            .join(","),
+        },
+      }
+    : await reviewModelNarrative(buildCombinedSemanticReviewTarget(evidence), { liveRequested: true });
   const semanticSummary = summarizeModelNarrativeReviews([semanticReview], 1);
   const semanticPass = semanticReview.provenance === "live_model" && semanticSummary.strictGatePass;
   const gatePass = deterministicPass && semanticPass;
@@ -305,6 +359,7 @@ async function main(): Promise<void> {
     deterministicSummary,
     semanticSummary,
     semanticReview,
+    sutInfrastructureFailures,
     summary: { total: evidence.length, gatePass, deterministicPass, semanticPass },
     results: evidence.map((entry) => ({
       id: entry.testCase.id,
@@ -336,6 +391,7 @@ async function main(): Promise<void> {
       deterministicSevereErrors: evidence.filter((entry) => entry.deterministic.severeError).length,
       structuredViolationCount: evidence.reduce((sum, entry) => sum + entry.structuredHits.length, 0),
       secondNpcViolationCount: evidence.filter((entry) => entry.secondNpc.matched).length,
+      sutInfrastructureFailureCount: sutInfrastructureFailures.length,
       semanticStrictGatePass: semanticPass ? 1 : 0,
     },
     timestamp: output.timestamp,
