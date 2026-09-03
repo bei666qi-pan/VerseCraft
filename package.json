@@ -67,6 +67,7 @@
     "test:playthrough:run": "tsx scripts/run-playthrough.ts",
     "test:playthrough:fuzz": "tsx scripts/run-playthrough-fuzz.ts",
     "eval:playthrough:live": "tsx --conditions=react-server scripts/eval-playthrough-live.ts",
+    "eval:semantic-safety:live": "tsx --conditions=react-server scripts/eval-live-semantic-edge-canary.ts",
     "eval:playthrough:live:smoke": "tsx --conditions=react-server scripts/eval-playthrough-live.ts --live --profile smoke --out .runtime-data/eval/playthrough-live-smoke",
     "eval:playthrough:live:standard": "tsx --conditions=react-server scripts/eval-playthrough-live.ts --live --profile standard --out .runtime-data/eval/playthrough-live-standard",
     "eval:artifacts:cleanup": "tsx scripts/cleanup-eval-artifacts.ts",

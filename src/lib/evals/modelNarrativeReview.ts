@@ -82,6 +82,16 @@ export interface ModelNarrativeReviewResult {
   model?: string;
   logicalTask: "EVAL_JUDGE";
   cacheHit: boolean;
+  failure?: {
+    code: string;
+    lastFailureSummary?: string;
+    attempts?: Array<{
+      logicalRole: string;
+      failureKind?: string;
+      httpStatus?: number;
+      latencyMs?: number;
+    }>;
+  };
 }
 
 export interface ModelNarrativeReviewSummary {
@@ -182,8 +192,14 @@ export function parseModelNarrativeReviewVerdict(raw: string): ModelNarrativeRev
   return { confidence: parsedConfidence, dimensionScores, passed: value.passed, reasoning: value.reasoning, issues };
 }
 
-function baseResult(target: ModelNarrativeReviewTarget, contentHash: string, provenance: ModelNarrativeReviewProvenance, reason?: ModelNarrativeReviewReason): ModelNarrativeReviewResult {
-  return { caseId: target.caseId, contentHash, rubricVersion: MODEL_NARRATIVE_REVIEW_RUBRIC_VERSION, provenance, reason, logicalTask: "EVAL_JUDGE", cacheHit: false };
+function baseResult(
+  target: ModelNarrativeReviewTarget,
+  contentHash: string,
+  provenance: ModelNarrativeReviewProvenance,
+  reason?: ModelNarrativeReviewReason,
+  failure?: ModelNarrativeReviewResult["failure"],
+): ModelNarrativeReviewResult {
+  return { caseId: target.caseId, contentHash, rubricVersion: MODEL_NARRATIVE_REVIEW_RUBRIC_VERSION, provenance, reason, logicalTask: "EVAL_JUDGE", cacheHit: false, ...(failure ? { failure } : {}) };
 }
 
 export async function reviewModelNarrative(target: ModelNarrativeReviewTarget, options: ReviewModelNarrativeOptions): Promise<ModelNarrativeReviewResult> {
@@ -202,10 +218,21 @@ export async function reviewModelNarrative(target: ModelNarrativeReviewTarget, o
       task: "EVAL_JUDGE",
       messages: [{ role: "system", content: prompt.system }, { role: "user", content: prompt.user }],
       ctx: { requestId: `model-narrative-review-${hash.slice(0, 12)}`, task: "EVAL_JUDGE", tags: { rubric: MODEL_NARRATIVE_REVIEW_RUBRIC_VERSION } },
-      requestTimeoutMs: options.timeoutMs ?? 30_000,
+      requestTimeoutMs: options.timeoutMs ?? 90_000,
       skipCache: false,
     });
-    if (!response.ok) return baseResult(target, hash, "inconclusive", "gateway_error");
+    if (!response.ok) {
+      return baseResult(target, hash, "inconclusive", "gateway_error", {
+        code: response.code,
+        lastFailureSummary: response.routing?.lastFailureSummary,
+        attempts: response.routing?.attempts.map((attempt) => ({
+          logicalRole: attempt.logicalRole,
+          ...(attempt.failureKind ? { failureKind: attempt.failureKind } : {}),
+          ...(typeof attempt.httpStatus === "number" ? { httpStatus: attempt.httpStatus } : {}),
+          ...(typeof attempt.latencyMs === "number" ? { latencyMs: attempt.latencyMs } : {}),
+        })),
+      });
+    }
     const verdict = parseModelNarrativeReviewVerdict(response.content);
     if (!verdict) return baseResult(target, hash, "inconclusive", "invalid_json");
     if (verdict.confidence < (options.minimumConfidence ?? 0.7)) return baseResult(target, hash, "inconclusive", "low_confidence");
@@ -213,8 +240,11 @@ export async function reviewModelNarrative(target: ModelNarrativeReviewTarget, o
     const result: ModelNarrativeReviewResult = { ...baseResult(target, hash, "live_model"), verdict, model, cacheHit: Boolean(response.fromCache) };
     writeLiveResultCache(cacheKey, result);
     return result;
-  } catch {
-    return baseResult(target, hash, "inconclusive", "gateway_error");
+  } catch (error) {
+    return baseResult(target, hash, "inconclusive", "gateway_error", {
+      code: "exception",
+      lastFailureSummary: error instanceof Error ? error.name : "unknown",
+    });
   }
 }
 
