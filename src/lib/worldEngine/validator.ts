@@ -1,4 +1,4 @@
-import type { DirectorAgendaItem, DirectorPlan, DirectorSocialEvent } from "./contracts";
+import type { DirectorAgendaItem, ChapterPacingPlan, DirectorSocialEvent } from "./contracts";
 
 export type DirectorValidationIssueSeverity = "low" | "medium" | "high";
 
@@ -107,7 +107,7 @@ function validateSocialEvent(ev: DirectorSocialEvent): DirectorValidationIssue[]
   return issues;
 }
 
-export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResult {
+export function validateChapterPacingPlan(plan: ChapterPacingPlan): DirectorValidationResult {
   const issues: DirectorValidationIssue[] = [];
   if (plan.schema_version !== "director_plan_v1") {
     issues.push(issue("invalid_schema_version", "Director plan schema_version must be director_plan_v1.", "high"));
@@ -142,7 +142,7 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
   for (const ev of plan.world_events_to_schedule ?? []) {
     const itemIssues = validateAgendaItem(ev);
     if (seen.has(ev.event_code)) {
-      itemIssues.push(issue("duplicate_event_code", "Duplicate event_code in one DirectorPlan.", "high", ev.event_code));
+      itemIssues.push(issue("duplicate_event_code", "Duplicate event_code in one ChapterPacingPlan.", "high", ev.event_code));
     }
     seen.add(ev.event_code);
     issues.push(...itemIssues);
@@ -156,7 +156,7 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
   for (const ev of plan.social_events_to_schedule ?? []) {
     const itemIssues = validateSocialEvent(ev);
     if (seenSocial.has(ev.event_code)) {
-      itemIssues.push(issue("duplicate_social_event_code", "Duplicate social event_code in one DirectorPlan.", "high", ev.event_code));
+      itemIssues.push(issue("duplicate_social_event_code", "Duplicate social event_code in one ChapterPacingPlan.", "high", ev.event_code));
     }
     seenSocial.add(ev.event_code);
     issues.push(...itemIssues);

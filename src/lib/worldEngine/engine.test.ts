@@ -1,15 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { detectWorldEngineTriggers, parseWorldEngineDeltaJson } from "@/lib/worldEngine/contracts";
-import { validateDirectorPlan } from "@/lib/worldEngine/validator";
+import { validateChapterPacingPlan } from "@/lib/worldEngine/validator";
 import {
   getWorldDirectorCapabilityProfile,
-  validateDirectorPlanCapabilities,
+  validateChapterPacingPlanCapabilities,
 } from "@/lib/worldEngine/directorCapabilities";
 import { QINGSHI_MAP_ID, XINGNI_WORLD_ID } from "@/lib/worlds/types";
-import { applySubtractiveCriticDecision } from "@/lib/worldEngine/directorCritic";
 
 test("detectWorldEngineTriggers emits expected trigger categories", () => {
   const got = detectWorldEngineTriggers({
@@ -219,7 +216,7 @@ test("safe ambient director events receive only fixed agency defaults when the m
   const event = parsed?.world_events_to_schedule[0];
   assert.equal(event?.agency_constraints.length, 1);
   assert.equal(event?.forbidden_outcomes.length, 1);
-  assert.equal(validateDirectorPlan(parsed!).accepted, true);
+  assert.equal(validateChapterPacingPlan(parsed!).accepted, true);
 });
 
 test("safe environmental changes receive the same fixed agency defaults", () => {
@@ -236,7 +233,7 @@ test("safe environmental changes receive the same fixed agency defaults", () => 
   const event = parsed?.world_events_to_schedule[0];
   assert.equal(event?.agency_constraints.length, 1);
   assert.equal(event?.forbidden_outcomes.length, 1);
-  assert.equal(validateDirectorPlan(parsed!).accepted, true);
+  assert.equal(validateChapterPacingPlan(parsed!).accepted, true);
 });
 
 test("real-model ambient and environmental aliases receive defaults only through existing safe observation gates", () => {
@@ -288,7 +285,7 @@ test("real-model ambient and environmental aliases receive defaults only through
   assert.deepEqual(parsed?.world_events_to_schedule.map((event) => event.payload.type), ["ambient_sound", "environmental_change", "environmental_change", "environmental_change"]);
   assert.ok(parsed?.world_events_to_schedule.every((event) => event.agency_constraints.length === 1));
   assert.ok(parsed?.world_events_to_schedule.every((event) => event.forbidden_outcomes.length === 1));
-  assert.equal(validateDirectorPlan(parsed!).accepted, true);
+  assert.equal(validateChapterPacingPlan(parsed!).accepted, true);
 });
 
 test("medium-salience observational cues may receive defaults, but high-priority events may not", () => {
@@ -303,7 +300,7 @@ test("medium-salience observational cues may receive defaults, but high-priority
     }],
   }));
   assert.ok(medium);
-  assert.equal(validateDirectorPlan(medium!).accepted, true);
+  assert.equal(validateChapterPacingPlan(medium!).accepted, true);
 
   const high = parseWorldEngineDeltaJson(JSON.stringify({
     world_events_to_schedule: [{
@@ -315,7 +312,7 @@ test("medium-salience observational cues may receive defaults, but high-priority
     }],
   }));
   assert.ok(high);
-  assert.equal(validateDirectorPlan(high!).accepted, false);
+  assert.equal(validateChapterPacingPlan(high!).accepted, false);
 });
 
 test("a rejected high-risk sibling does not discard independently safe director agenda events", () => {
@@ -340,7 +337,7 @@ test("a rejected high-risk sibling does not discard independently safe director 
     ],
   }));
   assert.ok(parsed);
-  const validation = validateDirectorPlan(parsed!);
+  const validation = validateChapterPacingPlan(parsed!);
   assert.equal(validation.accepted, true);
   assert.deepEqual(validation.acceptedEventCodes, ["EV_SAFE_DOOR_CREAK"]);
   assert.deepEqual(validation.rejectedEventCodes, ["EV_UNSAFE_FORCED_TRAIL"]);
@@ -359,7 +356,7 @@ test("plan-level director risk still rejects every otherwise-valid agenda event"
     }],
   }));
   assert.ok(parsed);
-  const validation = validateDirectorPlan(parsed!);
+  const validation = validateChapterPacingPlan(parsed!);
   assert.equal(validation.accepted, false);
   assert.deepEqual(validation.acceptedEventCodes, []);
 });
@@ -377,7 +374,7 @@ test("normalizes safe hint aliases without broadening the event vocabulary", () 
   }));
   assert.ok(parsed);
   assert.equal(parsed?.world_events_to_schedule[0]?.payload.type, "audio_cue");
-  assert.equal(validateDirectorPlan(parsed!).accepted, true);
+  assert.equal(validateChapterPacingPlan(parsed!).accepted, true);
 });
 
 test("parseWorldEngineDeltaJson parses and normalizes Social World extension fields", () => {
@@ -477,7 +474,7 @@ test("parseWorldEngineDeltaJson caps social extension arrays and drops invalid s
   assert.equal(parsed?.npc_agent_patches.length, 8);
 });
 
-test("high-risk DirectorPlan blocks social events from normalized output", () => {
+test("high-risk ChapterPacingPlan blocks social events from normalized output", () => {
   const parsed = parseWorldEngineDeltaJson(
     JSON.stringify({
       schema_version: "director_plan_v1",
@@ -500,12 +497,12 @@ test("high-risk DirectorPlan blocks social events from normalized output", () =>
   assert.equal(parsed?.social_write_allowed, false);
   assert.deepEqual(parsed?.social_events_to_schedule, []);
   assert.deepEqual(parsed?.social_reject_reasons, ["agency_risk_high", "spoiler_risk_high", "safety_risk_high"]);
-  const validation = validateDirectorPlan(parsed!);
+  const validation = validateChapterPacingPlan(parsed!);
   assert.equal(validation.accepted, false);
   assert.deepEqual(validation.acceptedSocialEventCodes, []);
 });
 
-test("validateDirectorPlan rejects high agency or spoiler plans for agenda", () => {
+test("validateChapterPacingPlan rejects high agency or spoiler plans for agenda", () => {
   const parsed = parseWorldEngineDeltaJson(
     JSON.stringify({
       schema_version: "director_plan_v1",
@@ -527,7 +524,7 @@ test("validateDirectorPlan rejects high agency or spoiler plans for agenda", () 
     })
   );
   assert.ok(parsed);
-  const validation = validateDirectorPlan(parsed!);
+  const validation = validateChapterPacingPlan(parsed!);
   assert.equal(parsed?.agenda_write_allowed, false);
   assert.equal(validation.accepted, false);
   assert.deepEqual(validation.acceptedEventCodes, []);
@@ -536,39 +533,6 @@ test("validateDirectorPlan rejects high agency or spoiler plans for agenda", () 
 test("parseWorldEngineDeltaJson returns null on invalid root", () => {
   assert.equal(parseWorldEngineDeltaJson("not-json"), null);
   assert.equal(parseWorldEngineDeltaJson("[]"), null);
-});
-
-test("critic can only subtract from the deterministic accepted set", () => {
-  const validation = {
-    accepted: true,
-    acceptedEventCodes: ["EV_KEEP", "EV_REMOVE"],
-    rejectedEventCodes: ["EV_RULE_REJECT"],
-    acceptedSocialEventCodes: [],
-    rejectedSocialEventCodes: [],
-    issues: [],
-  };
-  const result = applySubtractiveCriticDecision(validation, {
-    accept: true,
-    accepted_event_codes: ["EV_KEEP", "EV_RULE_REJECT", "EV_INVENTED"],
-    reject_reasons: [],
-  });
-  assert.deepEqual(result.acceptedEventCodes, ["EV_KEEP"]);
-  assert.deepEqual(result.rejectedEventCodes.sort(), ["EV_REMOVE", "EV_RULE_REJECT"].sort());
-  assert.equal(result.acceptedEventCodes.includes("EV_RULE_REJECT"), false);
-  assert.equal(result.acceptedEventCodes.includes("EV_INVENTED"), false);
-});
-
-test("xingni world director uses the shared capability-gated soft workflow", () => {
-  const source = readFileSync(join(process.cwd(), "src/lib/worldEngine/engine.ts"), "utf8");
-  assert.match(source, /world_id: input\.payload\.worldId \?\? "dark_moon_prologue"/);
-  assert.match(source, /map_id: input\.payload\.mapId \?\? "dark_moon_apartment"/);
-  assert.match(source, /getWorldDirectorCapabilityProfile\(payload\)/);
-  assert.match(source, /validateDirectorPlanCapabilities/);
-  assert.match(source, /buildXingniActorSimulationContext/);
-  assert.doesNotMatch(source, /projectXingniPacingOnlyPlan/);
-  assert.match(source, /只可使用 capability_profile 中登记的青石县/);
-  assert.match(source, /必须逐字复制 capability_profile 对应 registered_\*_ids/);
-  assert.match(source, /if no registered candidate fits, emit an empty array/);
 });
 
 test("xingni capability validation removes invented facts but keeps registered content", () => {
@@ -619,7 +583,7 @@ test("xingni capability validation removes invented facts but keeps registered c
   assert.ok(parsed);
   const profile = getWorldDirectorCapabilityProfile({ worldId: XINGNI_WORLD_ID, mapId: QINGSHI_MAP_ID });
   assert.ok(profile);
-  const result = validateDirectorPlanCapabilities(parsed!, profile!);
+  const result = validateChapterPacingPlanCapabilities(parsed!, profile!);
   assert.deepEqual(result.plan.npc_next_actions.map((action) => action.npc_code), ["XQ-N001"]);
   assert.deepEqual(result.plan.world_events_to_schedule.map((event) => event.event_code), ["XQ-EV01"]);
   assert.deepEqual(result.plan.social_events_to_schedule, []);

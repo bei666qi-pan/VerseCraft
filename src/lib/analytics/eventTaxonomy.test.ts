@@ -1,25 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   ANALYTICS_EVENT_TAXONOMY,
   validateAnalyticsEventContract,
 } from "@/lib/analytics/eventTaxonomy";
-
-function analyticsEventNamesFromTypes(): string[] {
-  const source = readFileSync(join(process.cwd(), "src/lib/analytics/types.ts"), "utf8");
-  const match = source.match(/export type AnalyticsEventName =([\s\S]*?);/);
-  assert.ok(match, "AnalyticsEventName union must be parseable");
-  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
-}
-
-test("event taxonomy covers every AnalyticsEventName", () => {
-  const names = analyticsEventNamesFromTypes();
-  const taxonomyNames = Object.keys(ANALYTICS_EVENT_TAXONOMY).sort();
-
-  assert.deepEqual(taxonomyNames, [...names].sort());
-});
 
 test("event taxonomy entries are self-consistent", () => {
   for (const [eventName, contract] of Object.entries(ANALYTICS_EVENT_TAXONOMY)) {

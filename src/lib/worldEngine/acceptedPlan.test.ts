@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseWorldEngineDeltaJson } from "./contracts";
-import { materializeAcceptedDirectorPlan } from "./acceptedPlan";
+import { materializeAcceptedChapterPacingPlan } from "./acceptedPlan";
 
 const plan = parseWorldEngineDeltaJson(JSON.stringify({
   schema_version: "director_plan_v1",
@@ -14,7 +14,7 @@ const plan = parseWorldEngineDeltaJson(JSON.stringify({
 assert.ok(plan);
 
 test("commit materialization excludes every rejected event", () => {
-  const committed = materializeAcceptedDirectorPlan({
+  const committed = materializeAcceptedChapterPacingPlan({
     plan,
     validation: {
       accepted: true,
@@ -30,7 +30,7 @@ test("commit materialization excludes every rejected event", () => {
 });
 
 test("fully rejected candidate produces no persistable plan", () => {
-  assert.equal(materializeAcceptedDirectorPlan({
+  assert.equal(materializeAcceptedChapterPacingPlan({
     plan,
     validation: {
       accepted: false,

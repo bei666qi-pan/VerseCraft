@@ -20,8 +20,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const CONFIG_PATH = resolve(ROOT, "promptfooconfig.yaml");
-const PKG_JSON = resolve(ROOT, "package.json");
-
 interface CliArgs {
   weapon: boolean;
   profession: boolean;

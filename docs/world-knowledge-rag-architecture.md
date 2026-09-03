@@ -114,9 +114,9 @@
 
 - `src/lib/kg/ingest.ts`：把用户输入分流到 `vc_user_fact`（私有事实）或 `vc_world_candidate`（公共共识候选）
 - `src/lib/kg/janitor.ts` 与 `src/lib/kg/consensus.ts`：离线审核与共识晋升，最终写入 `vc_world_fact` 并 bump `world_revision`
-- `src/lib/kg/semanticCache.ts`：对 codex narrative 做语义缓存（当前主要服务 codex 查询，不承担每回合 lore 注入）
+- 在线回合不使用语义响应缓存；所有玩家请求必须进入 Writer 或 Mechanics，并由唯一 TurnFinalizer 收口。
 
-因此，本目标架构是在现有 KG/pgvector 体系上扩展“RAG 检索 -> 动态 lore 注入 prompt”的运行时链路，同时不推翻 ai/governance 的缓存与 SSE JSON 契约。
+因此，本目标架构是在现有 KG/pgvector 体系上扩展“RAG 检索 -> 动态 lore 注入 prompt”的运行时链路，同时保持 SSE JSON 契约。
 
 ## 3. 明确哪些内容继续保留在代码中
 
@@ -473,4 +473,3 @@
 
 - 前端 store 不再直接依赖大体量 `NPC_SOCIAL_GRAPH` 对象，改为通过 `registry/runtimeBoundary.ts` 获取最小位置种子。  
 - 约束继续保持：registry 在新体系中仅承担 bootstrap/fallback/少量 UI 常量，不作为运行时主事实源。
-

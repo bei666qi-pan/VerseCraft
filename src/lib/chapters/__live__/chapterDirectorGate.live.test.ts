@@ -29,7 +29,7 @@ import {
 } from "@/lib/chapters";
 import type { ChapterTurnSignals } from "@/lib/chapters";
 import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
-import type { ChapterDirectorState } from "@/lib/storyDirector/types";
+import type { PacingChapterState } from "@/lib/chapters/pacing/types";
 
 const LONG_NARRATIVE = (): string =>
   "门缝后的潮气压在走廊里，灯影和脚步声一点点把新的线索推向更深处，墙壁的回音变得比水声还清晰，".repeat(40);
@@ -66,7 +66,7 @@ function acceptedCloseDecision() {
   };
 }
 
-function buildDirectorChapterForTwo(seedTitle: string): ChapterDirectorState {
+function buildDirectorChapterForTwo(seedTitle: string): PacingChapterState {
   return {
     v: 1,
     currentChapterId: CHAPTER_TWO_ID,
@@ -270,12 +270,6 @@ test("evaluateChapterAdvanceGate: weak / duplicate / null titles are rejected", 
       [CHAPTER_TWO_ID]: "门缝低语",
     },
   };
-  const gateDup = evaluateChapterAdvanceGate({
-    state: stateWithDup,
-    definition: secondDef,
-    nextDefinition: { ...thirdDef, id: "chapter-2" as typeof thirdDef.id },
-    directorChapter: buildDirectorChapterForTwo("门缝低语"),
-  });
   // 注意：id 与 chapter-2 重复时，`isUniqueChapterTitleKey` 跳过同 id 检查。
   // 这里使用 chapter-3 id 触发真正冲突。
   const gateDupReal = evaluateChapterAdvanceGate({

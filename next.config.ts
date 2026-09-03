@@ -60,7 +60,7 @@ const nextConfig: NextConfig = {
   },
   typescript: {
     tsconfigPath: process.env.VERSECRAFT_NEXT_TSCONFIG_PATH?.trim() || "tsconfig.json",
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
 };
 

@@ -30,8 +30,6 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     enableStream: true,
     logLevel: "info",
     splitPlayerChatDualSystem: false,
-    enableNarrativeEnhancement: false,
-    enableNarrativeExpansion: false,
     playerChatStreamIncludeUsage: true,
     playerChatFastLaneRelaxResponseFormat: true,
     playerChatMaxRoleCandidates: 2,
@@ -52,7 +50,6 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     gatewayExtraBody: undefined,
     playerChatExtraBody: undefined,
     controlPreflightBudgetMs: 0,
-    narrativeEnhanceBudgetMs: 0,
     streamModerationThrottleMs: 0,
     loreRetrievalBudgetMs: 600,
     offlineFailFast: true,
@@ -169,35 +166,10 @@ test("PLAYER_CHAT maxTokens env override applies and clamps", () => {
   });
 });
 
-test("AI_NARRATIVE_EXPANSION_ENABLED env flag overrides default", () => {
-  withEnv({ AI_NARRATIVE_EXPANSION_ENABLED: "false" }, () => {
-    assert.equal(resolveAiEnv().enableNarrativeExpansion, false);
-  });
-  withEnv({ AI_NARRATIVE_EXPANSION_ENABLED: "true" }, () => {
-    assert.equal(resolveAiEnv().enableNarrativeExpansion, true);
-  });
-});
-
 test("reasoner forbidden on PLAYER_CHAT and online control tasks", () => {
   assert.equal(isModelForbiddenForTask("PLAYER_CHAT", "reasoner"), true);
   assert.equal(isModelForbiddenForTask("PLAYER_CONTROL_PREFLIGHT", "reasoner"), true);
   assert.throws(() => assertModelAllowedForTask("PLAYER_CHAT", "reasoner"));
-});
-
-test("enhance forbidden on PLAYER_CHAT but allowed on SCENE_ENHANCEMENT", () => {
-  assert.equal(isModelForbiddenForTask("PLAYER_CHAT", "enhance"), true);
-  assert.equal(isModelForbiddenForTask("SCENE_ENHANCEMENT", "enhance"), false);
-});
-
-test("NARRATIVE_EXPANSION uses bounded non-stream json enhance policy", () => {
-  const b = getTaskBinding("NARRATIVE_EXPANSION");
-  assert.equal(b.primaryRole, "enhance");
-  assert.deepEqual(b.fallbackRoles, ["main"]);
-  assert.equal(b.stream, false);
-  assert.equal(b.maxTokens, 768);
-  assert.equal(b.timeoutMs, 7_000);
-  assert.equal(b.responseFormatJsonObject, true);
-  assert.equal(isModelForbiddenForTask("NARRATIVE_EXPANSION", "reasoner"), true);
 });
 
 test("EVAL_JUDGE allows a full bounded offline verdict window", () => {
@@ -225,27 +197,10 @@ test("production role policy keeps enhance and reasoner on their intended lanes"
     devAssistPrimaryRole: "reasoner",
   });
 
-  assert.deepEqual(resolveOrderedRoleChain("SCENE_ENHANCEMENT", env, "full")[0], "enhance");
-  assert.deepEqual(resolveOrderedRoleChain("NARRATIVE_EXPANSION", env, "full")[0], "enhance");
-  assert.deepEqual(resolveOrderedRoleChain("NPC_EMOTION_POLISH", env, "full")[0], "enhance");
   assert.deepEqual(resolveOrderedRoleChain("WORLDBUILD_OFFLINE", env, "full")[0], "reasoner");
   assert.deepEqual(resolveOrderedRoleChain("STORYLINE_SIMULATION", env, "full")[0], "reasoner");
   assert.deepEqual(resolveOrderedRoleChain("DEV_ASSIST", env, "full")[0], "reasoner");
   assert.deepEqual(resolveOrderedRoleChain("PLAYER_CHAT", env, "full"), ["writer", "main"]);
-});
-
-test("DIRECTOR_PLAN_CRITIC stays on the Pro reasoner lane", () => {
-  const b = getTaskBinding("DIRECTOR_PLAN_CRITIC");
-  assert.equal(b.primaryRole, "reasoner");
-  assert.deepEqual(b.fallbackRoles, []);
-  assert.equal(b.stream, false);
-  assert.equal(b.maxTokens, 8192);
-  assert.equal(b.timeoutMs, 180_000);
-  assert.equal(b.responseFormatJsonObject, true);
-  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "reasoner"), false);
-  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "main"), true);
-  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "control"), true);
-  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "enhance"), true);
 });
 
 test("resolveOrderedRoleChain PLAYER_CHAT keeps managed roles independent of legacy env model strings", () => {

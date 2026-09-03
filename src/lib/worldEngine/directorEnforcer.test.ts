@@ -2,12 +2,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  enforceDirectorPlan,
+  enforceChapterPacingPlan,
   npcReferencedIn,
   findDeadNpcInPersistedAgendaItem,
 } from "@/lib/worldEngine/directorEnforcer";
 import type {
-  DirectorPlan,
+  ChapterPacingPlan,
   DirectorEnforcerGameState,
 } from "@/lib/worldEngine/directorEnforcer";
 
@@ -15,7 +15,7 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeMinimalPlan(overrides: Partial<DirectorPlan> = {}): DirectorPlan {
+function makeMinimalPlan(overrides: Partial<ChapterPacingPlan> = {}): ChapterPacingPlan {
   return {
     schema_version: "director_plan_v1",
     director_intent: "测试意图",
@@ -91,7 +91,7 @@ function makeNpcAction(npcCode: string, action = "调查周围"): import("@/lib/
 test("valid phase transition quiet→build_up passes", () => {
   const plan = makeMinimalPlan({ target_phase: "build_up" });
   const gameState = makeGameState({ currentPhase: "quiet" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.plan.target_phase, "build_up");
@@ -100,7 +100,7 @@ test("valid phase transition quiet→build_up passes", () => {
 test("valid phase transition pressure→release passes", () => {
   const plan = makeMinimalPlan({ target_phase: "release" });
   const gameState = makeGameState({ currentPhase: "pressure" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.plan.target_phase, "release");
@@ -109,7 +109,7 @@ test("valid phase transition pressure→release passes", () => {
 test("valid phase transition recovery→quiet passes", () => {
   const plan = makeMinimalPlan({ target_phase: "quiet" });
   const gameState = makeGameState({ currentPhase: "recovery" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
 });
@@ -117,7 +117,7 @@ test("valid phase transition recovery→quiet passes", () => {
 test("valid phase transition reveal→release passes", () => {
   const plan = makeMinimalPlan({ target_phase: "release" });
   const gameState = makeGameState({ currentPhase: "reveal" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
 });
@@ -129,7 +129,7 @@ test("valid phase transition reveal→release passes", () => {
 test("quiet→reveal jump is rejected", () => {
   const plan = makeMinimalPlan({ target_phase: "reveal" });
   const gameState = makeGameState({ currentPhase: "quiet" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.ok(result.rejections.length >= 1);
   const phaseRejection = result.rejections.find((r) => r.kind === "phase_transition");
@@ -142,7 +142,7 @@ test("quiet→reveal jump is rejected", () => {
 test("build_up→reveal jump is rejected", () => {
   const plan = makeMinimalPlan({ target_phase: "reveal" });
   const gameState = makeGameState({ currentPhase: "build_up" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.ok(result.rejections.some((r) => r.kind === "phase_transition"));
   assert.equal(result.plan.target_phase, "build_up");
@@ -151,7 +151,7 @@ test("build_up→reveal jump is rejected", () => {
 test("release→reveal jump is rejected", () => {
   const plan = makeMinimalPlan({ target_phase: "reveal" });
   const gameState = makeGameState({ currentPhase: "release" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.ok(result.rejections.some((r) => r.kind === "phase_transition"));
   assert.equal(result.plan.target_phase, "release");
@@ -164,7 +164,7 @@ test("release→reveal jump is rejected", () => {
 test("same-phase quiet→quiet passes", () => {
   const plan = makeMinimalPlan({ target_phase: "quiet" });
   const gameState = makeGameState({ currentPhase: "quiet" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.plan.target_phase, "quiet");
@@ -173,7 +173,7 @@ test("same-phase quiet→quiet passes", () => {
 test("same-phase reveal→reveal passes", () => {
   const plan = makeMinimalPlan({ target_phase: "reveal" });
   const gameState = makeGameState({ currentPhase: "reveal" });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.plan.target_phase, "reveal");
@@ -184,7 +184,7 @@ test("all same-phase transitions pass", () => {
   for (const phase of phases) {
     const plan = makeMinimalPlan({ target_phase: phase });
     const gameState = makeGameState({ currentPhase: phase });
-    const result = enforceDirectorPlan(plan, gameState);
+    const result = enforceChapterPacingPlan(plan, gameState);
     assert.equal(result.passedAll, true, `same-phase ${phase}→${phase} should pass`);
   }
 });
@@ -202,7 +202,7 @@ test("dead NPC reference in title is filtered", () => {
   const gameState = makeGameState({
     deadOrInactiveNpcIds: ["NPC_VILLAIN"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.equal(result.rejections.length, 1);
   assert.equal(result.rejections[0].kind, "agenda_item");
@@ -219,7 +219,7 @@ test("dead NPC reference in injection_hint is filtered", () => {
   const gameState = makeGameState({
     deadOrInactiveNpcIds: ["NPC_SPY"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.equal(result.rejections.length, 1);
   assert.equal(result.rejections[0].kind, "agenda_item");
@@ -251,7 +251,7 @@ test("dead NPC reference in payload is filtered", () => {
   const gameState = makeGameState({
     deadOrInactiveNpcIds: ["NPC_TRAITOR"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.equal(result.rejections.length, 1);
   assert.equal(result.rejections[0].kind, "agenda_item");
@@ -269,7 +269,7 @@ test("clean agenda items pass through when no dead NPCs match", () => {
   const gameState = makeGameState({
     deadOrInactiveNpcIds: ["NPC_VILLAIN", "NPC_SPY"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.plan.world_events_to_schedule.length, 2);
@@ -285,7 +285,7 @@ test("no dead NPC set — all agenda items kept", () => {
   const gameState = makeGameState({
     deadOrInactiveNpcIds: undefined,
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.plan.world_events_to_schedule.length, 2);
 });
@@ -303,7 +303,7 @@ test("NPC action with unknown NPC is removed", () => {
   const gameState = makeGameState({
     activeNpcIds: ["NPC_GUARD", "NPC_MERCHANT"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.equal(result.rejections.length, 1);
   assert.equal(result.rejections[0].kind, "npc_action");
@@ -322,7 +322,7 @@ test("mix of valid and invalid NPC actions — invalid removed, valid kept", () 
   const gameState = makeGameState({
     activeNpcIds: ["NPC_GUARD", "NPC_MERCHANT", "NPC_PRIEST"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, false);
   assert.equal(result.rejections.length, 1);
   assert.equal(result.rejections[0].itemCode, "NPC_GHOST");
@@ -341,7 +341,7 @@ test("all NPC actions valid — none removed", () => {
   const gameState = makeGameState({
     activeNpcIds: ["NPC_GUARD", "NPC_MERCHANT", "NPC_PRIEST"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.plan.npc_next_actions.length, 2);
@@ -356,7 +356,7 @@ test("empty activeNpcIds — fail-open: all NPC actions kept", () => {
   const gameState = makeGameState({
     activeNpcIds: [],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   assert.equal(result.plan.npc_next_actions.length, 1);
 });
@@ -378,7 +378,7 @@ test("high tension + low fatigue without director acknowledgment → warning", (
     },
   });
   const gameState = makeGameState();
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.ok(result.pacingWarnings.length >= 1);
   assert.match(result.pacingWarnings[0], /tension=0\.90.*fatigue=0\.10/);
   // pacing warnings alone should not cause passedAll=false
@@ -398,7 +398,7 @@ test("high tension + low fatigue with acknowledgment → no warning", () => {
     },
   });
   const gameState = makeGameState();
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   const mismatchWarning = result.pacingWarnings.find((w) => w.includes("high tension usually implies elevated fatigue"));
   assert.equal(mismatchWarning, undefined, "Should not warn when director_intent acknowledges tension");
 });
@@ -415,7 +415,7 @@ test("high fatigue + high tension → burnout risk warning", () => {
     },
   });
   const gameState = makeGameState();
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   const burnout = result.pacingWarnings.find((w) => w.includes("burnout"));
   assert.ok(burnout, "Expected burnout risk warning");
   assert.match(burnout!, /fatigue=0\.80.*tension=0\.85/);
@@ -433,7 +433,7 @@ test("very high mystery + very low tension/fatigue → pacing oddity warning", (
     },
   });
   const gameState = makeGameState();
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   const oddity = result.pacingWarnings.find((w) => w.includes("oddity") || w.includes("stalled"));
   assert.ok(oddity, "Expected pacing oddity warning");
 });
@@ -450,7 +450,7 @@ test("balanced pacing produces no warnings", () => {
     },
   });
   const gameState = makeGameState();
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.pacingWarnings.length, 0);
 });
 
@@ -467,7 +467,7 @@ test("empty activeNpcIds (empty array) does not crash", () => {
   const gameState: DirectorEnforcerGameState = {
     activeNpcIds: [],
   };
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   assert.equal(result.passedAll, true);
   // fail-open: no active data means actions are kept
   assert.equal(result.plan.npc_next_actions.length, 1);
@@ -479,7 +479,7 @@ test("no currentPhase does not crash", () => {
     activeNpcIds: ["NPC_GUARD"],
     // currentPhase omitted
   };
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   // Without currentPhase, no phase validation occurs — plan passes
   assert.equal(result.passedAll, true);
   assert.equal(result.rejections.length, 0);
@@ -498,7 +498,7 @@ test("completely minimal gameState — empty arrays, no phase", () => {
   const gameState: DirectorEnforcerGameState = {
     activeNpcIds: [],
   };
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
   // No dead/inactive NPCs set → no agenda filtering
   // No active NPCs → fail-open on npc actions
   // No currentPhase → no phase check
@@ -539,7 +539,7 @@ test("full valid plan passes all checks", () => {
     deadOrInactiveNpcIds: ["NPC_VILLAIN", "NPC_SPY"],
     currentPhase: "quiet",
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
 
   // Should pass all hard checks
   assert.equal(result.passedAll, true, JSON.stringify(result.rejections));
@@ -582,7 +582,7 @@ test("multiple rejections across phase, agenda, and NPC actions", () => {
     deadOrInactiveNpcIds: ["NPC_VILLAIN", "NPC_SPY"],
     activeNpcIds: ["NPC_GUARD"],
   });
-  const result = enforceDirectorPlan(plan, gameState);
+  const result = enforceChapterPacingPlan(plan, gameState);
 
   assert.equal(result.passedAll, false);
   assert.ok(result.rejections.length >= 3, `Expected at least 3 rejections, got ${result.rejections.length}`);

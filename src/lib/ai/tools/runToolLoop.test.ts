@@ -4,13 +4,14 @@ import assert from "node:assert/strict";
 import { runToolLoop, type ExecuteChatCompletionFn, type ToolRegistry } from "@/lib/ai/tools/runToolLoop";
 import type { AIResponse } from "@/lib/ai/types";
 import type { ChatMessage, ToolCall } from "@/lib/ai/types/core";
+import { createAiInvocationBudget } from "@/lib/ai/runtime/aiInvocationBudget";
 
 const CTX = { requestId: "req-test", userId: "u1", sessionId: "s1", path: "/test" };
 
 function okResponse(partial: Partial<AIResponse>): AIResponse {
   return {
     ok: true,
-    providerId: "oneapi",
+    providerId: "mock",
     logicalRole: "reasoner",
     content: "",
     usage: null,
@@ -75,6 +76,98 @@ test("runToolLoop: 一轮 tool call 后收口为最终答案，消息链路正�
   }
   // 原始入参 messages 不被原地污染
   assert.equal(seenMessages[0].length, 2);
+});
+
+test("runToolLoop: shared invocation budget prevents a third model call", async () => {
+  let calls = 0;
+  const fakeExecute: ExecuteChatCompletionFn = async () => {
+    calls += 1;
+    return okResponse({ toolCalls: [toolCall(`c${calls}`, "echo", { calls })] });
+  };
+  const result = await runToolLoop({
+    task: "MECHANICS",
+    messages: [{ role: "user", content: "forge" }],
+    tools: makeRegistry(),
+    ctx: CTX,
+    maxRounds: 3,
+    devOverrides: { maxTokens: 2048 },
+    invocationBudget: createAiInvocationBudget({
+      maxCalls: 2,
+      maxOutputTokens: 4096,
+      deadlineMs: 20_000,
+    }),
+    execute: fakeExecute,
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "INVOCATION_BUDGET");
+});
+
+test("runToolLoop: executes all reads but at most one state-changing tool and returns receipts", async () => {
+  const executed: string[] = [];
+  const registry: ToolRegistry = {
+    read_state: {
+      kind: "read",
+      definition: {
+        type: "function",
+        function: { name: "read_state", description: "read", parameters: { type: "object", properties: {} } },
+      },
+      handler: async () => {
+        executed.push("read_state");
+        return { ok: true, data: { hp: 10 } };
+      },
+    },
+    write_one: {
+      kind: "write",
+      definition: {
+        type: "function",
+        function: { name: "write_one", description: "write", parameters: { type: "object", properties: {} } },
+      },
+      handler: async () => {
+        executed.push("write_one");
+        return { ok: true, data: { delta: 1 } };
+      },
+    },
+    write_two: {
+      kind: "write",
+      definition: {
+        type: "function",
+        function: { name: "write_two", description: "write", parameters: { type: "object", properties: {} } },
+      },
+      handler: async () => {
+        executed.push("write_two");
+        return { ok: true, data: { delta: 2 } };
+      },
+    },
+  };
+  let calls = 0;
+  const result = await runToolLoop({
+    task: "MECHANICS",
+    messages: [{ role: "user", content: "act" }],
+    tools: registry,
+    ctx: CTX,
+    maxRounds: 2,
+    execute: async () => {
+      calls += 1;
+      return calls === 1
+        ? okResponse({
+            toolCalls: [
+              toolCall("r1", "read_state", {}),
+              toolCall("w1", "write_one", {}),
+              toolCall("w2", "write_two", {}),
+            ],
+          })
+        : okResponse({ content: "done" });
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(executed.sort(), ["read_state", "write_one"]);
+  if (result.ok) {
+    assert.equal(result.receipts.length, 2);
+    assert.deepEqual(result.receipts.map((receipt) => receipt.name).sort(), ["read_state", "write_one"]);
+  }
 });
 
 test("runToolLoop: 未知工具与参数非法折叠为错误结果，循环继续", async () => {
@@ -154,7 +247,7 @@ test("runToolLoop: handler 抛错与超时折叠为错误结果", async () => {
 test("runToolLoop: 最后一轮强制 toolChoice=none；不依从上游且无正文时返回 MAX_ROUNDS_NO_FINAL", async () => {
   const choices: Array<string | undefined> = [];
   const fakeExecute: ExecuteChatCompletionFn = async (params) => {
-    choices.push(params.toolChoice);
+    choices.push(typeof params.toolChoice === "string" ? params.toolChoice : "named");
     // 始终返回 tool_calls 且无正文（不依从的上游）
     return okResponse({ toolCalls: [toolCall(`c${choices.length}`, "echo", {})] });
   };

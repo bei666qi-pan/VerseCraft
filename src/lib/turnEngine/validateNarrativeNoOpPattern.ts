@@ -196,12 +196,10 @@ export function detectAndStripNoOpPattern(narrative: string): NarrativeNoOpPatte
   // 历史 t15: "走廊深处的阴影里什么都没有..." 整段 safe_fallback.
   // 替换比 strip 更好: 保留 narrative 骨架, 把不可信字串换成中性占位.
   let placeholderReplaced = narrative;
-  let placeholderReplacedCount = 0;
   for (const { pattern, replacement } of REWRITE_REPLACEMENTS) {
     pattern.lastIndex = 0;
     if (pattern.test(placeholderReplaced)) {
       placeholderReplaced = placeholderReplaced.replace(pattern, replacement);
-      placeholderReplacedCount += 1;
     }
   }
   if (placeholderReplaced !== narrative && placeholderReplaced.trim().length >= 5) {

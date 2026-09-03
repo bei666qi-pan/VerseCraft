@@ -123,7 +123,6 @@ test("scheduleBackgroundWorldTick forwards explicit world and map scope", async 
       tension: 72,
       beatModeHint: "countdown",
       pressureFlags: ["urgent", "urgent"],
-      pendingIncidentCodes: ["XQ-EV01"],
       mustRecallHookCodes: [],
       chapterId: "XQ-CH01",
     },
@@ -133,17 +132,18 @@ test("scheduleBackgroundWorldTick forwards explicit world and map scope", async 
     },
   });
   const result = await pending;
+  const capturedPayload = captured as unknown as Record<string, unknown>;
   assert.equal(result.enqueued, true);
-  assert.equal(captured?.worldId, "xingni_taichu");
-  assert.equal(captured?.mapId, "xingni_qingshi_county");
-  assert.deepEqual(captured?.pacingChapterSignals, {
-    phase: "build_up",
-    tension: 0.72,
+  assert.equal(capturedPayload.worldId, "xingni_taichu");
+  assert.equal(capturedPayload.mapId, "xingni_qingshi_county");
+  assert.deepEqual(capturedPayload.pacingChapterSignals, {
+    phase: "rising",
+    tension: 4,
     chapterId: "XQ-CH01",
-    chapterIndex: 0,
-    progress: 0,
+    completedBeatIds: [],
+    turnsInChapter: 5,
   });
-  assert.deepEqual((captured?.worldStateSummary as { stateCodes?: string[] })?.stateCodes, ["urgent", "XQ-EV01"]);
+  assert.deepEqual((capturedPayload.worldStateSummary as { stateCodes?: string[] })?.stateCodes, ["urgent"]);
 });
 
 test("scheduleBackgroundWorldTick swallows enqueue errors into pending", async () => {

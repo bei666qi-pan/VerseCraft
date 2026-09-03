@@ -14,9 +14,7 @@ import type {
   SelfImproveJudgeVerdict,
   SelfImproveViolation,
   DefectSignature,
-  TriagedDefect,
   IterationLogEntry,
-  FinalReport,
 } from "./types";
 
 // ── Validation helpers ────────────────────────────────

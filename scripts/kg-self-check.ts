@@ -26,11 +26,9 @@ async function main(): Promise<void> {
     "vc_world_candidate",
     "vc_world_cluster",
     "vc_cluster_observation",
-    "vc_semantic_cache",
     "vc_jobs",
   ];
   const ivfflatIndexes = [
-    "vc_semantic_cache_ivfflat_global_codex",
     "vc_world_cluster_ivfflat_centroid",
     "vc_world_fact_ivfflat_hot",
   ];
@@ -86,4 +84,3 @@ main().catch((e) => {
   );
   process.exitCode = 1;
 });
-

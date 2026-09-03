@@ -24,11 +24,6 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enablePlayerFacingTaskCopyV2: boolean;
   /** 普通回合 options 为空时自动走一次 options-only 补全 */
   enableOptionsAutoRegenOnEmpty: boolean;
-  /**
-   * 主回合不在同一请求内生成本轮可点击 options：FINAL 对合法放行回合清空选项，由浏览器发起 options_regen_only。
-   * 设为 false 回滚为先前「服务端补全或与叙事同帧」。
-   */
-  deferMainTurnOptionsToClient: boolean;
   /** options-only 独立链路 V2（独立 prompt/packet，绕开主叙事管线） */
   enableOptionsOnlyRegenPathV2: boolean;
   /** 双核新手引导 V2（老刘生存轴 + 麟泽边界轴） */
@@ -138,8 +133,6 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableAuthenticityEvalFlywheel: boolean;
   /** Phase-2.4: 每回合节奏指令 packet（默认关）。 */
   enableNarrativeDirective: boolean;
-  /** DM Agent: bounded tool-calling DM (feature-flagged; default off). */
-  enableDmAgent: boolean;
 };
 
 function readFlag(envName: string, defaultTrue: boolean): boolean {
@@ -173,7 +166,6 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableTaskAutoOpenOnNarrativeGrant: readFlag("VERSECRAFT_ENABLE_TASK_AUTO_OPEN_ON_NARRATIVE_GRANT", true),
     enablePlayerFacingTaskCopyV2: readFlag("VERSECRAFT_ENABLE_PLAYER_FACING_TASK_COPY_V2", true),
     enableOptionsAutoRegenOnEmpty: readFlag("VERSECRAFT_ENABLE_OPTIONS_AUTO_REGEN_ON_EMPTY", true),
-    deferMainTurnOptionsToClient: readFlag("VERSECRAFT_DEFER_MAIN_TURN_OPTIONS_TO_CLIENT", true),
     enableOptionsOnlyRegenPathV2: readFlagFirst(
       ["VERSECRAFT_ENABLE_OPTIONS_ONLY_REGEN_PATH_V2"],
       true
@@ -237,6 +229,5 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableProvenanceVerifierShadow: readFlag("VC_PROVENANCE_VERIFIER_SHADOW", false),
     enableAuthenticityEvalFlywheel: readFlag("VC_AUTHENTICITY_EVAL_FLYWHEEL", false),
     enableNarrativeDirective: readFlag("VERSECRAFT_ENABLE_NARRATIVE_DIRECTIVE", false),
-    enableDmAgent: readFlag("VERSECRAFT_ENABLE_DM_AGENT", false),
   };
 }

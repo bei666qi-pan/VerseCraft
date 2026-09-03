@@ -15,7 +15,6 @@
 // NpcSocialProfile removed (unused)
 // import type { NpcSocialProfile } from "./types";
 import type { CyclePhase } from "./cyclePhaseCanon";
-import { _NPC_SOCIAL_GRAPH } from "./world";
 
 // ──────────────────────────────────────
 // Section 1: Daily Schedule Types

@@ -23,7 +23,7 @@
  *   ✅ PASS  L1 lint-check
  *   ❌ FAIL  L2 unit-tests  (3 failures)
  *   ⏭️ SKIP  L4 eval-quality  (--quick mode)
- *   ⚠️ WARN  L6 build  (typescript errors tolerated per next.config.ts)
+ *   ❌ FAIL  L7 build  (build and TypeScript errors are hard failures)
  */
 
 import { execSync } from "node:child_process";
@@ -46,7 +46,6 @@ const colors = {
 const ARGS = new Set(process.argv.slice(2));
 const QUICK = ARGS.has("--quick");
 const CI = ARGS.has("--ci");
-const SKIP_BUILD = ARGS.has("--skip-build");
 
 /** @typedef {{ name: string; level: string; command: string; args?: string[]; timeoutMs: number; skipInQuick?: boolean }} GateStage */
 
@@ -58,6 +57,13 @@ const STAGES = [
     command: "npx",
     args: ["eslint", "src/**/*.{ts,tsx}", "e2e/**/*.ts", "--max-warnings=999"],
     timeoutMs: 60_000,
+  },
+  {
+    name: "typecheck",
+    level: "L1",
+    command: "pnpm",
+    args: ["typecheck"],
+    timeoutMs: 180_000,
   },
   {
     name: "unit-tests",
@@ -79,7 +85,7 @@ const STAGES = [
     level: "L3",
     command: "npx",
     args: ["tsx", "--test", "tests/promptfoo/tests/weapon-schema.test.ts", "tests/promptfoo/tests/profession-rules.test.ts"],
-    timeoutMs: 15_000,
+    timeoutMs: 60_000,
     skipInQuick: false,
   },
   {
@@ -161,7 +167,6 @@ const STAGES = [
     args: ["build"],
     timeoutMs: 180_000,
     skipInQuick: true,
-    optionalFail: true, // next.config.ts sets ignoreBuildErrors: true
   },
 ];
 
@@ -224,9 +229,6 @@ function main() {
     if (result.ok) {
       console.log(`${colors.green}✅ PASS${colors.reset}  (${elapsed}s)`);
       results.push({ ...stage, status: "PASS" });
-    } else if (stage.optionalFail) {
-      console.log(`${colors.yellow}⚠️ WARN${colors.reset}  (${elapsed}s) — optional stage, continuing`);
-      results.push({ ...stage, status: "WARN" });
     } else {
       console.log(`${colors.red}❌ FAIL${colors.reset}  (${elapsed}s)`);
       results.push({ ...stage, status: "FAIL", error: result.output.slice(0, 500) });

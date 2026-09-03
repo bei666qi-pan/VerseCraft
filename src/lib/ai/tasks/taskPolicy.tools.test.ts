@@ -12,7 +12,7 @@ import type { TaskType } from "@/lib/ai/types/core";
 test("tool 白名单只包含离线任务和 DM 代理", () => {
   assert.deepEqual(
     [...TASK_TOOLS_ALLOWED].sort(),
-    ["DEV_ASSIST", "DM_AGENT", "STORYLINE_SIMULATION", "WORLDBUILD_OFFLINE"]
+    ["DEV_ASSIST", "MECHANICS", "STORYLINE_SIMULATION", "WORLDBUILD_OFFLINE"]
   );
 });
 
@@ -24,10 +24,6 @@ test("在线/实时任务一律禁止 tool use", () => {
     "SAFETY_PREFILTER",
     "RULE_RESOLUTION",
     "COMBAT_NARRATION",
-    "SCENE_ENHANCEMENT",
-    "NARRATIVE_EXPANSION",
-    "NPC_EMOTION_POLISH",
-    "DIRECTOR_PLAN_CRITIC",
     "MEMORY_COMPRESSION",
   ];
   for (const task of onlineTasks) {

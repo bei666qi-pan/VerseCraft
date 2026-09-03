@@ -1,7 +1,7 @@
 /**
  * VerseCraft 世界知识 RAG 的常量与默认预算（仅用于骨架阶段）。
  *
- * 尽量与现有 `src/lib/kg/*` 的 pgvector 语义缓存参数保持一致，避免后续接入时出现“同名不同语义”的坑。
+ * 与现有 `src/lib/kg/*` 的 pgvector facts 参数保持一致，避免同名不同语义。
  */
 
 export const WORLD_KNOWLEDGE_EMBED_DIM = 256;
@@ -48,4 +48,3 @@ export const WORLD_KNOWLEDGE_TTL = {
   sessionSec: 90,
   riskShortSec: 45,
 } as const;
-

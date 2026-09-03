@@ -135,7 +135,7 @@ flowchart TB
 ## 6. 任务制度重构原则
 
 1. **issuer 不等于唯一动机**：`buildTaskDramaPacket` 保留，但增加（数据侧）**非 issuer 在场 NPC 的「干扰/旁观」轻提示**可选，打破人人像发任务。
-2. **正式目标三类平衡**：继续用 `goalKind` / `inferObjectiveKind`（`taskBoardUi.ts`）；产品上要规定 **character 类任务**占比与「无任务回合」导演策略（`storyDirector` 已有 beat，可挂钩）。
+2. **正式目标三类平衡**：继续用 `goalKind` / `inferObjectiveKind`（`taskBoardUi.ts`）；产品上要规定 **character 类任务**占比，并由确定性的 `ChapterPacingController` 处理无任务回合的章节节奏。
 3. **npcProactiveGrant**：冷却与地点已存在；重构方向是 **grant 时写入 spine 一条「关系动机」** 而非仅状态机跳变。
 4. **任务文案禁止替代人物**：`issuerIntent` 应可与 `NpcHeart` 的 `coreDrive` 显式校验冲突（未来小函数：标记 tension 供 prompt 使用），制造「嘴上说委托、心里另有恐惧」的可写空间。
 
@@ -182,7 +182,7 @@ flowchart TB
 | **P2** | **拼装**：`getPromptContext` 计算或透传 `maxRevealRank`（与 route 同算法解析自 playerContext flags）并传入 `buildNpcHeartRuntimeView` | `useGameStore.ts`、`selectors.ts` |
 | **P3** | **人物**：`major_charm` 子类型或六人微调标量；`whatNpcWantsFromPlayerNow` 按 archetype 分支 | `npcBaselineAttitude/builders.ts`、`selectors.ts` |
 | **P4** | **揭露**：`school_source_packet` 文案梯度 + RAG fact tag 过滤；branch facts 与档位对齐 | `worldSchoolRuntimePackets.ts`、bootstrap、retrieve gate |
-| **P5** | **任务/时间**：导演 beat 与 `consumes_time` 策略、任务注册戏剧字段规范 | `route` 守卫、`storyDirector`、任务 JSON 数据 |
+| **P5** | **任务/时间**：章节 beat 与 `consumes_time` 策略、任务注册戏剧字段规范 | `PlayerTurnWorkflow` 守卫、`ChapterPacingController`、任务 JSON 数据 |
 | **P6** | **认知**（可选）：承接 `npc-epistemic-architecture.md` P1–P3 | memory / spine |
 
 ---

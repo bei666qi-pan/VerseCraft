@@ -7,6 +7,7 @@ import {
   type WorldId,
 } from "@/lib/worlds/types";
 import { resolveWorldRuntime } from "@/lib/worlds/catalog";
+import type { PacingChapterSignalsV2 } from "@/lib/turnEngine/contracts";
 
 export type WorldEngineTrigger =
   | "in_game_day_elapsed"
@@ -173,7 +174,7 @@ export type DirectorPrivateHook = {
   tag?: "must_recall" | "forbidden_reveal" | string;
 };
 
-export type DirectorPlan = {
+export type ChapterPacingPlan = {
   schema_version: "director_plan_v1";
   director_intent: string;
   current_phase: DirectorPhase;
@@ -195,14 +196,6 @@ export type WorldRuntimeScope = {
   worldId: WorldId;
   mapId: MapId;
   sessionId: string;
-};
-
-export type PacingChapterSignals = {
-  phase: DirectorPhase;
-  tension: number;
-  chapterId: string | null;
-  chapterIndex: number;
-  progress: number;
 };
 
 export type WorldStateSummary = {
@@ -238,7 +231,7 @@ export type WorldEngineTickPayload = {
   deadNpcIds: string[];
   changedTaskIds: string[];
   changedClueIds: string[];
-  pacingChapterSignals: PacingChapterSignals;
+  pacingChapterSignals: PacingChapterSignalsV2;
   worldStateSummary: WorldStateSummary;
   latestTurnSignals: StructuredTurnSignals;
   npcLocationUpdateCount: number;
@@ -273,14 +266,30 @@ function boundedIds(value: unknown, cap = 64): string[] {
   return uniqueStrings(value, cap, 128);
 }
 
-export function validatePacingChapterSignals(value: unknown): PacingChapterSignals {
+export function validatePacingChapterSignals(value: unknown): PacingChapterSignalsV2 {
   const raw = asRecord(value) ?? {};
+  const v2Phases = ["opening", "rising", "turning", "climax", "resolution"] as const;
+  const phaseMap: Record<DirectorPhase, PacingChapterSignalsV2["phase"]> = {
+    quiet: "opening",
+    build_up: "rising",
+    pressure: "turning",
+    release: "resolution",
+    reveal: "climax",
+    recovery: "resolution",
+  };
+  const isV2 = typeof raw.phase === "string" && v2Phases.includes(raw.phase as typeof v2Phases[number]);
+  const legacyPhase = enumOr(raw.phase, PHASES, "quiet");
+  const rawTension = Number(raw.tension);
   return {
-    phase: enumOr(raw.phase, PHASES, "quiet"),
-    tension: clamp01(raw.tension, 0.3),
-    chapterId: clampText(raw.chapterId, 128) || null,
-    chapterIndex: clampInt(raw.chapterIndex, 0, 999, 0),
-    progress: clamp01(raw.progress, 0),
+    chapterId: boundedIds([raw.chapterId], 1)[0] ?? "chapter-unknown",
+    phase: isV2
+      ? raw.phase as PacingChapterSignalsV2["phase"]
+      : phaseMap[legacyPhase],
+    tension: (isV2
+      ? clampInt(rawTension, 0, 5, 0)
+      : Math.round(clamp01(rawTension, 0.3) * 5)) as PacingChapterSignalsV2["tension"],
+    completedBeatIds: boundedIds(raw.completedBeatIds, 32),
+    turnsInChapter: clampInt(raw.turnsInChapter, 0, 10_000, 0),
   };
 }
 
@@ -360,7 +369,7 @@ export function normalizeWorldEngineTickPayload(value: unknown): TickPayloadNorm
   };
 }
 
-export type WorldEngineStructuredDelta = DirectorPlan & {
+export type WorldEngineStructuredDelta = ChapterPacingPlan & {
   social_events_to_schedule: DirectorSocialEvent[];
   npc_relation_deltas: NpcRelationDelta[];
   npc_agent_patches: NpcAgentPatch[];

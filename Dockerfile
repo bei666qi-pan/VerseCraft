@@ -73,7 +73,14 @@ ENV NODE_OPTIONS=--max-old-space-size=2048
 # Next 16 不读取旧的 NEXT_CPU_COUNT / NEXT_PRIVATE_TURBOPACK_WORKERS；
 # 构建并发由 next.config.ts 的 experimental.cpus 权威限制。
 
-RUN pnpm run build
+# Next evaluates server route modules while collecting page metadata. Supply
+# non-secret, unreachable placeholders only for compilation; the runner starts
+# from `base`, so real runtime configuration must still come from Coolify.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/versecraft_build \
+    AUTH_SECRET=build-auth-secret-not-for-runtime-0001 \
+    ADMIN_PASSWORD=build-admin-password-not-for-runtime \
+    AI_PROVIDER=mock \
+    pnpm run build
 
 # ---- 第五阶段：运行镜像 ----
 FROM base AS runner
@@ -99,5 +106,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
 USER nextjs
 EXPOSE 3000
-HEALTHCHECK --interval=20s --timeout=3s --start-period=30s --retries=3 CMD wget -q -O - http://127.0.0.1:3000/api/health >/dev/null || exit 1
+HEALTHCHECK --interval=20s --timeout=3s --start-period=30s --retries=3 \
+  CMD HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= http_proxy= https_proxy= all_proxy= \
+  wget -q -O - http://127.0.0.1:3000/api/health >/dev/null || exit 1
 CMD ["node", "scripts/start-production.mjs"]

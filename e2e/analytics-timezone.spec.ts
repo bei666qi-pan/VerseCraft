@@ -49,7 +49,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "overview?range=today status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     const data = getData(body);
@@ -100,7 +100,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "overview?range=yesterday status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     const data = getData(body);
@@ -132,7 +132,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "overview?range=7d status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     const data = getData(body);
@@ -162,7 +162,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "overview?range=30d status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     const data = getData(body);
@@ -187,7 +187,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
         headers: { Cookie: cookie },
         timeout: 20_000,
       });
-      if (res.status() === 429) { test.skip(true, `rate limited on ${preset}`); return; }
+      if (res.status() === 429) { throw new Error(`rate limited on ${preset}`); }
       expect(res.status(), `overview?range=${preset} status`).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;
       const data = getData(body);
@@ -241,7 +241,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
         headers: { Cookie: cookie },
         timeout: 20_000,
       });
-      if (res.status() === 429) { test.skip(true, `rate limited on ${ep.label}`); return; }
+      if (res.status() === 429) { throw new Error(`rate limited on ${ep.label}`); }
       expect(res.status(), `${ep.label} status`).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;
       const data = getData(body);
@@ -275,7 +275,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (todayRes.status() === 429) { test.skip(true, "rate limited on today"); return; }
+    if (todayRes.status() === 429) { throw new Error("rate limited on today"); }
     expect(todayRes.status()).toBe(200);
 
     // Small delay between calls to avoid rate limiting
@@ -285,7 +285,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (yesterdayRes.status() === 429) { test.skip(true, "rate limited on yesterday"); return; }
+    if (yesterdayRes.status() === 429) { throw new Error("rate limited on yesterday"); }
     expect(yesterdayRes.status()).toBe(200);
 
     const todayBody = (await todayRes.json()) as Record<string, unknown>;
@@ -337,7 +337,7 @@ test.describe.serial("Analytics Timezone Correctness", () => {
         headers: { Cookie: cookie },
         timeout: 20_000,
       });
-      if (res.status() === 429) { test.skip(true, `rate limited on ${ep}`); return; }
+      if (res.status() === 429) { throw new Error(`rate limited on ${ep}`); }
       expect(res.status(), `${ep} status`).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;
       const data = getData(body);

@@ -68,23 +68,23 @@ export async function executeMockChatCompletion(params: {
   task: TaskType;
   messages: ChatMessage[];
   ctx: AIRequestContext;
-  /** Function tools provided by the caller (DM Agent 等). */
+  /** Function tools provided by the caller (Mechanics Workflow 等). */
   tools?: ReadonlyArray<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
   /** Tool choice strategy. */
   toolChoice?: ToolChoiceOption;
 }): Promise<AIResponse> {
   const t0 = Date.now();
 
-  // ── DM Agent mock tool-calling 模拟 ──
-  // 当 task=DM_AGENT 且有 tools 且 toolChoice !== "none" 时，
+  // ── Mechanics Workflow mock tool-calling 模拟 ──
+  // 当 task=MECHANICS 且有 tools 且 toolChoice !== "none" 时，
   // 模拟一轮 tool call：返回一个 inspect_forge_options（或其他只读工具）调用，
   // 让调用方执行 handler 后将结果回灌，再在下一轮返回最终 narrative。
   const toolsActive = Boolean(params.tools && params.tools.length > 0);
-  const isDmAgent = params.task === "DM_AGENT";
-  const isFinalRound = params.toolChoice === "none" || params.ctx.tags?.dmAgentFinal === true;
-  const round = Number(params.ctx.tags?.dmAgentRound) || 1;
+  const isMechanics = params.task === "MECHANICS";
+  const isFinalRound = params.toolChoice === "none" || params.ctx.tags?.mechanicsFinal === true;
+  const round = Number(params.ctx.tags?.mechanicsRound) || 1;
 
-  if (isDmAgent && toolsActive && !isFinalRound && round === 1) {
+  if (isMechanics && toolsActive && !isFinalRound && round === 1) {
     // 模拟第一轮：返回一个只读工具调用
     const toolNames = (params.tools ?? []).map((t) => t.function.name);
     const readTool = toolNames.find((n) => n.startsWith("get_") || n.startsWith("inspect_")) ?? toolNames[0];

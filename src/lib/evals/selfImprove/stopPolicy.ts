@@ -391,7 +391,6 @@ export function computeDeterministicMetrics(
   let unexpectedPasses = 0;
 
   for (const result of results) {
-    let allExpectationsMatched = true;
     for (const inv of result.invariantResults) {
       totalExpectations++;
       const expected = inv.expected;
@@ -399,7 +398,6 @@ export function computeDeterministicMetrics(
       if (matched) {
         expectationMatches++;
       } else {
-        allExpectationsMatched = false;
         if (expected === "pass") unexpectedFailures++;
         else unexpectedPasses++;
       }

@@ -221,7 +221,7 @@ function isAllowedNpcAction(action: DirectorNpcAction, profile: WorldDirectorCap
 }
 
 /** Pure, subtractive world capability gate. */
-export function validateDirectorPlanCapabilities(
+export function validateChapterPacingPlanCapabilities(
   plan: WorldEngineStructuredDelta,
   profile: WorldDirectorCapabilityProfile,
 ): CapabilityValidationResult {

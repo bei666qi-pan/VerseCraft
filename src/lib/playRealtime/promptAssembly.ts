@@ -5,6 +5,7 @@
 // (which lives in `@/lib/turnEngine/promptAssembly`).
 
 import type { AnalyticsPlatform } from "@/lib/analytics/types";
+import type { ChatMessage } from "@/lib/ai/types/core";
 import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 import { startStageSpan } from "@/lib/observability/langfuse";
 import { envNumber } from "@/lib/config/envRaw";
@@ -15,7 +16,7 @@ import { buildStyleGuidePacketBlock, buildDynamicPlayerDmSystemSuffix, estimateP
 import { buildNpcProactiveGrantNarrativeBlock } from "@/lib/tasks/taskV2";
 import { build7FConspiracyNarrativeBlock } from "@/lib/revive/conspiracy";
 import { resolveWorldDirectorConfig } from "@/lib/worldEngine/config";
-import { loadCommittedDirectorHintForWriter } from "@/lib/worldEngine/writerHintConsumer";
+import { loadDirectorDirectiveForWriter } from "@/lib/worldEngine/writerHintConsumer";
 import {
   DARK_MOON_MAP_ID,
   DARK_MOON_WORLD_ID,
@@ -82,13 +83,16 @@ import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 import { coerceRowToMemoryForDm, type SessionMemoryRow } from "@/lib/memoryCompress";
 import { normalizeBeatState } from "@/lib/turnEngine/pacing";
 import type {
+  ChatPerfFlags,
   ChatTtftProfile,
   NormalizedPlayerIntent,
   StateDelta,
   TurnExecutionContext,
   TurnLaneDecision,
+  TurnPreflightMetrics,
 } from "@/lib/turnEngine/types";
-import type { PlayerControlPlane } from "@/lib/playRealtime/types";
+import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
+import type { ClientStructuredContextV1 } from "@/lib/security/chatValidation";
 
 // ---------------------------------------------------------------------------
 // Local helpers (moved from route.ts bottom helpers — formerly lines 5638–5692)
@@ -188,9 +192,9 @@ export interface BuildPlayerChatMessagesContext {
   chatGuestId: string | null;
   platform: AnalyticsPlatform;
   latestUserInput: string;
-  clientPurpose: string;
+  clientPurpose: TurnExecutionContext["clientPurpose"];
   languageInstruction: string;
-  riskLane: string;
+  riskLane: TurnExecutionContext["riskLane"];
   totalRounds: number;
   shouldApplyFirstActionConstraint: boolean;
   playerContextForPrompt: string;
@@ -214,21 +218,15 @@ export interface BuildPlayerChatMessagesContext {
   requestStartedAt: number;
 
   // Objects / arrays
-  clientState: unknown;
-  rawChatMessages: Array<{ role: string; content: string }>;
-  perfFlags: Record<string, boolean>;
+  clientState: ClientStructuredContextV1 | null;
+  rawChatMessages: ChatMessage[];
+  perfFlags: ChatPerfFlags;
   ttftProfile: ChatTtftProfile;
   laneSideEffectPlan: TurnLaneDecision["sideEffectPlan"];
   turnLaneDecision: TurnLaneDecision;
   pipelineControl: PlayerControlPlane | null;
-  pipelineRule: { in_dialogue_hint?: boolean };
-  preflightTurnMetrics: {
-    ran: boolean;
-    skippedReason: string | null;
-    cacheHit: boolean;
-    latencyMs: number | null;
-    ok: boolean;
-  };
+  pipelineRule: PlayerRuleSnapshot;
+  preflightTurnMetrics: TurnPreflightMetrics;
   sessionMemory: SessionMemoryRow | null;
   verseRollout: {
     enableNpcBeliefGraph: boolean;
@@ -250,7 +248,7 @@ export interface BuildPlayerChatMessagesContext {
   pipelinePreflightFailed: boolean;
   controlPreflightBudgetHit: boolean;
   memoryBlock: string;
-  messagesToSend: Array<{ role: string; content: string }>;
+  messagesToSend: ChatMessage[];
 
   // Mutable refs (read within the section)
   inputSafety: { decision: string; userMessage?: string; narrativeFallback?: string; traceId?: string; debug?: unknown };
@@ -272,7 +270,7 @@ export interface BuildPlayerChatMessagesResult {
   memoryBlock: string;
 
   // Prompt assembly outputs (used downstream in route.ts)
-  safeMessages: Array<{ role: string; content: string }>;
+  safeMessages: ChatMessage[];
   stableCharLen: number;
   dynamicCharLen: number;
   promptVersion: string;
@@ -292,7 +290,7 @@ export interface BuildPlayerChatMessagesResult {
   actorEpistemicFilter: EpistemicFilterResult;
   dmEpistemicFilter: EpistemicFilterResult;
   npcConsistencyBoundaryFinal: ReturnType<typeof buildNpcConsistencyBoundaryCompactBlock>;
-  npcKnowledgePacketForValidator: ReturnType<typeof buildNpcKnowledgePacket>;
+  npcKnowledgePacketForValidator: ReturnType<typeof buildNpcKnowledgePacket> | null;
   allowedWorldFactIdsForValidator: string[];
   playerEchoPacketChars: number;
   playerEchoSelectedFragments: ReturnType<typeof selectPlayerEchoFragments>;
@@ -313,9 +311,9 @@ export interface BuildPlayerChatMessagesResult {
     socialEventsProjected: number;
     socialProjectionSkippedReason: string;
   };
-  directorHintIdsForReceipt: string[];
+  directorDirectiveIdsForReceipt: string[];
   injectedSocialEventIds: string[];
-  playerEchoFirstEncounterPlan: ReturnType<typeof computeNpcFirstEncounterEchoPlan>;
+  playerEchoFirstEncounterPlan: ReturnType<typeof computeNpcFirstEncounterEchoPlan> | null;
   allEpistemicFactsForPrompt: KnowledgeFact[];
   presentNpcIdsForEpistemic: string[];
   nowIsoForEpistemic: string;
@@ -323,6 +321,7 @@ export interface BuildPlayerChatMessagesResult {
   epistemicProfileForPrompt: NpcEpistemicProfile | null;
   socialWorldConfig: ReturnType<typeof resolveSocialWorldConfig>;
   worldDirectorConfig: ReturnType<typeof resolveWorldDirectorConfig>;
+  totalSystemPromptChars: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -442,11 +441,11 @@ export async function buildPlayerChatMessages(
     mapId: isXingni ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID,
     sessionId: sessionId ?? "",
   } as const;
-  const writerDirectorHintPromise = sessionId && worldDirectorConfig.hintInjectionEnabled
-    ? loadCommittedDirectorHintForWriter({
+  const writerDirectorDirectivePromise = sessionId && worldDirectorConfig.directiveInjectionEnabled
+    ? loadDirectorDirectiveForWriter({
         scope: runtimeScope,
         turnIndex: totalRounds,
-        timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
+        timeoutMs: worldDirectorConfig.eventQueryTimeoutMs,
       }).catch(() => null)
     : Promise.resolve(null);
   const socialWorldHintPromise = loadSocialWorldHintForPrompt({
@@ -457,13 +456,13 @@ export async function buildPlayerChatMessages(
     timeoutMs: socialWorldConfig.queryTimeoutMs,
     budget: socialWorldConfig.budget,
   });
-  const [, , writerDirectorHint, socialWorldHintForPrompt] = await Promise.all([
+  const [, , writerDirectorDirective, socialWorldHintForPrompt] = await Promise.all([
     runControlPreflightP,
     loreRetrievalP,
-    writerDirectorHintPromise,
+    writerDirectorDirectivePromise,
     socialWorldHintPromise,
   ]);
-  const directorHintEnvelope = writerDirectorHint?.envelope ?? null;
+  const directorDirective = writerDirectorDirective?.directive ?? null;
   const socialWorldHintBlock = socialWorldHintForPrompt?.block ?? "";
   const injectedSocialEventIds = socialWorldHintForPrompt?.projectedEventIds ?? [];
   const socialProjectionTelemetry = {
@@ -482,7 +481,7 @@ export async function buildPlayerChatMessages(
       socialWorldHintForPrompt?.socialProjectionSkippedReason ??
       (socialWorldConfig.promptInjectionEnabled ? "query_failed" : "disabled"),
   };
-  const directorHintBlock = writerDirectorHint?.block ?? "";
+  const directorDirectiveBlock = writerDirectorDirective?.block ?? "";
   ttftProfile.controlPreflightMs =
     typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
   ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
@@ -597,6 +596,7 @@ export async function buildPlayerChatMessages(
     presentNpcIds: presentNpcIdsForEpistemic,
     focusNpcId: focusNpcForPrompt,
     actorId: null,
+    maxRevealRank: maxRevealRankForMemory,
     profile: null,
     nowIso: nowIsoForEpistemic,
   });
@@ -730,7 +730,7 @@ export async function buildPlayerChatMessages(
   const controlAndLoreAugmentation = isXingni ? "" : [
     contextMode === "minimal" ? "" : controlAugmentation,
     contextMode === "minimal" ? "" : serviceContextBlock,
-    directorHintBlock,
+    directorDirectiveBlock,
     contextMode === "minimal" ? "" : npcTaskNarrativeBlock,
     conspiracyNarrativeBlock,
     ...(hasEpistemicAugmentation
@@ -757,12 +757,12 @@ export async function buildPlayerChatMessages(
   const runtimePackets = isXingni
     ? [
         buildXingniRuntimePacket({
-          playerLocation: playerLocForEpistemic,
+          playerLocation: playerLocForEpistemic ?? "QS_GUOYAN_INN",
           worldStateDigest: clientStateRecord?.worldStateDigest,
           presentNpcIds: presentNpcIdsForEpistemic,
           directorPacing: null,
         }),
-        directorHintBlock,
+        directorDirectiveBlock,
       ].filter(Boolean).join("\n\n")
     : shouldSkipRuntimePacketsForFastLane
     ? ""
@@ -1051,7 +1051,7 @@ export async function buildPlayerChatMessages(
   // === 计算 prompt 组装产物中被意外截断的字段（修复 promptAssembly.ts 截断） ===
   // compose system message
   const systemContent = playerDmStablePrefix + dynamicSuffixFull;
-  const safeMessages: Array<{ role: string; content: string }> = [
+  const safeMessages: ChatMessage[] = [
     { role: "system", content: systemContent },
     ...messagesToSend,
   ];
@@ -1151,7 +1151,7 @@ export async function buildPlayerChatMessages(
     epistemicAnomalyResult,
     epistemicResiduePlan,
     socialProjectionTelemetry,
-    directorHintIdsForReceipt: directorHintEnvelope ? [directorHintEnvelope.hintId] : [],
+    directorDirectiveIdsForReceipt: directorDirective ? [directorDirective.directiveId] : [],
     injectedSocialEventIds,
     playerEchoFirstEncounterPlan,
     allEpistemicFactsForPrompt,

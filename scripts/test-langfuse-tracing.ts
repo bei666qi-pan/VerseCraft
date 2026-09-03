@@ -3,8 +3,6 @@ async function main() {
   const {
     createTracingAdapter,
     startTurnTrace,
-    startStageSpan,
-    startGeneration,
     endTurnTrace,
     getCurrentAdapter,
   } = await import("../src/lib/observability/langfuse/index");

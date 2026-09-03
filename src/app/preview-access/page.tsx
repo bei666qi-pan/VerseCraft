@@ -20,7 +20,9 @@ export const viewport: Viewport = {
 };
 
 export default async function PreviewAccessPage(props: AppPageDynamicProps) {
-  const searchParams = await (props.searchParams ?? Promise.resolve({}));
+  const searchParams: Record<string, string | string[] | undefined> = await (
+    props.searchParams ?? Promise.resolve({})
+  );
   const nextParam = Array.isArray(searchParams.next) ? searchParams.next[0] : searchParams.next;
   const nextPath = sanitizePreviewAccessNext(nextParam);
 

@@ -16,9 +16,9 @@ function revealRank(value: unknown): number {
 
 function isDiscovered(discovered: NpcFirstEncounterEchoPlanArgs["currentRunDiscovered"], npcId: string): boolean {
   if (!discovered) return false;
-  if (Array.isArray(discovered)) return discovered.includes(npcId);
+  if (Array.isArray(discovered)) return (discovered as readonly string[]).includes(npcId);
   if (discovered instanceof Set) return discovered.has(npcId);
-  return Boolean(discovered[npcId]);
+  return Boolean((discovered as Record<string, boolean>)[npcId]);
 }
 
 function snapshotDiscoveredFlag(args: Pick<NpcFirstEncounterEchoPlanArgs, "snapshot">, npcId: string): boolean | null {

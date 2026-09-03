@@ -16,7 +16,7 @@ function fixture(): { root: string; manifest: EvalArtifactManifest } {
     ".runtime-data/self-improve/si-1/traces.jsonl",
     "benchmarks/game-mechanics/benchmark-report-1.json",
     "benchmarks/rag-pipeline/report-1.json",
-    "benchmarks/history/narrative.jsonl",
+    "benchmarks/game-mechanics/fixtures/keep.json",
     "benchmarks/game-mechanics/scenarios.json",
     "openspec/changes/keep/report.md",
     "docs/eval/README.md",
@@ -31,12 +31,12 @@ function fixture(): { root: string; manifest: EvalArtifactManifest } {
     manifest: {
       version: 1,
       include: ["docs/eval/traces/**/*", ".runtime-data/eval/**/*", ".runtime-data/eval-*.json", ".runtime-data/chat-benchmark-*.json", ".runtime-data/self-improve/si-*/final-report.*", ".runtime-data/self-improve/si-*/traces.jsonl", "benchmarks/**/benchmark-report-*.json", "benchmarks/rag-pipeline/report-*.json"],
-      preserve: ["benchmarks/history/**/*", "openspec/**/*", "docs/eval/README.md"],
+      preserve: ["benchmarks/**/fixtures/**/*", "openspec/**/*", "docs/eval/README.md"],
     },
   };
 }
 
-test("manifest lists generated traces/reports and preserves history, fixtures, OpenSpec and durable docs", () => {
+test("manifest lists generated traces/reports and preserves fixtures, OpenSpec and durable docs", () => {
   const { root, manifest } = fixture();
   const listed = listEvalArtifacts(root, manifest);
   assert.deepEqual(listed, [

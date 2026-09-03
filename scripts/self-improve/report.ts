@@ -40,7 +40,6 @@ function main(): void {
   }
 
   const manifestPath = join(dir, "manifest.json");
-  const statePath = join(dir, "state.json");
   const reportPath = join(dir, "final-report.json");
   const mdReportPath = join(dir, "final-report.md");
 

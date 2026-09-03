@@ -139,9 +139,9 @@ PR 层（每个 PR 自动运行，目标 <20min）
 
 ## 5. 趋势与历史
 
-- 每次评测运行追加到 `benchmarks/history/<suite>.jsonl`（一行一条 JSON 记录）
+- 每次评测运行追加到 `.runtime-data/eval/history/<suite>.jsonl`（一行一条 JSON 记录，Git 忽略）
 - CI artifact 保留命名 artifact，30 天
-- 基线记录在 `benchmarks/history/baseline-<date>.jsonl`
+- 需要保留的基线由 CI artifact 或发布说明固化，不在源码仓库累积生成报告
 - 本地运行记录到 `.runtime-data/`（gitignored）
 - 如需跨运行趋势比较：`pnpm benchmark:diff`（指向旧 baseline）
 

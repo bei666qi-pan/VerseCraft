@@ -13,7 +13,7 @@ export class AgentBackend {
     return this._name;
   }
    
-  async run(_taskPrompt, _options = {}) {
+  async run() {
     throw new Error(`AgentBackend "${this._name}" does not implement run()`);
   }
 }
@@ -86,8 +86,7 @@ export class CodexBackend extends AgentBackend {
 // ── Claude Backend (Claude Code CLI) ──────────────────────────
 
 export class ClaudeBackend extends AgentBackend {
-   
-  constructor(options = {}) {
+  constructor() {
     super("claude");
   }
 

@@ -16,11 +16,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { JudgeService, getRubric } from "../src/lib/evals/judge";
+import { JudgeService } from "../src/lib/evals/judge";
 import { parseEvalCli, evalLog, writeJson, appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 import { resolveEvalMode } from "../src/lib/evals/harness/config";
 import { AUTHENTICITY_CALIBRATION_SEEDS } from "../benchmarks/judge/authenticityCalibrationSeeds";
-import type { JudgeTarget, JudgeVerdict, MultiJudgeResult } from "../src/lib/evals/judge/types";
+import type { JudgeTarget, MultiJudgeResult } from "../src/lib/evals/judge/types";
 
 // === 类型 ===
 

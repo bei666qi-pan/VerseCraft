@@ -126,7 +126,7 @@ export function arbitrateDefects(
 
   const defects: TriagedDefect[] = [];
 
-  for (const [fingerprint, items] of byFingerprint) {
+  for (const items of byFingerprint.values()) {
     const violation = items[0]!.violation;
     const sig = generateDefectSignature(violation);
     const agreeingJudges = new Set(items.map((i) => i.judgeModel)).size;

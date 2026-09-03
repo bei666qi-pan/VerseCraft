@@ -3,7 +3,7 @@
 // Maps VerseCraft eval dimensions to Langfuse scores.
 import "server-only";
 
-import type { LangfuseScore, ScoreSource } from "./types";
+import type { LangfuseScore } from "./types";
 import { isLangfuseReady, getLangfuseConfig } from "./config";
 
 /**
@@ -38,7 +38,6 @@ export async function uploadScores(
           name: score.name,
           value: score.value,
           dataType: score.dataType,
-          source: score.source,
           comment: score.comment,
           ...(score.evaluator ? { observationId: undefined } : {}),
         });

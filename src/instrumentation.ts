@@ -48,16 +48,6 @@ function initLangfuseAsync(): void {
       );
       await initLangfuse();
       markLangfuseInitialized();
-
-      // Register graceful shutdown handler
-      const { shutdownLangfuse } = await import(
-        "@/lib/observability/langfuse/client"
-      );
-      const shutdown = () => {
-        void shutdownLangfuse().catch(() => {});
-      };
-      process.once("SIGTERM", shutdown);
-      process.once("SIGINT", shutdown);
     } catch {
       // Langfuse init failure is non-fatal — observability degrades gracefully
     }

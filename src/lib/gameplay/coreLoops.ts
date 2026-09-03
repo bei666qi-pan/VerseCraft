@@ -1,4 +1,4 @@
-import type { MainThreatPhase } from "@/lib/playRealtime/stage2Packets";
+import type { MainThreatPhase } from "@/lib/registry/playerWorldSignals";
 
 export type SurvivalLoopState = {
   safeZone: boolean;
@@ -35,4 +35,3 @@ export function inferTimePressure(args: { day: number | null; hour: number | nul
 export function isHotThreatPhase(phase: MainThreatPhase | string): boolean {
   return phase === "active" || phase === "suppressed" || phase === "breached";
 }
-

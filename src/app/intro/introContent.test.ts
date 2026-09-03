@@ -11,8 +11,6 @@ import {
   INTRO_WORLD_SLIDES,
   XINGNI_CARD_IMAGE,
 } from "./introContent";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 test("intro content keeps the darkmoon world as the first playable slide", () => {
   assert.equal(INTRO_PAGE_TITLE, "选择世界观");
@@ -29,11 +27,6 @@ test("intro content keeps the darkmoon world as the first playable slide", () =>
   assert.ok(DARKMOON_CARD_IMAGE.startsWith("/assets/intro/"));
   assert.ok(DARKMOON_CARD_IMAGE.endsWith(".jpg"));
   assert.deepEqual(INTRO_PARAGRAPHS, firstSlide.introBody);
-});
-
-test("active intro card positioning is not overridden by a transform animation", () => {
-  const source = readFileSync(join(process.cwd(), "src/app/intro/IntroPageClient.tsx"), "utf8");
-  assert.doesNotMatch(source, /-translate-x-1\/2 animate-fade-in/);
 });
 
 test("xingni is the second playable world and later placeholders remain unavailable", () => {

@@ -135,6 +135,15 @@ jobs:
 
           echo "Gitee ${BRANCH_NAME} branch sync completed."
 
+      - name: Sync production admin secret to Coolify
+        if: env.TARGET_BRANCH == 'main'
+        env:
+          COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+          COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: node scripts/autoops/sync-coolify-admin-password.mjs
+
       - name: Trigger Coolify deploy
         id: deploy
         env:
@@ -158,10 +167,12 @@ jobs:
           use_api="false"
           health_url=""
 
-          echo "deployed=false" >> "${GITHUB_OUTPUT}"
-          echo "health_url=" >> "${GITHUB_OUTPUT}"
-          echo "deployment_uuid=" >> "${GITHUB_OUTPUT}"
-          echo "api_owned=false" >> "${GITHUB_OUTPUT}"
+          {
+            echo "deployed=false"
+            echo "health_url="
+            echo "deployment_uuid="
+            echo "api_owned=false"
+          } >> "${GITHUB_OUTPUT}"
 
           case "${BRANCH_NAME}" in
             main)
@@ -199,9 +210,11 @@ jobs:
           if [ "${use_api}" = "true" ]; then
             echo "Triggering and observing the single Coolify API deployment for ${BRANCH_NAME}."
             node scripts/autoops/coolify-deploy.mjs --uuid "${app_uuid}" --attempts 160 --delayMs 15000
-            echo "api_owned=true" >> "${GITHUB_OUTPUT}"
-            echo "deployed=true" >> "${GITHUB_OUTPUT}"
-            echo "health_url=${health_url}" >> "${GITHUB_OUTPUT}"
+            {
+              echo "api_owned=true"
+              echo "deployed=true"
+              echo "health_url=${health_url}"
+            } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 

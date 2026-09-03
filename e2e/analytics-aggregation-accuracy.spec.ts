@@ -36,8 +36,7 @@ test.describe.serial("Analytics Aggregation Accuracy", () => {
       timeout: 30_000,
     });
     if (rebuildRes.status() === 429) {
-      test.skip(true, "rate limited on rebuild");
-      return;
+      throw new Error("rate limited on rebuild");
     }
     expect(rebuildRes.status()).toBe(200);
     const rebuildBody = (await rebuildRes.json()) as Record<string, unknown>;
@@ -49,8 +48,7 @@ test.describe.serial("Analytics Aggregation Accuracy", () => {
       timeout: 20_000,
     });
     if (overviewRes.status() === 429) {
-      test.skip(true, "rate limited on overview");
-      return;
+      throw new Error("rate limited on overview");
     }
     expect(overviewRes.status()).toBe(200);
     const overviewBody = (await overviewRes.json()) as Record<string, unknown>;
@@ -76,8 +74,7 @@ test.describe.serial("Analytics Aggregation Accuracy", () => {
       { headers: { Cookie: cookie }, timeout: 20_000 },
     );
     if (journeyRes.status() === 429) {
-      test.skip(true, "rate limited on journey");
-      return;
+      throw new Error("rate limited on journey");
     }
     expect(journeyRes.status()).toBe(200);
     const journeyBody = (await journeyRes.json()) as Record<string, unknown>;
@@ -96,8 +93,7 @@ test.describe.serial("Analytics Aggregation Accuracy", () => {
       timeout: 30_000,
     });
     if (rebuild1Res.status() === 429) {
-      test.skip(true, "rate limited on rebuild1");
-      return;
+      throw new Error("rate limited on rebuild1");
     }
     expect(rebuild1Res.status()).toBe(200);
     const rebuild1Body = (await rebuild1Res.json()) as Record<string, unknown>;
@@ -109,8 +105,7 @@ test.describe.serial("Analytics Aggregation Accuracy", () => {
       timeout: 30_000,
     });
     if (rebuild2Res.status() === 429) {
-      test.skip(true, "rate limited on rebuild2");
-      return;
+      throw new Error("rate limited on rebuild2");
     }
     expect(rebuild2Res.status()).toBe(200);
     const rebuild2Body = (await rebuild2Res.json()) as Record<string, unknown>;
@@ -122,8 +117,7 @@ test.describe.serial("Analytics Aggregation Accuracy", () => {
       timeout: 20_000,
     });
     if (overview1Res.status() === 429) {
-      test.skip(true, "rate limited on overview1");
-      return;
+      throw new Error("rate limited on overview1");
     }
     expect(overview1Res.status()).toBe(200);
     const overview1Body = (await overview1Res.json()) as Record<string, unknown>;
@@ -134,8 +128,7 @@ test.describe.serial("Analytics Aggregation Accuracy", () => {
       timeout: 20_000,
     });
     if (overview2Res.status() === 429) {
-      test.skip(true, "rate limited on overview2");
-      return;
+      throw new Error("rate limited on overview2");
     }
     expect(overview2Res.status()).toBe(200);
     const overview2Body = (await overview2Res.json()) as Record<string, unknown>;

@@ -423,7 +423,7 @@ test("language history replacement ignores invalid entries and leaves unrelated 
   );
 });
 
-test("chapter-aware migration preserves legacy local saves and backfills director chapter", () => {
+test("chapter-aware migration reads legacy storyDirector and writes chapterPacing", () => {
   const chapterState = {
     currentChapterId: "chapter-2",
     activeChapterId: "chapter-2",
@@ -485,8 +485,12 @@ test("chapter-aware migration preserves legacy local saves and backfills directo
   assert.equal(migrated.logs[0].content, "root log survives");
   assert.ok(migrated.saveSlots.main_slot);
   assert.equal(migrated.saveSlots.main_slot.logs[0].content, "legacy log survives");
-  assert.equal(migrated.storyDirector.chapter.currentChapterId, "chapter-2");
-  assert.equal(migrated.saveSlots.main_slot.runSnapshotV2.world.storyDirector.chapter.currentChapterId, "chapter-2");
+  assert.equal(migrated.chapterPacing.chapter.currentChapterId, "chapter-2");
+  assert.equal(migrated.saveSlots.main_slot.runSnapshotV2.world.chapterPacing.chapter.currentChapterId, "chapter-2");
+  assert.equal("storyDirector" in migrated, false);
+  assert.equal("incidentQueue" in migrated, false);
+  assert.equal("storyDirector" in migrated.saveSlots.main_slot.runSnapshotV2.world, false);
+  assert.equal("incidentQueue" in migrated.saveSlots.main_slot.runSnapshotV2.world, false);
 
   resetStore();
   useGameStore.setState({ saveSlots: migrated.saveSlots });
@@ -495,7 +499,7 @@ test("chapter-aware migration preserves legacy local saves and backfills directo
   assert.equal(loaded.logs[0]?.content, "legacy log survives");
   assert.equal(loaded.saveSlots.main_slot?.logs[0]?.content, "legacy log survives");
   assert.equal(loaded.chapterState.activeChapterId, "chapter-2");
-  assert.equal((loaded.storyDirector as any).chapter.currentChapterId, "chapter-2");
+  assert.equal((loaded.chapterPacing as any).chapter.currentChapterId, "chapter-2");
 
   resetStore();
   useGameStore.getState().hydrateFromCloud("main_slot", legacySlot);
@@ -503,7 +507,7 @@ test("chapter-aware migration preserves legacy local saves and backfills directo
   assert.equal(cloudLoaded.logs[0]?.content, "legacy log survives");
   assert.equal(cloudLoaded.saveSlots.main_slot?.logs[0]?.content, "legacy log survives");
   assert.equal(cloudLoaded.chapterState.activeChapterId, "chapter-2");
-  assert.equal((cloudLoaded.storyDirector as any).chapter.currentChapterId, "chapter-2");
+  assert.equal((cloudLoaded.chapterPacing as any).chapter.currentChapterId, "chapter-2");
 });
 
 test("phase4: saveGame does not persist journal/menu-like options", () => {

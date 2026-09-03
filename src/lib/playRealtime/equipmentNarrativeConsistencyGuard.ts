@@ -31,13 +31,12 @@ export function applyEquipmentNarrativeConsistencyGuard(args: {
   }
 
   const replacement = equipped ? "武器仍在手中" : "武器尚未装备，但仍在武器袋中";
-  const next = {
-    ...args.dmRecord,
-    narrative: nextNarrative.replace(/(?:没有|没)(?:有)?(?:任何|一把|可用的)?武器/g, replacement),
-  };
   const flags = Array.isArray(args.dmRecord._commit_flags)
     ? args.dmRecord._commit_flags.filter((flag): flag is string => typeof flag === "string")
     : [];
-  next._commit_flags = [...new Set([...flags, "weapon_absence_prose_corrected_v1", ...(changed ? ["equipped_weapon_origin_prose_removed_v1"] : [])])];
-  return next;
+  return {
+    ...args.dmRecord,
+    narrative: nextNarrative.replace(/(?:没有|没)(?:有)?(?:任何|一把|可用的)?武器/g, replacement),
+    _commit_flags: [...new Set([...flags, "weapon_absence_prose_corrected_v1", ...(changed ? ["equipped_weapon_origin_prose_removed_v1"] : [])])],
+  };
 }

@@ -60,7 +60,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "overview status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "overview");
@@ -126,7 +126,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "player-journey status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "player-journey");
@@ -171,7 +171,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "ai-experience status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "ai-experience");
@@ -251,7 +251,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "content-quality status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "content-quality");
@@ -326,7 +326,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "survey-aggregate status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "survey-aggregate");
@@ -388,7 +388,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "event-health status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "event-health");
@@ -439,7 +439,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "system-health status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "system-health");
@@ -487,7 +487,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "realtime status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "realtime");
@@ -532,7 +532,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 60_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "retention status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "retention");
@@ -594,7 +594,7 @@ test.describe.serial("Analytics API Data Integrity", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status(), "funnel status").toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     validateEnvelope(body, "funnel");

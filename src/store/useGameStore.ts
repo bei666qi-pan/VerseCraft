@@ -36,7 +36,6 @@ import {
 } from "@/lib/tasks/taskV2";
 import {
   checkStatusTransition,
-  isTerminalStatus,
 } from "@/lib/tasks/taskStateMachine";
 import {
   resolveNarrativeInventoryItems,
@@ -71,11 +70,13 @@ import { buildNpcHeartPromptBlock } from "@/lib/npcHeart/prompt";
 import { buildNpcHeartRuntimeView, selectRelevantNpcHearts } from "@/lib/npcHeart/selectors";
 import { buildCombatNarrativeStyleBlock } from "@/lib/combat/combatNarrativeStyleBlock";
 import { buildCombatPromptBlockV1 } from "@/lib/combat/combatPromptBlock";
-import type { IncidentQueueState, StoryDirectorState } from "@/lib/storyDirector/types";
-import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
-import { normalizeDirectorState, postTurnStoryDirectorUpdate } from "@/lib/storyDirector/postTurn";
-import { buildDirectorDigestForServer } from "@/lib/storyDirector/prompt";
-import { buildIncidentDigest, normalizeIncidentQueue } from "@/lib/storyDirector/queue";
+import {
+  advanceChapterPacing as runChapterPacingController,
+  normalizeChapterPacingState,
+  type ChapterPacingState,
+} from "@/lib/chapters/pacing/chapterPacingController";
+import { createInitialChapterPacingState } from "@/lib/chapters/pacing/types";
+import { buildPacingSignalsForServer } from "@/lib/chapters/pacing/prompt";
 import type { EscapeMainlineState } from "@/lib/escapeMainline/types";
 import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/template";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
@@ -95,9 +96,7 @@ import {
 } from "@/lib/endings/storeIntegration";
 import {
   buildSnapshotSummary,
-  canCreateManualBranch,
   createAutoSlotIdFor,
-  createBranchSlotId,
   inferSaveSlotKind,
   normalizeSaveSlotMeta,
   type SaveSlotMeta,
@@ -117,9 +116,9 @@ import { runReviveSyncPipeline, type ReviveOption } from "@/lib/revive/pipeline"
 import { tickInfusions } from "@/lib/playRealtime/weaponInfusion";
 import { buildItemGameplayPromptBlock } from "@/lib/play/itemGameplay";
 import type { ProfessionId, ProfessionStateV1 } from "@/lib/profession/types";
-import { createDefaultProfessionState, PROFESSION_IDS, PROFESSION_REGISTRY } from "@/lib/profession/registry";
+import { createDefaultProfessionState, PROFESSION_IDS } from "@/lib/profession/registry";
 import { certifyProfession, computeProfessionState } from "@/lib/profession/engine";
-import { buildProfessionTrialTask, getProfessionTrialTaskId } from "@/lib/profession/trials";
+import { buildProfessionTrialTask } from "@/lib/profession/trials";
 import { buildProfessionIdentityDigest, buildProfessionApproachSnapshots } from "@/lib/profession/progressionUi";
 import { computeProfessionVisibility } from "@/lib/profession/professionVisibilityPolicy";
 import { extractProfessionNarrativeCues } from "@/lib/profession/professionNarrativeHooks";
@@ -260,13 +259,18 @@ export function migratePersistedState(
     return {};
   }
   const raw = persistedState as Record<string, unknown>;
+  const {
+    storyDirector: legacyStoryDirector,
+    incidentQueue: _legacyIncidentQueue,
+    ...currentRaw
+  } = raw;
   const saveSlotsRaw =
     raw.saveSlots && typeof raw.saveSlots === "object" && !Array.isArray(raw.saveSlots)
       ? (raw.saveSlots as Record<string, unknown>)
       : {};
   const rootChapterState = normalizeChapterState(raw.chapterState);
-  const rootStoryDirector = normalizeDirectorState(
-    raw.storyDirector,
+  const rootChapterPacing = normalizeChapterPacingState(
+    raw.chapterPacing ?? legacyStoryDirector,
     Array.isArray(raw.logs) ? raw.logs.length : 0,
     buildChapterDirectorBridgeFromStoreState(rootChapterState)
   );
@@ -305,9 +309,9 @@ export function migratePersistedState(
     };
   }
   return {
-    ...raw,
+    ...currentRaw,
     chapterState: rootChapterState,
-    storyDirector: rootStoryDirector,
+    chapterPacing: rootChapterPacing,
     endingState: rootEndingState,
     readingPreferences: normalizeReadingPreferences(raw.readingPreferences),
     language: normalizeGameLanguage(raw.language),
@@ -588,10 +592,8 @@ export interface GameState extends IntegrityMetaState {
   /** Phase-2: run-local hot memory spine（热记忆脊柱） */
   memorySpine: MemorySpineState;
 
-  /** Phase-4: 轻量剧情导演层 */
-  storyDirector: StoryDirectorState;
-  /** Phase-4: 轻量突发事件队列 */
-  incidentQueue: IncidentQueueState;
+  /** Deterministic chapter pacing state. */
+  chapterPacing: ChapterPacingState;
 
   /** Phase-5: 出口主线骨架（Escape Mainline） */
   escapeMainline: EscapeMainlineState;
@@ -861,7 +863,6 @@ export interface GameState extends IntegrityMetaState {
       stallCount: number;
       beatModeHint: string;
       pressureFlags: string[];
-      pendingIncidentCodes: string[];
       mustRecallHookCodes: string[];
       chapter?: {
         chapterId: string;
@@ -899,8 +900,8 @@ export interface GameState extends IntegrityMetaState {
   /** Phase-3: 允许任务/NPC 后果链补写少量结构化记忆候选（不走 narrative） */
   applyMemoryCandidates: (candidates: import("@/lib/memorySpine/reducer").MemoryCandidateDraft[], nowHourOverride?: number) => void;
 
-  /** Phase-4: 回合 commit 后推进导演与事件队列（确定性） */
-  postTurnStoryDirectorUpdate: (args: {
+  /** Commit 后推进章节节奏（纯确定性；事件仅由服务端 agenda 管理）。 */
+  advanceChapterPacing: (args: {
     resolvedTurn: any;
     pre: {
       playerLocation: string;
@@ -1274,8 +1275,7 @@ export const useGameStore = create<GameState>()(
       logs: [],
       codex: {},
       memorySpine: createEmptyMemorySpine(),
-      storyDirector: createEmptyDirectorState(0),
-      incidentQueue: createEmptyIncidentQueue(),
+      chapterPacing: createInitialChapterPacingState(0),
       escapeMainline: createDefaultEscapeMainlineTemplate(0),
       endingState: createInitialEndingState(),
       openingNarrativePinned: false,
@@ -1426,7 +1426,7 @@ export const useGameStore = create<GameState>()(
         const definition = getChapterDefinition(chapterState.activeChapterId);
         if (!definition) return chapterState;
         const directorChapter = (() => {
-          const chapter = (state as any).storyDirector?.chapter;
+          const chapter = (state as any).chapterPacing?.chapter;
           if (!chapter || chapter.currentChapterId !== definition.id) return null;
           return chapter;
         })();
@@ -1455,7 +1455,7 @@ export const useGameStore = create<GameState>()(
             progressByChapterId: normalized.progressByChapterId,
           });
           // Director 计划门控：chapter ≥ 2 必须先有有效的 nextChapterSeed 才能 advance。
-          const directorChapter = (s as any).storyDirector?.chapter ?? null;
+          const directorChapter = (s as any).chapterPacing?.chapter ?? null;
           const currentDefinition = getChapterDefinition(
             normalized.pendingChapterEndId ?? normalized.activeChapterId
           );
@@ -2389,8 +2389,7 @@ export const useGameStore = create<GameState>()(
           hasMetProfessionCertifier: false,
           sceneNpcAppearanceLedger: {},
           memorySpine: createEmptyMemorySpine(),
-          storyDirector: createEmptyDirectorState(0),
-          incidentQueue: createEmptyIncidentQueue(),
+          chapterPacing: createInitialChapterPacingState(0),
           escapeMainline: createDefaultEscapeMainlineTemplate(0),
           endingState: createInitialEndingState(),
           journalClues: [],
@@ -2526,7 +2525,7 @@ export const useGameStore = create<GameState>()(
           }
         })();
 
-        // The persisted `storyDirector` remains the deterministic Pacing &
+        // The persisted `chapterPacing` remains the deterministic Pacing &
         // Chapter Controller, but it no longer emits a second free-text Writer
         // direction. The server consumes its bounded `directorDigest` signals
         // only after validating enums, ranges and registered IDs.
@@ -2962,16 +2961,13 @@ export const useGameStore = create<GameState>()(
         const hintCodes = recalled.flatMap((r) => (r.entry.recallTags ?? [])).slice(0, 12);
         const promotions = selectPromotionFactTexts(s.memorySpine?.entries ?? []);
 
-        // Phase-4: director / incident digests (strictly small; no full queue upload)
-        const director = (s as any).storyDirector ?? createEmptyDirectorState((s.logs ?? []).length);
-        const incidentQueue = normalizeIncidentQueue((s as any).incidentQueue ?? createEmptyIncidentQueue());
-        const incDigest = buildIncidentDigest(incidentQueue, (s.logs ?? []).length);
-        const directorDigest = buildDirectorDigestForServer({
+        // Client contributes bounded pacing/chapter signals only. Server agenda is authoritative.
+        const director = (s as any).chapterPacing ?? createInitialChapterPacingState((s.logs ?? []).length);
+        const directorDigest = buildPacingSignalsForServer({
           tension: director.tension ?? 0,
           stallCount: director.stallCount ?? 0,
           beatModeHint: ((director as any).lastBeatMode as string) || "quiet",
           pressureFlags: Array.isArray((director as any).lastPressureFlags) ? (director as any).lastPressureFlags : [],
-          pendingIncidentCodes: [...(incDigest.armedCodes ?? []), ...(incDigest.pendingCodes ?? [])],
           mustRecallHookCodes: Array.isArray((director as any).lastRecallHooks) ? (director as any).lastRecallHooks : [],
           chapter: (director as any).chapter ?? null,
         });
@@ -3110,7 +3106,7 @@ export const useGameStore = create<GameState>()(
         set({ memorySpine: pruneMemorySpine(next, nowHour, { maxEntries: 64 }) });
       },
 
-      postTurnStoryDirectorUpdate: (args) => {
+      advanceChapterPacing: (args) => {
         const s = get();
         const nowTurn = typeof args.preTurnIndex === "number" && Number.isFinite(args.preTurnIndex)
           ? Math.max(0, Math.trunc(args.preTurnIndex) + 1)
@@ -3124,9 +3120,8 @@ export const useGameStore = create<GameState>()(
         };
         const chapterState = normalizeChapterState(s.chapterState);
         const chapterDefinition = getChapterDefinition(chapterState.activeChapterId);
-        const updated = postTurnStoryDirectorUpdate({
-          directorRaw: (s as any).storyDirector ?? createEmptyDirectorState(nowTurn),
-          incidentQueueRaw: (s as any).incidentQueue ?? createEmptyIncidentQueue(),
+        const updated = runChapterPacingController({
+          stateRaw: (s as any).chapterPacing ?? createInitialChapterPacingState(nowTurn),
           nowTurn,
           chapter: chapterDefinition
             ? {
@@ -3145,15 +3140,13 @@ export const useGameStore = create<GameState>()(
           resolvedTurn: args.resolvedTurn,
         });
         set({
-          storyDirector: {
-            ...updated.director,
+          chapterPacing: {
+            ...updated.state,
             // cache tiny hints for digests (do not persist huge text)
             lastBeatMode: updated.plan.beatMode,
             lastPressureFlags: updated.plan.pressureFlags,
             lastRecallHooks: updated.plan.mustRecallHookCodes,
-            lastFiredIncidentCode: updated.armedIncident?.incidentCode ?? null,
           } as any,
-          incidentQueue: updated.incidentQueue,
         });
       },
 
@@ -3747,9 +3740,9 @@ export const useGameStore = create<GameState>()(
         const chapterState = normalizeChapterState(s.chapterState);
         const endingForSave = normalizeEndingState(s.endingState);
         const endingSnapshotForSave = normalizeEndingSettlementSnapshot(endingForSave.settlementSnapshot);
-        const storyDirector = normalizeDirectorState(
-          (s as any).storyDirector ??
-            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.storyDirector,
+        const chapterPacing = normalizeChapterPacingState(
+          (s as any).chapterPacing ??
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.chapterPacing,
           (s.logs ?? []).length,
           buildChapterDirectorBridgeFromStoreState(chapterState)
         );
@@ -3834,11 +3827,7 @@ export const useGameStore = create<GameState>()(
             overlay.anchorUnlocks,
           pendingEvents:
             s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.pendingEvents ?? [],
-          storyDirector,
-          incidentQueue:
-            (s as any).incidentQueue ??
-            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.incidentQueue ??
-            createEmptyIncidentQueue(),
+          chapterPacing,
           floorThreatTier:
             s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.floorThreatTier ??
             overlay.floorThreatTier,
@@ -4067,8 +4056,7 @@ export const useGameStore = create<GameState>()(
           time: JSON.parse(JSON.stringify(projected.time ?? data.time ?? { day: 0, hour: 0 })),
           codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex ?? {})),
           memorySpine: JSON.parse(JSON.stringify(normalizedSnapshot.memory?.spine ?? createEmptyMemorySpine())),
-          storyDirector: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).storyDirector ?? createEmptyDirectorState(0))),
-          incidentQueue: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).incidentQueue ?? createEmptyIncidentQueue())),
+          chapterPacing: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).chapterPacing ?? createInitialChapterPacingState(0))),
           escapeMainline: JSON.parse(JSON.stringify((normalizedSnapshot as any).escape ?? createDefaultEscapeMainlineTemplate(0))),
           journalClues: JSON.parse(
             JSON.stringify(normalizedSnapshot.journal?.clues ?? [])
@@ -4239,8 +4227,7 @@ export const useGameStore = create<GameState>()(
             time: JSON.parse(JSON.stringify(projected.time ?? data.time ?? { day: 0, hour: 0 })),
             codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex ?? {})),
             memorySpine: JSON.parse(JSON.stringify(normalizedSnapshot.memory?.spine ?? createEmptyMemorySpine())),
-            storyDirector: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).storyDirector ?? createEmptyDirectorState(0))),
-            incidentQueue: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).incidentQueue ?? createEmptyIncidentQueue())),
+            chapterPacing: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).chapterPacing ?? createInitialChapterPacingState(0))),
             escapeMainline: JSON.parse(JSON.stringify((normalizedSnapshot as any).escape ?? createDefaultEscapeMainlineTemplate(0))),
             journalClues: JSON.parse(
               JSON.stringify(normalizedSnapshot.journal?.clues ?? [])
@@ -4334,8 +4321,8 @@ export const useGameStore = create<GameState>()(
         if (!shadow || shadow.isGameStarted !== true) return false;
         const current = get();
         const chapterState = normalizeChapterState((shadow as { chapterState?: unknown }).chapterState ?? current.chapterState);
-        const storyDirector = normalizeDirectorState(
-          (shadow as any).storyDirector ?? current.storyDirector,
+        const chapterPacing = normalizeChapterPacingState(
+          (shadow as any).chapterPacing ?? current.chapterPacing,
           Array.isArray(shadow.logs) ? shadow.logs.length : 0,
           buildChapterDirectorBridgeFromStoreState(chapterState)
         );
@@ -4356,11 +4343,7 @@ export const useGameStore = create<GameState>()(
             (shadow as any).memorySpine && typeof (shadow as any).memorySpine === "object" && !Array.isArray((shadow as any).memorySpine)
               ? JSON.parse(JSON.stringify((shadow as any).memorySpine))
               : s.memorySpine ?? createEmptyMemorySpine(),
-          storyDirector: JSON.parse(JSON.stringify(storyDirector)),
-          incidentQueue:
-            (shadow as any).incidentQueue && typeof (shadow as any).incidentQueue === "object" && !Array.isArray((shadow as any).incidentQueue)
-              ? JSON.parse(JSON.stringify((shadow as any).incidentQueue))
-              : (s as any).incidentQueue ?? createEmptyIncidentQueue(),
+          chapterPacing: JSON.parse(JSON.stringify(chapterPacing)),
           escapeMainline:
             (shadow as any).escapeMainline && typeof (shadow as any).escapeMainline === "object" && !Array.isArray((shadow as any).escapeMainline)
               ? JSON.parse(JSON.stringify((shadow as any).escapeMainline))
@@ -4437,12 +4420,11 @@ export const useGameStore = create<GameState>()(
         logs: s.logs ?? [],
         codex: s.codex ?? {},
         memorySpine: s.memorySpine ?? createEmptyMemorySpine(),
-        storyDirector: normalizeDirectorState(
-          (s as any).storyDirector,
+        chapterPacing: normalizeChapterPacingState(
+          (s as any).chapterPacing,
           (s.logs ?? []).length,
           buildChapterDirectorBridgeFromStoreState(normalizeChapterState(s.chapterState))
         ),
-        incidentQueue: (s as any).incidentQueue ?? createEmptyIncidentQueue(),
         escapeMainline: (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
         endingState: normalizeEndingState(s.endingState),
         hasCheckedCodex: s.hasCheckedCodex ?? false,

@@ -69,7 +69,9 @@ export function needsLegacySseClientTransport(): boolean {
   ) {
     return true;
   }
-  const uad = typeof navigator !== "undefined" ? navigator.userAgentData : undefined;
+  const uad = typeof navigator !== "undefined"
+    ? (navigator as Navigator & { userAgentData?: { brands?: readonly { brand?: string }[] } }).userAgentData
+    : undefined;
   if (needsLegacySseClientTransportFromUserAgentDataBrands(uad?.brands)) return true;
   return false;
 }

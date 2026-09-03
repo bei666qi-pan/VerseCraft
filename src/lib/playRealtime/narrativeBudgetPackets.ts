@@ -160,7 +160,6 @@ const HIGH_VALUE_CLUE_KEYWORDS = [
   "档案",
   "证据",
   "徽章",
-  "钥匙",
   "日记",
   "录音",
   "校源",

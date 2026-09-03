@@ -18,8 +18,8 @@
  *   STOP_INFRA_BLOCKED, STOP_REPAIR_EXHAUSTED, MANUAL_REVIEW_REQUIRED
  */
 
-import { getSession, collectDiagnostics, SESSIONS_DIR } from "./ds-session-store.mjs";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { collectDiagnostics, SESSIONS_DIR } from "./ds-session-store.mjs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -75,7 +75,7 @@ function getGitDiff(worktree) {
   } catch { return ""; }
 }
 
-function getOpenHandles(worktree) {
+function getOpenHandles() {
   try {
     // lsof might not work on all systems; handle gracefully
     const result = execSync("lsof -i -P -n 2>/dev/null | grep -i node | head -20", {
@@ -166,12 +166,11 @@ function decide(input, state, processTree, recoveryHistory, lastErrors) {
 
 function runObserver() {
   const input = getInput();
-  const session = input.sessionId ? getSession(input.sessionId) : null;
   const state = getCampaignState(input.worktree);
   const processTree = getProcessTree();
   const lastLogLines = getLastLogLines(input.worktree);
   const gitDiff = getGitDiff(input.worktree);
-  const openHandles = getOpenHandles(input.worktree);
+  const openHandles = getOpenHandles();
   const diagnostics = collectDiagnostics();
   const recoveryHistory = getRecoveryHistory(input.sessionId);
 

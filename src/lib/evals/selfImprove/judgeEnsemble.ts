@@ -20,7 +20,7 @@ import type {
 } from "./types";
 import { isMockMode } from "./config";
 import { canAffordLiveCall, consumeLiveCall } from "./budget";
-import type { JudgeRubric, JudgeTarget } from "@/lib/evals/judge/types";
+import type { JudgeTarget } from "@/lib/evals/judge/types";
 
 // ── Heuristic judges (mock mode) ──────────────────────
 

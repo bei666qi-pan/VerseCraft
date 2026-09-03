@@ -3,8 +3,28 @@ import test from "node:test";
 import {
   deploymentStatus,
   normalizeDeploymentList,
+  planApplicationEnvMutation,
   selectTriggeredDeployment,
 } from "./coolify.mjs";
+
+test("Coolify env sync reads first, PATCHes existing keys and POSTs missing keys", () => {
+  const existing = planApplicationEnvMutation(
+    { data: [{ key: "ADMIN_PASSWORD", value: "old" }] },
+    "ADMIN_PASSWORD",
+    "new-secret",
+  );
+  assert.equal(existing.method, "PATCH");
+  assert.deepEqual(existing.body, {
+    key: "ADMIN_PASSWORD",
+    value: "new-secret",
+    is_preview: false,
+    is_build_time: false,
+    is_literal: true,
+  });
+
+  const missing = planApplicationEnvMutation([], "ADMIN_PASSWORD", "new-secret");
+  assert.equal(missing.method, "POST");
+});
 
 test("normalizes supported Coolify deployments envelopes", () => {
   const record = { deployment_uuid: "fresh", status: "queued" };

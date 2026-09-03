@@ -1,8 +1,17 @@
 import type { OperationMode } from "@/lib/ai/degrade/mode";
 import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { TokenUsage } from "@/lib/ai/types/core";
-import type { NarrativeExpansionTelemetry } from "@/lib/turnEngine/narrativeExpansion";
 import type { NarrativeLengthTelemetry } from "@/lib/turnEngine/narrativeLengthTelemetry";
+
+/** Read-only compatibility shape for historical analytics rows. */
+export type NarrativeExpansionTelemetry = {
+  narrativeExpansionTriggered: boolean;
+  narrativeExpansionSucceeded: boolean;
+  narrativeExpansionSkippedReason: string | null;
+  narrativeExpansionLatencyMs: number | null;
+  narrativeBeforeChars: number | null;
+  narrativeAfterChars: number | null;
+};
 
 /** Coerce numeric usage fields for analytics JSON; invalid → null (never NaN). */
 export function optionalFiniteInt(n: unknown): number | null {
@@ -40,68 +49,16 @@ export type EnhanceTurnMetrics = {
   totalTokens: number | null;
 };
 
-/** Map narrative-enhancement result (or null after unexpected early exit) to analytics fields. */
-export function toEnhanceTurnMetrics(
-  enhancePathEntered: boolean,
-  res:
-    | { kind: "applied"; wallMs: number; usage: TokenUsage | null }
-    | { kind: "skipped"; reason: string; wallMs: number }
-    | null
-): EnhanceTurnMetrics {
-  if (!enhancePathEntered) {
-    return {
-      attempted: false,
-      outcome: "none",
-      skipReason: null,
-      latencyMs: null,
-      promptTokens: null,
-      completionTokens: null,
-      totalTokens: null,
-    };
-  }
-  if (!res) {
-    return {
-      attempted: true,
-      outcome: "error",
-      skipReason: null,
-      latencyMs: null,
-      promptTokens: null,
-      completionTokens: null,
-      totalTokens: null,
-    };
-  }
-  if (res.kind === "applied") {
-    return {
-      attempted: true,
-      outcome: "applied",
-      skipReason: null,
-      latencyMs: res.wallMs,
-      promptTokens: optionalFiniteInt(res.usage?.promptTokens),
-      completionTokens: optionalFiniteInt(res.usage?.completionTokens),
-      totalTokens: optionalFiniteInt(res.usage?.totalTokens),
-    };
-  }
-  if (res.reason === "exception") {
-    return {
-      attempted: true,
-      outcome: "error",
-      skipReason: "exception",
-      latencyMs: res.wallMs,
-      promptTokens: null,
-      completionTokens: null,
-      totalTokens: null,
-    };
-  }
-  return {
-    attempted: true,
-    outcome: "skipped",
-    skipReason: res.reason,
-    latencyMs: res.wallMs,
-    promptTokens: null,
-    completionTokens: null,
-    totalTokens: null,
-  };
-}
+/** Compatibility payload for historical dashboards after enhancement calls were removed. */
+export const NO_ENHANCE_TURN_METRICS: EnhanceTurnMetrics = Object.freeze({
+  attempted: false,
+  outcome: "none",
+  skipReason: "single_writer_workflow",
+  latencyMs: 0,
+  promptTokens: null,
+  completionTokens: null,
+  totalTokens: null,
+});
 
 export type BuildChatRequestFinishedPayloadInput = {
   requestId: string;

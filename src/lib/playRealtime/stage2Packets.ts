@@ -3,6 +3,7 @@ import { LIGHT_FORGE_RECIPES } from "@/lib/registry/forge";
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
 import { FLOOR_LORE_BY_ID } from "@/lib/registry/worldCanon";
 import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
+import type { FloorId } from "@/lib/registry/types";
 
 type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
 
@@ -30,12 +31,12 @@ export type WeaponSnapshot = {
   repairable: boolean | null;
 };
 
-export function inferFloorIdFromLocation(location: string | null): string | null {
+export function inferFloorIdFromLocation(location: string | null): FloorId | null {
   if (!location) return null;
   if (location.startsWith("B2_")) return "B2";
   if (location.startsWith("B1_")) return "B1";
   const m = location.match(/^(\d)F_/);
-  return m?.[1] ?? null;
+  return (m?.[1] as FloorId | undefined) ?? null;
 }
 
 export function inferMainThreatState(location: string | null): ThreatSnapshot {
@@ -258,4 +259,3 @@ export function buildWorldviewPacket(args: {
     structuredSchoolCycleRefs: [...structuredSchoolCycleRefs],
   };
 }
-

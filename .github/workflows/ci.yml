@@ -160,7 +160,7 @@ jobs:
           console.log("PASS: No integrity violations");
           SCAN
 
-    deterministic-assertions:
+  deterministic-assertions:
     name: deterministic-assertions
     runs-on: ubuntu-latest
     steps:
@@ -343,7 +343,7 @@ jobs:
           pnpm exec next start -p 3000 > .runtime-data/mock-next.log 2>&1 &
           mock_server_pid=$!
           trap 'kill "$mock_server_pid" 2>/dev/null || true' EXIT
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3000 >/dev/null; then
               break
             fi
@@ -524,7 +524,7 @@ jobs:
           pnpm exec next start -p 3000 > .runtime-data/live-chat-next.log 2>&1 &
           live_server_pid=$!
           trap 'kill "$live_server_pid" 2>/dev/null || true' EXIT
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3000 >/dev/null; then
               break
             fi

@@ -37,7 +37,7 @@ test.describe.serial("Analytics Realtime Accuracy", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (res.status() === 429) { test.skip(true, "rate limited"); return; }
+    if (res.status() === 429) { throw new Error("rate limited"); }
     expect(res.status()).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
@@ -88,7 +88,7 @@ test.describe.serial("Analytics Realtime Accuracy", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (realtimeRes.status() === 429) { test.skip(true, "rate limited on realtime"); return; }
+    if (realtimeRes.status() === 429) { throw new Error("rate limited on realtime"); }
     expect(realtimeRes.status()).toBe(200);
 
     // Small delay to avoid rate limiting
@@ -98,7 +98,7 @@ test.describe.serial("Analytics Realtime Accuracy", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (healthRes.status() === 429) { test.skip(true, "rate limited on health"); return; }
+    if (healthRes.status() === 429) { throw new Error("rate limited on health"); }
     expect(healthRes.status()).toBe(200);
 
     const realtimeBody = (await realtimeRes.json()) as Record<string, unknown>;
@@ -169,7 +169,7 @@ test.describe.serial("Analytics Realtime Accuracy", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (realtime1.status() === 429) { test.skip(true, "rate limited on realtime1"); return; }
+    if (realtime1.status() === 429) { throw new Error("rate limited on realtime1"); }
 
     await new Promise((r) => setTimeout(r, 300));
 
@@ -177,7 +177,7 @@ test.describe.serial("Analytics Realtime Accuracy", () => {
       headers: { Cookie: cookie },
       timeout: 20_000,
     });
-    if (realtime2.status() === 429) { test.skip(true, "rate limited on realtime2"); return; }
+    if (realtime2.status() === 429) { throw new Error("rate limited on realtime2"); }
 
     await new Promise((r) => setTimeout(r, 300));
 

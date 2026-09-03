@@ -14,7 +14,7 @@ import type { ModelOutputSchema } from "../src/lib/narrativeEngine/schema";
 import type { DialogueContext } from "../src/lib/narrativeEngine/types";
 import { getNpcCanonicalIdentity } from "../src/lib/registry/npcCanon";
 import { REVEAL_TIER_RANK } from "../src/lib/registry/revealTierRank";
-import { parseEvalCli, evalLog, writeJson, registerCase, appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
+import { parseEvalCli, evalLog, writeJson, appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 
 type EvalMode = "mock" | "live";
 

@@ -509,15 +509,15 @@ export const aiRouteAssignmentsRelations = relations(aiRouteAssignments, ({ one 
  *
  * All analytics are event-driven.
  * - `analyticsEvents`: append-only event log (idempotent via idempotencyKey)
- * - `userSessions`: session rollup (best-effort, updated on chat completion events)
- * - `userDailyActivity`: DAU/retention foundation (exists if at least one active event occurred)
- * - `userDailyTokens`: daily spend/usage foundation
+ * - `actorSessions`: session rollup shared by users and guests
+ * - `actorDailyActivity`: DAU/retention foundation
+ * - `actorDailyTokens`: daily spend/usage foundation
  * - `adminMetricsDaily`: admin dashboard daily aggregates (used by charts)
  *
  * Notes:
  * - We keep existing `users` cumulative fields for compatibility.
  * - Current stage only records chat completion + a few key actions (register/feedback/game/onboarding).
- * - Retention/cohort can be computed from userDailyActivity + user_registered events with exact date keys.
+ * - Retention/cohort is computed from actorDailyActivity + user_registered events.
  */
 
 export const analyticsEvents = pgTable(
@@ -703,86 +703,6 @@ export const actorDailyTokens = pgTable(
   })
 );
 
-/**
- * 遗留双写表下线现状说明（后台重构第二轮风险排查，2026-07）：
- * 以下 5 张表（userSessions/userDailyActivity/userDailyTokens/guestDailyActivity/
- * guestDailyTokens）已确认没有任何应用代码路径读取或写入（全仓 grep 验证：只有
- * "T8 方案B已下线"的说明性注释，无真实 SELECT/INSERT/UPDATE），职责已完全被
- * actorSessions/actorDailyActivity/actorDailyTokens 取代。
- *
- * 但它们尚未能安全地从 schema.ts 中移除：`src/db/ensureSchema.ts`（Next.js
- * instrumentation，每次进程启动都会跑）与 `scripts/migrate.js`（部署时的
- * idempotent bootstrap）目前仍分别各自用 `CREATE TABLE IF NOT EXISTS` 独立创建
- * 这 5 张表——如果只删掉这里的 Drizzle 声明，会让 schema.ts 反而比真实建表行为
- * "更不准确"（这正是本轮修复别处 schema/真实结构漂移问题时要避免的反例）。
- *
- * 真正下线需要三处协同修改（schema.ts + ensureSchema.ts + scripts/migrate.js）
- * 并在有真实 Postgres 的环境里验证一次全新建库（fresh bootstrap）不受影响，
- * 而当前沙盒没有可用的 Postgres 实例，因此本轮只做到"确认死表 + 记录清楚现状"，
- * 不在没有真实库验证的情况下动这三处导入导出建表逻辑。删表本身（`pnpm db:push`）
- * 仍然只应由用户在确认后手动执行。
- */
-export const userSessions = pgTable(
-  "user_sessions",
-  {
-    sessionId: varchar("session_id", { length: 191 }).primaryKey(),
-    userId: varchar("user_id", { length: 191 })
-      .references(() => users.id, { onDelete: "cascade" })
-      ,
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    lastPage: text("last_page"),
-
-    totalTokenCost: integer("total_token_cost").notNull().default(0),
-    totalPlayDurationSec: integer("total_play_duration_sec").notNull().default(0),
-    chatActionCount: integer("chat_action_count").notNull().default(0),
-
-    lastPresenceOkAt: timestamp("last_presence_ok_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`)
-      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    userLastSeenIdx: index("user_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt),
-    lastSeenAtIdx: index("user_sessions_last_seen_at_idx").on(table.lastSeenAt),
-  })
-);
-
-export const userDailyActivity = pgTable(
-  "user_daily_activity",
-  {
-    userId: varchar("user_id", { length: 191 })
-      .references(() => users.id, { onDelete: "set null" }),
-    dateKey: date("date_key").notNull(),
-    firstActiveAt: timestamp("first_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    chatActionCount: integer("chat_action_count").notNull().default(0),
-  },
-  (table) => ({
-    userDateUnique: uniqueIndex("user_daily_activity_user_date_unique").on(table.userId, table.dateKey),
-    dateKeyIdx: index("user_daily_activity_date_key_idx").on(table.dateKey),
-    userIdx: index("user_daily_activity_user_idx").on(table.userId),
-  })
-);
-
-export const userDailyTokens = pgTable(
-  "user_daily_tokens",
-  {
-    userId: varchar("user_id", { length: 191 })
-      .references(() => users.id, { onDelete: "set null" }),
-    dateKey: date("date_key").notNull(),
-    dailyTokenCost: integer("daily_token_cost").notNull().default(0),
-    dailyPlayDurationSec: integer("daily_play_duration_sec").notNull().default(0),
-    chatActionCount: integer("chat_action_count").notNull().default(0),
-  },
-  (table) => ({
-    userDateUnique: uniqueIndex("user_daily_tokens_user_date_unique").on(table.userId, table.dateKey),
-    dateKeyIdx: index("user_daily_tokens_date_key_idx").on(table.dateKey),
-    userIdx: index("user_daily_tokens_user_idx").on(table.userId),
-  })
-);
-
 /** One row per stable `guest_id` (aggregate profile; not browser-tab `guest_sessions`). */
 export const guestRegistry = pgTable(
   "guest_registry",
@@ -801,36 +721,6 @@ export const guestRegistry = pgTable(
   },
   (table) => ({
     lastSeenIdx: index("guest_registry_last_seen_at_idx").on(table.lastSeenAt),
-  })
-);
-
-export const guestDailyActivity = pgTable(
-  "guest_daily_activity",
-  {
-    guestId: varchar("guest_id", { length: 128 }).notNull(),
-    dateKey: date("date_key").notNull(),
-    firstActiveAt: timestamp("first_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    chatActionCount: integer("chat_action_count").notNull().default(0),
-  },
-  (table) => ({
-    pk: uniqueIndex("guest_daily_activity_pk").on(table.guestId, table.dateKey),
-    dateKeyIdx: index("guest_daily_activity_date_key_idx").on(table.dateKey),
-  })
-);
-
-export const guestDailyTokens = pgTable(
-  "guest_daily_tokens",
-  {
-    guestId: varchar("guest_id", { length: 128 }).notNull(),
-    dateKey: date("date_key").notNull(),
-    dailyTokenCost: integer("daily_token_cost").notNull().default(0),
-    dailyPlayDurationSec: integer("daily_play_duration_sec").notNull().default(0),
-    chatActionCount: integer("chat_action_count").notNull().default(0),
-  },
-  (table) => ({
-    pk: uniqueIndex("guest_daily_tokens_pk").on(table.guestId, table.dateKey),
-    dateKeyIdx: index("guest_daily_tokens_date_key_idx").on(table.dateKey),
   })
 );
 
@@ -1195,32 +1085,6 @@ export const vcWorldFact = pgTable(
   })
 );
 
-export const vcSemanticCache = pgTable(
-  "vc_semantic_cache",
-  {
-    id: bigserial("id", { mode: "number" }).primaryKey(),
-    cacheScope: text("cache_scope").notNull(),
-    task: text("task").notNull(),
-    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
-    worldRevision: bigint("world_revision", { mode: "bigint" }).notNull(),
-    requestEmbedding: text("request_embedding").notNull(),
-    requestNorm: text("request_norm"),
-    requestTextPreview: text("request_text_preview"),
-    requestHash: text("request_hash").notNull().unique(),
-    responseText: text("response_text").notNull(),
-    isValid: boolean("is_valid").notNull().default(true),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    hitCount: integer("hit_count").notNull().default(0),
-    lastHitAt: timestamp("last_hit_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    globalCodexIdx: index("vc_semantic_cache_ivfflat_global_codex")
-      .on(table.requestEmbedding)
-      .where(sql`${table.cacheScope} = 'global' AND ${table.isValid} = TRUE AND ${table.task} = 'codex'`),
-  })
-);
-
 export const worldEngineRuns = pgTable(
   "world_engine_runs",
   {
@@ -1288,25 +1152,6 @@ export const worldEngineEventQueue = pgTable(
   })
 );
 
-export const worldEngineAgendaSnapshots = pgTable(
-  "world_engine_agenda_snapshots",
-  {
-    id: serial("id").primaryKey(),
-    runId: integer("run_id").notNull().references(() => worldEngineRuns.runId, { onDelete: "cascade" }),
-    sessionId: varchar("session_id", { length: 191 }).notNull(),
-    worldId: varchar("world_id", { length: 64 }).notNull(),
-    mapId: varchar("map_id", { length: 64 }).notNull(),
-    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
-    agendaRevision: integer("agenda_revision").notNull(),
-    snapshotJson: jsonb("snapshot_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    sessionRevisionUnique: uniqueIndex("world_engine_agenda_scope_revision_unique").on(table.worldId, table.mapId, table.sessionId, table.agendaRevision),
-    sessionCreatedIdx: index("world_engine_agenda_scope_created_idx").on(table.worldId, table.mapId, table.sessionId, table.createdAt),
-  })
-);
-
 export const worldEngineDirectorState = pgTable(
   "world_engine_director_state",
   {
@@ -1360,37 +1205,6 @@ export const npcAgentState = pgTable(
     ),
     userUpdatedIdx: index("npc_agent_state_user_updated_idx").on(table.userId, table.updatedAt),
   })
-);
-
-export const worldEngineHintEnvelopes = pgTable(
-  "world_engine_hint_envelopes",
-  {
-    id: serial("id").primaryKey(),
-    hintId: varchar("hint_id", { length: 128 }).notNull(),
-    runId: integer("run_id").notNull().references(() => worldEngineRuns.runId, { onDelete: "cascade" }),
-    worldId: varchar("world_id", { length: 64 }).notNull(),
-    mapId: varchar("map_id", { length: 64 }).notNull(),
-    sessionId: varchar("session_id", { length: 191 }).notNull(),
-    worldRevision: bigint("world_revision", { mode: "bigint" }).notNull(),
-    validFromTurn: integer("valid_from_turn").notNull(),
-    validThroughTurn: integer("valid_through_turn").notNull(),
-    phase: varchar("phase", { length: 24 }).notNull(),
-    envelopeJson: jsonb("envelope_json").$type<Record<string, unknown>>().notNull(),
-    lifecycle: varchar("lifecycle", { length: 24 }).notNull().default("active"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => ({
-    hintIdUnique: uniqueIndex("world_engine_hint_envelopes_hint_id_unique").on(table.hintId),
-    scopeTurnIdx: index("world_engine_hint_envelopes_scope_turn_idx").on(
-      table.worldId,
-      table.mapId,
-      table.sessionId,
-      table.lifecycle,
-      table.validFromTurn,
-      table.validThroughTurn,
-    ),
-  }),
 );
 
 export const npcRelationEdges = pgTable(

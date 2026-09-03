@@ -3,11 +3,12 @@
  * 有界 tool-calling 循环执行器（workflow over agent）：
  * - 固定轮数上限 + 总时长预算，最后一轮强制 toolChoice="none" 收口为最终答案；
  * - handler 全防护：未知工具 / 参数非法 / 抛错 / 超时都折叠为结构化 tool 结果，循环不中断；
- * - 仅离线任务可用（TASK_TOOLS_ALLOWED），永远不要接入 PLAYER_CHAT 在线主链路；
+ * - 仅显式允许工具的任务可用；在线场景只能由受预算的 Mechanics Workflow 调用；
  * - `execute` 可注入，便于单测不经网关验证循环语义。
  */
 import { executeChatCompletion } from "@/lib/ai/router/execute";
-import { assertToolUseAllowedForTask, type TaskBinding } from "@/lib/ai/tasks/taskPolicy";
+import { assertToolUseAllowedForTask, TASK_POLICY, type TaskBinding } from "@/lib/ai/tasks/taskPolicy";
+import type { AiInvocationBudget } from "@/lib/ai/runtime/aiInvocationBudget";
 import type { AIErrorResponse, AIResponse } from "@/lib/ai/types";
 import type {
   AIRequestContext,
@@ -26,6 +27,8 @@ export interface ToolHandlerContext {
 
 export interface RegisteredTool {
   definition: ToolDefinition;
+  /** Read tools may run in parallel; a workflow may execute at most one write tool in total. */
+  kind?: "read" | "write";
   /** 返回值会被 JSON.stringify 后作为 tool 消息回灌；抛错/超时折叠为 {ok:false,error} 结果。 */
   handler: (args: Record<string, unknown>, ctx: ToolHandlerContext) => Promise<unknown>;
   /** 单次 handler 超时；默认 DEFAULT_PER_TOOL_TIMEOUT_MS。 */
@@ -38,6 +41,16 @@ export interface ToolCallTraceEntry {
   name: string;
   ok: boolean;
   latencyMs: number;
+  error?: string;
+}
+
+export interface ToolExecutionReceipt {
+  callId: string;
+  name: string;
+  kind: "read" | "write";
+  ok: boolean;
+  latencyMs: number;
+  data?: unknown;
   error?: string;
 }
 
@@ -55,12 +68,13 @@ export interface ToolLoopTrace {
 }
 
 export type ToolLoopResult =
-  | { ok: true; response: AIResponse; trace: ToolLoopTrace }
+  | { ok: true; response: AIResponse; receipts: ToolExecutionReceipt[]; trace: ToolLoopTrace }
   | {
       ok: false;
-      code: "AI_ERROR" | "BUDGET_EXHAUSTED" | "MAX_ROUNDS_NO_FINAL" | "ABORTED";
+      code: "AI_ERROR" | "BUDGET_EXHAUSTED" | "INVOCATION_BUDGET" | "MAX_ROUNDS_NO_FINAL" | "ABORTED";
       message: string;
       lastError?: AIErrorResponse;
+      receipts: ToolExecutionReceipt[];
       trace: ToolLoopTrace;
     };
 
@@ -106,13 +120,18 @@ async function runSingleTool(args: {
   handlerCtx: ToolHandlerContext;
   perToolTimeoutMs: number;
   maxResultChars: number;
-}): Promise<{ content: string; trace: ToolCallTraceEntry }> {
+}): Promise<{ content: string; receipt: ToolExecutionReceipt; trace: ToolCallTraceEntry }> {
   const t0 = Date.now();
   const name = args.call.function.name;
-  const fail = (error: string): { content: string; trace: ToolCallTraceEntry } => ({
-    content: stringifyToolResult({ ok: false, error }, args.maxResultChars),
-    trace: { name, ok: false, latencyMs: Date.now() - t0, error },
-  });
+  const kind = args.registry[name]?.kind ?? "read";
+  const fail = (error: string): { content: string; receipt: ToolExecutionReceipt; trace: ToolCallTraceEntry } => {
+    const latencyMs = Date.now() - t0;
+    return {
+      content: stringifyToolResult({ ok: false, error }, args.maxResultChars),
+      receipt: { callId: args.call.id, name, kind, ok: false, latencyMs, error },
+      trace: { name, ok: false, latencyMs, error },
+    };
+  };
 
   const tool = args.registry[name];
   if (!tool) return fail("unknown_tool");
@@ -131,6 +150,14 @@ async function runSingleTool(args: {
     ]);
     return {
       content: stringifyToolResult(result, args.maxResultChars),
+      receipt: {
+        callId: args.call.id,
+        name,
+        kind,
+        ok: true,
+        latencyMs: Date.now() - t0,
+        data: result,
+      },
       trace: { name, ok: true, latencyMs: Date.now() - t0 },
     };
   } catch (e) {
@@ -158,6 +185,8 @@ export async function runToolLoop(params: {
   maxToolResultChars?: number;
   extraBody?: Record<string, unknown>;
   devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
+  /** Workflow-wide model-call/token/cost authority shared across retries and fallbacks. */
+  invocationBudget?: AiInvocationBudget;
   /** 测试注入点；默认真实 executeChatCompletion。 */
   execute?: ExecuteChatCompletionFn;
 }): Promise<ToolLoopResult> {
@@ -188,16 +217,18 @@ export async function runToolLoop(params: {
   const t0 = Date.now();
   const remainingMs = () => Math.max(0, totalBudgetMs - (Date.now() - t0));
   const trace: ToolLoopTrace = { rounds: [], totalToolCalls: 0, failedToolCalls: 0, totalLatencyMs: 0 };
+  const receipts: ToolExecutionReceipt[] = [];
   const finishTrace = () => {
     trace.totalLatencyMs = Date.now() - t0;
     return trace;
   };
 
   let lastError: AIErrorResponse | undefined;
+  let stateChangingToolClaimed = false;
 
   for (let round = 1; round <= maxRounds; round++) {
     if (params.signal?.aborted) {
-      return { ok: false, code: "ABORTED", message: "Tool loop aborted by caller.", trace: finishTrace() };
+      return { ok: false, code: "ABORTED", message: "Tool loop aborted by caller.", receipts, trace: finishTrace() };
     }
     const budgetLeft = remainingMs();
     if (budgetLeft < MIN_ROUND_BUDGET_MS) {
@@ -206,11 +237,25 @@ export async function runToolLoop(params: {
         code: "BUDGET_EXHAUSTED",
         message: `Tool loop budget exhausted before round ${round} (budget ${totalBudgetMs}ms).`,
         lastError,
+        receipts,
         trace: finishTrace(),
       };
     }
 
     const isFinalRound = round === maxRounds;
+    const invocationClaim = params.invocationBudget?.claim({
+      outputTokens: params.devOverrides?.maxTokens ?? TASK_POLICY[params.task].maxTokens,
+    });
+    if (invocationClaim && !invocationClaim.ok) {
+      return {
+        ok: false,
+        code: "INVOCATION_BUDGET",
+        message: `Invocation budget rejected round ${round}: ${invocationClaim.reason}.`,
+        lastError,
+        receipts,
+        trace: finishTrace(),
+      };
+    }
     const roundT0 = Date.now();
     const res = await execute({
       task: params.task,
@@ -237,36 +282,45 @@ export async function runToolLoop(params: {
     if (!res.ok) {
       lastError = res;
       if (res.code === "ABORTED") {
-        return { ok: false, code: "ABORTED", message: res.message, lastError, trace: finishTrace() };
+        return { ok: false, code: "ABORTED", message: res.message, lastError, receipts, trace: finishTrace() };
       }
-      return { ok: false, code: "AI_ERROR", message: res.message, lastError, trace: finishTrace() };
+      return { ok: false, code: "AI_ERROR", message: res.message, lastError, receipts, trace: finishTrace() };
     }
 
     const toolCalls = res.toolCalls ?? [];
     if (toolCalls.length === 0) {
       trace.rounds.push({ round, latencyMs: Date.now() - roundT0, toolCalls: [] });
-      return { ok: true, response: res, trace: finishTrace() };
+      return { ok: true, response: res, receipts, trace: finishTrace() };
     }
 
     // 非常规上游：最后一轮已强制 toolChoice="none" 仍返回 tool_calls。
     if (isFinalRound) {
       trace.rounds.push({ round, latencyMs: Date.now() - roundT0, toolCalls: [] });
       if (res.content.trim()) {
-        return { ok: true, response: res, trace: finishTrace() };
+        return { ok: true, response: res, receipts, trace: finishTrace() };
       }
       return {
         ok: false,
         code: "MAX_ROUNDS_NO_FINAL",
         message: `Model kept requesting tools after ${maxRounds} rounds without a final answer.`,
+        receipts,
         trace: finishTrace(),
       };
     }
 
-    const acceptedCalls = toolCalls.slice(0, maxToolCallsPerRound);
+    const acceptedCalls = toolCalls.slice(0, maxToolCallsPerRound).filter((call) => {
+      const kind = params.tools[call.function.name]?.kind ?? "read";
+      if (kind !== "write") return true;
+      if (stateChangingToolClaimed) return false;
+      stateChangingToolClaimed = true;
+      return true;
+    });
     transcript.push({ role: "assistant", content: res.content ?? "", toolCalls: acceptedCalls });
 
-    const settled = await Promise.all(
-      acceptedCalls.map((call) =>
+    const readCalls = acceptedCalls.filter((call) => (params.tools[call.function.name]?.kind ?? "read") === "read");
+    const writeCalls = acceptedCalls.filter((call) => params.tools[call.function.name]?.kind === "write");
+    const runCalls = (calls: ToolCall[]) => Promise.all(
+      calls.map((call) =>
         runSingleTool({
           call,
           registry: params.tools,
@@ -276,10 +330,15 @@ export async function runToolLoop(params: {
         })
       )
     );
+    const settled = [...await runCalls(readCalls), ...await runCalls(writeCalls)];
+    const settledByCallId = new Map(settled.map((entry) => [entry.receipt.callId, entry]));
     const roundTrace: ToolCallTraceEntry[] = [];
     for (let i = 0; i < acceptedCalls.length; i++) {
-      const { content, trace: callTrace } = settled[i];
+      const settledCall = settledByCallId.get(acceptedCalls[i].id);
+      if (!settledCall) continue;
+      const { content, receipt, trace: callTrace } = settledCall;
       transcript.push({ role: "tool", content, toolCallId: acceptedCalls[i].id });
+      receipts.push(receipt);
       roundTrace.push(callTrace);
       trace.totalToolCalls += 1;
       if (!callTrace.ok) trace.failedToolCalls += 1;
@@ -293,6 +352,7 @@ export async function runToolLoop(params: {
     code: "MAX_ROUNDS_NO_FINAL",
     message: "Tool loop ended without a final answer.",
     lastError,
+    receipts,
     trace: finishTrace(),
   };
 }

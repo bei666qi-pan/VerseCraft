@@ -11,14 +11,13 @@
  */
 
 import {
-  createSession, getActiveSession, saveSession, updateSession,
+  createSession, getActiveSession, updateSession,
   appendEvent, releaseLock, getSession, deactivateSession,
-  ensureDir
 } from "./ds-session-store.mjs";
 import { spawn, execSync } from "node:child_process";
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, symlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { platform, homedir } from "node:os";
+import { homedir } from "node:os";
 import { runWatchdog, stop as stopWatchdog } from "./ds-watchdog.mjs";
 
 // ── Config ─────────────────────────────────────────────
@@ -38,7 +37,7 @@ function timestamp() {
 function run(cmd, opts = {}) {
   try {
     return execSync(cmd, { encoding: "utf-8", stdio: "pipe", timeout: 30000, ...opts });
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -57,7 +56,7 @@ async function runPreflight(session, worktree) {
   // 2. Direct Gateway Main small
   if (codexExists) {
     try {
-      const probe = execSync(
+      execSync(
         `cd "${worktree}" && pnpm probe:ai-gateway -- --role main --prompt-profile small --runs 1 --warmup-runs 0 --timeout-ms 60000`,
         { encoding: "utf-8", timeout: 90000, stdio: "pipe", env: { ...process.env, NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1", NODE_USE_ENV_PROXY: "0" } }
       );

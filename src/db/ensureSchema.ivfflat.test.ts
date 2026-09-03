@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildWorldKnowledgeChunksIvfflatIndexSql,
+  parsePgVectorDimension,
   PG_VECTOR_IVFFLAT_MAX_DIMENSIONS,
 } from "./ensureSchema.ivfflat";
 
@@ -38,4 +39,14 @@ test("buildWorldKnowledgeChunksIvfflatIndexSql: rejects invalid dimensions", () 
   assert.throws(() => buildWorldKnowledgeChunksIvfflatIndexSql(-1));
   assert.throws(() => buildWorldKnowledgeChunksIvfflatIndexSql(Number.NaN));
   assert.throws(() => buildWorldKnowledgeChunksIvfflatIndexSql(Number.POSITIVE_INFINITY));
+});
+
+test("parsePgVectorDimension reads the live column width before index creation", () => {
+  assert.equal(parsePgVectorDimension("vector(3072)"), 3072);
+  assert.equal(parsePgVectorDimension("vector(1024)"), 1024);
+  assert.equal(parsePgVectorDimension("text"), null);
+  assert.equal(
+    buildWorldKnowledgeChunksIvfflatIndexSql(parsePgVectorDimension("vector(3072)")!),
+    null,
+  );
 });

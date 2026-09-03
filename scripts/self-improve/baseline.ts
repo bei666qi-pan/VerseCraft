@@ -12,7 +12,7 @@
 
 import { execSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 
 interface BaselineResult {
   timestamp: string;

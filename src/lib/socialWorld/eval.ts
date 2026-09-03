@@ -159,8 +159,9 @@ function agentExpectationFailures(states: readonly NpcAgentState[], expectation:
   if (!state) return [`agent state missing ${want.npcId}`];
   const failures: string[] = [];
   if (want.status && state.status !== want.status) failures.push(`agent status expected ${want.status} got ${state.status}`);
-  if (want.agendaIncludes && !state.agenda.some((item) => item.summary.includes(want.agendaIncludes))) {
-    failures.push(`agent agenda missing ${want.agendaIncludes}`);
+  const agendaIncludes = want.agendaIncludes;
+  if (agendaIncludes && !state.agenda.some((item) => item.summary.includes(agendaIncludes))) {
+    failures.push(`agent agenda missing ${agendaIncludes}`);
   }
   if (want.forbiddenRevealIncludes && !state.forbiddenRevealIds.includes(want.forbiddenRevealIncludes)) {
     failures.push(`agent forbiddenRevealIds missing ${want.forbiddenRevealIncludes}`);

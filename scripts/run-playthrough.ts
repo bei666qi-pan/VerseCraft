@@ -86,7 +86,6 @@ async function main(): Promise<void> {
     stepTimeoutMs: 30000,
   };
 
-  const startTime = Date.now();
   const summary = await runPlaythroughBatch(config);
 
   // 打印报告

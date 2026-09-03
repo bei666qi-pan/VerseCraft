@@ -120,9 +120,10 @@ export type ScheduleBackgroundWorldTickArgs = DecideBackgroundTickArgs & {
     tension?: number;
     beatModeHint?: string;
     pressureFlags?: readonly string[];
-    pendingIncidentCodes?: readonly string[];
     mustRecallHookCodes?: readonly string[];
     chapterId?: string | null;
+    completedBeatIds?: readonly string[];
+    turnsInChapter?: number;
   } | null;
   /**
    * Injected enqueue function. In production this is `enqueueWorldEngineTick`
@@ -241,27 +242,26 @@ export function scheduleBackgroundWorldTick(
   const sessionId = args.sessionId;
   const triggers = decision.triggers;
   const phaseByBeat: Record<string, WorldEngineTickPayload["pacingChapterSignals"]["phase"]> = {
-    quiet: "quiet",
-    pressure: "pressure",
-    reveal: "reveal",
-    collision: "pressure",
-    countdown: "build_up",
-    peak: "pressure",
-    aftershock: "recovery",
+    quiet: "opening",
+    pressure: "turning",
+    reveal: "climax",
+    collision: "turning",
+    countdown: "rising",
+    peak: "climax",
+    aftershock: "resolution",
   };
   const digest = args.pacingControllerDigest;
   const pacingChapterSignals = validatePacingChapterSignals({
-    phase: phaseByBeat[String(digest?.beatModeHint ?? "")] ?? "quiet",
+    phase: phaseByBeat[String(digest?.beatModeHint ?? "")] ?? "opening",
     tension: digest && typeof digest.tension === "number"
-      ? Math.max(0, Math.min(1, digest.tension / 100))
-      : Math.max(0, Math.min(1, args.currentTension ?? 0.3)),
-    chapterId: digest?.chapterId ?? (typeof args.dmRecord?.chapter_id === "string" ? args.dmRecord.chapter_id : null),
-    chapterIndex: typeof args.dmRecord?.chapter_index === "number" ? args.dmRecord.chapter_index : 0,
-    progress: typeof args.dmRecord?.chapter_progress === "number" ? args.dmRecord.chapter_progress : 0,
+      ? Math.round(Math.max(0, Math.min(100, digest.tension)) / 20)
+      : Math.round(Math.max(0, Math.min(1, args.currentTension ?? 0.3)) * 5),
+    chapterId: digest?.chapterId ?? (typeof args.dmRecord?.chapter_id === "string" ? args.dmRecord.chapter_id : "chapter-unknown"),
+    completedBeatIds: digest?.completedBeatIds ?? [],
+    turnsInChapter: digest?.turnsInChapter ?? args.turnIndex,
   });
   const pacingStateCodes = [...new Set([
     ...(digest?.pressureFlags ?? []),
-    ...(digest?.pendingIncidentCodes ?? []),
     ...(digest?.mustRecallHookCodes ?? []),
   ].map((value) => String(value).trim().slice(0, 128)).filter(Boolean))].slice(0, 32);
 

@@ -15,6 +15,29 @@ export function deploymentStatus(deployment) {
   return String(deployment?.status || deployment?.deployment?.status || "").trim();
 }
 
+function normalizeApplicationEnvList(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.envs)) return result.envs;
+  return [];
+}
+
+export function planApplicationEnvMutation(result, key, value) {
+  const exists = normalizeApplicationEnvList(result).some(
+    (entry) => String(entry?.key || entry?.name || "") === key,
+  );
+  return {
+    method: exists ? "PATCH" : "POST",
+    body: {
+      key,
+      value,
+      is_preview: false,
+      is_build_time: false,
+      is_literal: true,
+    },
+  };
+}
+
 function deploymentCreatedAt(deployment) {
   const value = Date.parse(String(deployment?.created_at || deployment?.updated_at || ""));
   return Number.isFinite(value) ? value : 0;
@@ -154,6 +177,18 @@ export class CoolifyClient {
     if (!uuid) return null;
     if (this.dryRun) return { uuid, name: "dry-run", status: "running:healthy" };
     return this.request(`/applications/${encodeURIComponent(uuid)}`);
+  }
+
+  async upsertApplicationEnv(uuid, key, value) {
+    if (!uuid || !key || !value) {
+      throw new Error("Coolify application UUID, environment key, and non-empty value are required");
+    }
+    if (this.dryRun) return { updated: false, dryRun: true, key };
+    const path = `/applications/${encodeURIComponent(uuid)}/envs`;
+    const current = await this.request(path);
+    const mutation = planApplicationEnvMutation(current, key, value);
+    await this.request(path, { method: mutation.method, body: mutation.body });
+    return { updated: true, method: mutation.method, key };
   }
 
   async deploymentSnapshot(applicationUuid) {

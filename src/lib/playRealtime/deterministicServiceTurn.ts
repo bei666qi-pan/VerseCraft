@@ -213,9 +213,9 @@ export function buildDeterministicServiceTurn(args: {
         return seed;
       })();
   if (isForge) {
-    const securityMeta = guarded.security_meta;
+    const securityMeta = (guarded as Record<string, unknown>).security_meta;
     if (!securityMeta || typeof securityMeta !== "object" || Array.isArray(securityMeta) ||
-        securityMeta.service_guard !== "b1_minimal_execution") return null;
+        (securityMeta as Record<string, unknown>).service_guard !== "b1_minimal_execution") return null;
   }
 
   const normalized = normalizePlayerDmJson(guarded);

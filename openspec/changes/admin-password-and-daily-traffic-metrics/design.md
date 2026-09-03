@@ -47,12 +47,12 @@
 - [部署前旧数据库缺字段] → migration 和 runtime schema 使用 `ADD COLUMN IF NOT EXISTS`；读取缺字段的错误降级到零值，部署后可调用 rebuild cron 回填。
 - [重复上报] → event ID 与 idempotency key 同值，event insert 冲突后不产生第二条记录；日重建以覆盖写入确保幂等。
 - [来源分类被伪造或浏览器省略 referrer] → 该指标明确是“浏览器上报的来源类别”，direct/unknown 不被解释为自然流量；不以它做认证或安全决策。
-- [弱口令传播或仓库泄露] → `panpan666` 仅注入生产部署环境，不写入源码、测试 fixture、`.env.example` 或日志。
+- [口令传播或仓库泄露] → 新值仅通过安全渠道注入生产部署环境，不写入源码、测试 fixture、`.env.example`、设计文档或日志。
 
 ## Migration Plan
 
 1. 增加 schema、migration/runtime ensure、taxonomy、采集路由与后台读取。
-2. 在部署前设置 Coolify 的 `ADMIN_PASSWORD=panpan666`，保留独立 `ADMIN_CRON_SECRET`。
+2. 在部署前通过安全渠道更新 Coolify 的 `ADMIN_PASSWORD`，保留独立 `ADMIN_CRON_SECRET`。
 3. 部署时运行既有 migration，确认新字段存在；启用 `VERSECRAFT_ENABLE_WEB_TRAFFIC_ANALYTICS=true`。
 4. 运行当日与近期北京时间日期的 rebuild daily cron/管理员端点，以已有 `page_viewed` 事件回填（上线前没有事件的日期维持零值）。
 5. 验证新的密码可登录、旧 cookie 得到 401，以及 dashboard 中 PV/UV 与 SQL 事件计数一致。

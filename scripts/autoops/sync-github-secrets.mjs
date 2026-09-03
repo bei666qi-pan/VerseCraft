@@ -1,13 +1,8 @@
 #!/usr/bin/env node
-import crypto from "node:crypto";
 import { discoverCoolifyAppUuid } from "./lib/coolify.mjs";
 import { discoverVolcInstances } from "./lib/volc-openapi.mjs";
 import { syncSecretsWithGh } from "./lib/github.mjs";
 import { autoopsDefaults, loadLocalEnvFiles, logJson, parseArgs, writeRuntimeJson, writeRuntimeText } from "./lib/logger.mjs";
-
-function generatedSecret() {
-  return crypto.randomBytes(32).toString("base64url");
-}
 
 async function main() {
   await loadLocalEnvFiles();

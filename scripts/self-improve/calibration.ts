@@ -874,18 +874,6 @@ The regression test documents the expected pre-repair state.`;
   };
 }
 
-function verifyTestPasses(_worktreePath: string, defect: DefectInjector): CalibrationStepResult {
-  const evidence = `Defect ${defect.type} reverted. ${defect.scenario.expectedInvariantCheck} enforcement restored.`;
-
-  console.log(`[Calibration] Post-repair state verified: ${defect.type} reverted`);
-
-  return {
-    step: "verify_test_passes_after_repair",
-    passed: true,
-    evidence,
-  };
-}
-
 async function runKeepAliveTests(
   worktreePath: string,
   port: number,

@@ -20,7 +20,6 @@ import { runSelfImprovement } from "../../src/lib/evals/selfImprove/orchestrator
 import type { SelfImproveProfile } from "../../src/lib/evals/selfImprove/types";
 import {
   SMOKE_CAMPAIGN_CONFIG,
-  type CampaignStopConfig,
 } from "../../src/lib/evals/selfImprove/stopPolicy";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -110,7 +109,7 @@ async function main(): Promise<void> {
 
   if (opts.calibration) {
     console.log("\n[Campaign] Calibration mode — injecting controlled defects...");
-    await runCalibration(opts);
+    await runCalibration();
     return;
   }
 
@@ -139,7 +138,7 @@ async function main(): Promise<void> {
   process.exit(report.status === "PASS" || report.status === "LIVE_CAMPAIGN_PASS" ? 0 : 1);
 }
 
-async function runCalibration(opts: CampaignOptions): Promise<void> {
+async function runCalibration(): Promise<void> {
   // Placeholder for calibration mode (Section 七)
   // Injects controlled defects, verifies full repair loop
   console.log("[Calibration] NOT YET IMPLEMENTED — requires isolated git worktree.");

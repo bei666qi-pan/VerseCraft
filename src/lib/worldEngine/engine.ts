@@ -1,10 +1,8 @@
 import { pool } from "@/db/index";
-import { runDirectorPlanCriticTask, runOfflineReasonerTask } from "@/lib/ai/logicalTasks";
-import type { ChatMessage, AIRequestContext } from "@/lib/ai/types/core";
+import type { ChatMessage } from "@/lib/ai/types/core";
 import { createTracingAdapter, startTurnTrace, startStageSpan, endTurnTrace } from "@/lib/observability/langfuse";
 import { getLangfuseConfig } from "@/lib/observability/langfuse/config";
 import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
-import { getAppRedisClient } from "@/lib/ratelimit";
 import {
   applySocialGmDeltas,
   type ApplySocialGmDeltasArgs,
@@ -21,10 +19,8 @@ import {
 import type { NpcAgentState } from "@/lib/socialWorld/types";
 import { insertDirectorAgendaItems } from "./agenda";
 import { resolveWorldCapabilityMode, resolveWorldDirectorConfig } from "./config";
-import { runWorldDirectorReasonerWithTools } from "./directorTools";
 import {
   parseWorldEngineDeltaJson,
-  type DirectorPlan,
   type WorldEngineTrigger,
   type WorldEngineStructuredDelta,
   type WorldEngineTickPayload,
@@ -35,20 +31,19 @@ import {
   saveDirectorState,
   type WorldDirectorState,
 } from "./directorState";
-import { validateDirectorPlan, type DirectorValidationResult } from "./validator";
-import type { ActorSimulationContext } from "./actorSimulation/integration";
-import { enforceDirectorPlan } from "./directorEnforcer";
+import { validateChapterPacingPlan, type DirectorValidationResult } from "./validator";
+import { enforceChapterPacingPlan } from "./directorEnforcer";
 import {
   applyWorldCapabilitySafetyDefaults,
   getWorldDirectorCapabilityProfile,
-  validateDirectorPlanCapabilities,
+  validateChapterPacingPlanCapabilities,
 } from "./directorCapabilities";
-import { buildDirectorHintEnvelope } from "./hintEnvelope";
-import { insertDirectorHintEnvelope } from "./hintRepository";
-import { buildXingniActorSimulationContext } from "./xingniActorContext";
-import { buildDarkMoonActorSimulationContext } from "./darkMoonActorContext";
-import { materializeAcceptedDirectorPlan } from "./acceptedPlan";
-import { applySubtractiveCriticDecision } from "./directorCritic";
+import { buildXingniActorContext } from "./xingniActorContext";
+import { buildDarkMoonActorContext } from "./darkMoonActorContext";
+import { materializeAcceptedChapterPacingPlan } from "./acceptedPlan";
+import { projectDirectorPlanV2 } from "./directorPlanV2";
+import { projectActorContext } from "./actorContextProjector";
+import { runWorldDirectorWorkflow } from "./worldDirectorWorkflow";
 
 export async function loadRecentWorldFacts(
   userId: string | null,
@@ -366,79 +361,6 @@ export function buildWorldEngineMessages(input: {
   ];
 }
 
-function parseCriticOutput(raw: string): {
-  accept: boolean;
-  accepted_event_codes: string[];
-  reject_reasons: string[];
-} | null {
-  try {
-    const obj = JSON.parse(raw) as Record<string, unknown>;
-    if (typeof obj.accept !== "boolean") return null;
-    return {
-      accept: obj.accept,
-      accepted_event_codes: Array.isArray(obj.accepted_event_codes)
-        ? obj.accepted_event_codes.filter((x): x is string => typeof x === "string").slice(0, 12)
-        : [],
-      reject_reasons: Array.isArray(obj.reject_reasons)
-        ? obj.reject_reasons.filter((x): x is string => typeof x === "string").slice(0, 12)
-        : [],
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function runOptionalCritic(args: {
-  payload: WorldEngineTickPayload;
-  plan: DirectorPlan;
-  recentFacts: string[];
-  validation: DirectorValidationResult;
-}): Promise<DirectorValidationResult> {
-  const cfg = resolveWorldDirectorConfig();
-  const hasMediumRisk = Object.values(args.plan.risk_assessment).some((risk) => risk === "medium");
-  const hasNewEventType = args.plan.world_events_to_schedule.some((event) => event.payload?.new_event_type === true);
-  if (!cfg.criticEnabled || !args.validation.accepted || (!hasMediumRisk && !hasNewEventType)) return args.validation;
-  const messages: ChatMessage[] = [
-    {
-      role: "system",
-      content: [
-        "你是 VerseCraft World Director 的 deterministic critic，只负责把关，不写正文。",
-        "请严格以 JSON 格式输出：{\"accept\":boolean,\"accepted_event_codes\":string[],\"reject_reasons\":string[],\"risk_overrides\":{}}。",
-        "拒绝任何会降低玩家自主性、提前剧透、泄露隐藏钩子、强制玩家失败或违反 NPC 知识边界的计划。",
-      ].join("\n"),
-    },
-    {
-      role: "user",
-      content: JSON.stringify(
-        {
-          candidate_plan: args.plan,
-          deterministic_validation: args.validation,
-          recent_facts: args.recentFacts.slice(0, 24),
-        },
-        null,
-        2
-      ),
-    },
-  ];
-  const res = await runDirectorPlanCriticTask({
-    messages,
-    ctx: {
-      requestId: `${args.payload.requestId}:director_critic`,
-      userId: args.payload.userId,
-      sessionId: args.payload.sessionId,
-      path: "/worker/world-director-critic",
-      tags: { purpose: "director_plan_critic" },
-    },
-    requestTimeoutMs: 8_000,
-    skipCache: true,
-    devOverrides: { maxTokens: 512, temperature: 0, responseFormatJsonObject: true },
-  });
-  if (!res.ok) return args.validation;
-  const parsed = parseCriticOutput(res.content ?? "");
-  if (!parsed) return args.validation;
-  return applySubtractiveCriticDecision(args.validation, parsed);
-}
-
 export async function writeWorldEngineOutputs(args: {
   runId: number;
   mode: "shadow" | "soft";
@@ -462,11 +384,18 @@ export async function writeWorldEngineOutputs(args: {
         args.socialTelemetry.socialEventsRejected + (socialGm?.rejectedEventCodes.length ?? 0),
       socialRejectedByCode: socialGm ? socialRejectedByCode(socialGm) : args.socialTelemetry.socialRejectedByCode,
     };
-    const committedPlan = materializeAcceptedDirectorPlan({
+    const committedPlan = materializeAcceptedChapterPacingPlan({
       plan: args.delta,
       validation: args.validation,
       acceptedSocialEventCodes: socialGm?.acceptedEventCodes ?? [],
     });
+    const directorPlanV2 = committedPlan
+      ? projectDirectorPlanV2({
+          plan: committedPlan,
+          turnIndex: args.payload.turnIndex,
+          chapterId: args.payload.pacingChapterSignals.chapterId,
+        })
+      : null;
     const validationOutput = socialGm
       ? {
           ...args.validation,
@@ -489,31 +418,6 @@ export async function writeWorldEngineOutputs(args: {
         };
     const runId = args.runId;
     if (!Number.isSafeInteger(runId) || runId <= 0) throw new Error("invalid_world_engine_run_id");
-
-    const snapshot = committedPlan ? {
-      director_plan: committedPlan,
-      validation: validationOutput,
-      npc_next_actions: committedPlan.npc_next_actions,
-      story_branch_seeds: committedPlan.story_branch_seeds,
-      consistency_warnings: committedPlan.consistency_warnings,
-      player_private_hooks: committedPlan.player_private_hooks,
-      event_count: args.validation.acceptedEventCodes.length,
-    } : null;
-    if (snapshot) {
-      await client.query(
-        `INSERT INTO world_engine_agenda_snapshots (
-           world_id, map_id, run_id, session_id, user_id, agenda_revision, snapshot_json
-         )
-         VALUES (
-           $1::varchar, $2::varchar, $3::bigint, $4::varchar, $5::varchar,
-           (SELECT COALESCE(MAX(agenda_revision), 0) + 1
-            FROM world_engine_agenda_snapshots
-            WHERE world_id = $1::varchar AND map_id = $2::varchar AND session_id = $4::varchar),
-           $6::jsonb
-         )`,
-        [args.payload.worldId, args.payload.mapId, runId, args.payload.sessionId, args.payload.userId, JSON.stringify(snapshot)]
-      );
-    }
 
     const wr = await client.query<{ world_revision: string }>(
       `INSERT INTO vc_world_meta (id, world_revision)
@@ -556,52 +460,24 @@ export async function writeWorldEngineOutputs(args: {
     }) : null;
     if (args.mode === "soft" && nextState) await saveDirectorState(nextState, client);
 
-    const envelope = args.mode === "soft" && committedPlan ? buildDirectorHintEnvelope({
-      scope: {
-        worldId: args.payload.worldId,
-        mapId: args.payload.mapId,
-        sessionId: args.payload.sessionId,
-      },
-      runId,
-      worldRevision,
-      turnIndex: args.payload.turnIndex,
-      plan: committedPlan,
-      validation: args.validation,
-      sources: ["world_director", ...(committedPlan.npc_next_actions.length > 0 ? ["actor_projection" as const] : [])],
-    }) : null;
-    if (envelope) await insertDirectorHintEnvelope(envelope, client);
-
     await client.query(
       `UPDATE world_engine_runs
        SET status = 'succeeded', output_json = $2::jsonb, error_message = NULL, updated_at = NOW()
       WHERE run_id = $1`,
       [runId, JSON.stringify({
         ...(committedPlan ?? {}),
+        director_plan_v2: directorPlanV2,
         validation: validationOutput,
         agenda_write_allowed: Boolean(committedPlan?.agenda_write_allowed),
         world_revision: worldRevision.toString(),
         agenda_created: agendaResult.created,
         agenda_skipped: agendaResult.skipped,
-        hint_id: envelope?.hintId ?? null,
+        directive_projection: "current_state_plus_due_agenda",
       })],
     );
 
     await client.query("COMMIT");
 
-    const redis = await getAppRedisClient();
-    if (redis && snapshot && nextState) {
-      void redis
-        .set(
-          `vc:we:agenda:${args.payload.worldId}:${args.payload.mapId}:${args.payload.sessionId}`,
-          JSON.stringify({
-            ...snapshot,
-            agenda_created: agendaResult.created,
-            director_state: nextState,
-          }),
-          { EX: 3600 }
-        )
-        .catch(() => {});
-    }
     return {
       runId,
       worldRevision,
@@ -757,73 +633,51 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
       // Stage 2: build_messages
       const buildSpan = startStageSpan({ name: "world_director.build_messages", status: "ok" });
       const buildStartedAt = Date.now();
-      let messages = buildWorldEngineMessages({ payload, recentFacts, recentAgenda, directorState, socialWorld: socialWorldContext });
+      const messages = buildWorldEngineMessages({ payload, recentFacts, recentAgenda, directorState, socialWorld: socialWorldContext });
 
-      // Phase 3: Actor Simulation — 可选的后台 NPC 行动推演。
-      // 仅在 VERSECRAFT_ENABLE_ACTOR_SIMULATION=true 且 mode≠off 时运行。
-      // shadow 模式只记录 telemetry；soft 模式将推演上下文注入 reasoner prompt。
-      let _actorSimTelemetry: Record<string, unknown> | null = null;
-      try {
-          const { runActorSimulationPhase, appendActorSimulationToMessages } = await import(
-            "@/lib/worldEngine/actorSimulation/integration"
-          );
-          const xingniActorContext = isXingniTick
-            ? buildXingniActorSimulationContext({
-                presentNpcIds: payload.presentNpcIds,
-                deadNpcIds: payload.deadNpcIds,
-                turnIndex: payload.turnIndex,
-              })
-            : null;
-          const darkMoonActorContext = !isXingniTick
-            ? buildDarkMoonActorSimulationContext({
-                npcStates: socialNpcStates,
-                relationEdges: socialRelationEdges,
-                presentNpcIds: payload.presentNpcIds,
-                deadNpcIds: payload.deadNpcIds,
-                turnIndex: payload.turnIndex,
-              })
-            : null;
-          const scopedActorContext = xingniActorContext ?? darkMoonActorContext;
-          const actorCtx: ActorSimulationContext & {
-            aiCtx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
-            signal?: AbortSignal;
-          } = {
-            npcStates: scopedActorContext?.npcStates ?? [],
+      // ActorContextProjector is deterministic and subtractive. Actor state is
+      // included in the single Director call instead of invoking a second model.
+      const scopedActorContext = isXingniTick
+        ? buildXingniActorContext({
+            presentNpcIds: payload.presentNpcIds,
+            deadNpcIds: payload.deadNpcIds,
             turnIndex: payload.turnIndex,
-            sceneNpcIds: scopedActorContext?.sceneNpcIds ?? [],
-            playerMentionedNpcIds: scopedActorContext?.playerMentionedNpcIds ?? [],
-            worldFacts: scopedActorContext?.worldFacts ?? [],
-            relationEdges: scopedActorContext?.relationEdges ?? [],
-            relationEdgesByNpc: darkMoonActorContext?.relationEdgesByNpc,
-            epistemicIndex: scopedActorContext?.epistemicIndex ?? {
-              knownFactIdsByNpc: new Map(),
-              suspectedFactIdsByNpc: new Map(),
-              forbiddenFactIds: new Set(),
-            },
-            registeredLocationIds: new Set(capabilityProfile.registeredLocationIds),
-            registeredActionCodes: new Set(capabilityProfile.allowedActionCodes),
-            aiCtx: {
-              requestId: payload.requestId,
-              userId: payload.userId,
-              sessionId: payload.sessionId,
-              path: "/worker/world-engine",
-              tags: { purpose: "actor_simulation", mode: cfg.mode },
-            },
-            signal: undefined,
-          };
-          const simResult = await runActorSimulationPhase(actorCtx);
-          _actorSimTelemetry = simResult.telemetry as unknown as Record<string, unknown>;
-          if (simResult.reasonerContextHint) {
-            messages = appendActorSimulationToMessages(messages, simResult.reasonerContextHint);
+          })
+        : buildDarkMoonActorContext({
+            npcStates: socialNpcStates,
+            relationEdges: socialRelationEdges,
+            presentNpcIds: payload.presentNpcIds,
+            deadNpcIds: payload.deadNpcIds,
+            turnIndex: payload.turnIndex,
+          });
+      const actorProjection = projectActorContext({
+        worldId: payload.worldId,
+        turnIndex: payload.turnIndex,
+        presentNpcIds: payload.presentNpcIds,
+        deadNpcIds: payload.deadNpcIds,
+        npcStates: scopedActorContext.npcStates,
+        relationEdges: socialRelationEdges,
+      });
+      if (actorProjection.actors.length > 0) {
+        let lastUserIndex = -1;
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+          if (messages[index]?.role === "user") {
+            lastUserIndex = index;
+            break;
           }
-      } catch {
-        // Actor simulation is optional; failures must not block the world tick
+        }
+        if (lastUserIndex >= 0) {
+          messages[lastUserIndex] = {
+            ...messages[lastUserIndex],
+            content: `${messages[lastUserIndex].content}\n\nactor_context_projection=${actorProjection.promptBlock}`,
+          };
+        }
       }
 
       buildSpan.setAttributes({
         messageCount: messages.length,
         socialTickTriggered: socialTickTriggered ? 1 : 0,
-        actorSimRan: _actorSimTelemetry ? 1 : 0,
+        actorProjectionCount: actorProjection.actors.length,
         latencyMs: Date.now() - buildStartedAt,
       });
       buildSpan.end();
@@ -831,39 +685,14 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
       // Stage 3: run_reasoner
       const reasonerSpan = startStageSpan({ name: "world_director.run_reasoner", status: "ok" });
       const reasonerStartedAt = Date.now();
-      // 试点开关：tool loop 版导演推理（只读检索工具，有界轮数）；默认走原单次 reasoner 路径。
-      const res = cfg.toolLoopEnabled
-        ? await runWorldDirectorReasonerWithTools({
-            messages,
-            requestId: payload.requestId,
-            userId: payload.userId,
-            sessionId: payload.sessionId,
-            worldId: payload.worldId,
-            mapId: payload.mapId,
-            mode: cfg.mode,
-          })
-        : await runOfflineReasonerTask({
-            kind: "worldbuild",
-            messages,
-            ctx: {
-              requestId: payload.requestId,
-              userId: payload.userId,
-              sessionId: payload.sessionId,
-              path: "/worker/world-engine",
-              tags: { purpose: "world_director", mode: cfg.mode },
-            },
-            requestTimeoutMs: 45_000,
-            skipCache: true,
-            extraBody: {
-              enable_thinking: false,
-              thinking: { type: "disabled" },
-            },
-            devOverrides: {
-              responseFormatJsonObject: true,
-              temperature: 0.2,
-              maxTokens: 2048,
-            },
-          });
+      const res = await runWorldDirectorWorkflow({
+        messages,
+        requestId: payload.requestId,
+        userId: payload.userId,
+        sessionId: payload.sessionId,
+        worldId: payload.worldId,
+        mapId: payload.mapId,
+      });
       const socialReasonerLatencyMs = socialTickTriggered ? Math.max(0, Date.now() - reasonerStartedAt) : 0;
       if (!res.ok) {
         void recordGenericAnalyticsEvent({
@@ -893,17 +722,19 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
       } else {
         reasonerSpan.setAttributes({
           latencyMs: Date.now() - reasonerStartedAt,
-          toolLoopEnabled: cfg.toolLoopEnabled ? 1 : 0,
+          modelCalls: 1,
+          outputTokens: res.actualUsage.usage?.completionTokens ?? 0,
         });
         reasonerSpan.end();
 
-        // Stage 4: validate (parse + validator + critic)
+        // Stage 4: deterministic parse, validate and subtractive enforcement.
         const validateSpan = startStageSpan({ name: "world_director.validate", status: "ok" });
         const validateStartedAt = Date.now();
 
         const parsedCandidate = parseWorldEngineDeltaJson(res.content ?? "");
+        const directorActualTokens = Math.max(0, res.actualUsage.usage?.totalTokens ?? 0);
         if (!parsedCandidate) {
-          void recordGenericAnalyticsEvent({
+          if (directorActualTokens > 0) void recordGenericAnalyticsEvent({
             eventId: `${payload.requestId}:parse_failed`,
             idempotencyKey: `${payload.requestId}:parse_failed`,
             userId: payload.userId,
@@ -913,7 +744,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
             page: null,
             source: "world_engine",
             platform: "unknown",
-            tokenCost: 0,
+            tokenCost: directorActualTokens,
             playDurationDeltaSec: 0,
             payload: {
               reason: "reasoner_invalid_json",
@@ -921,6 +752,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
               mode: cfg.mode,
               hasSocialTick: socialTickTriggered,
               triggerSignals: payload.triggerSignals,
+              usage: res.actualUsage,
             },
           }).catch(() => {});
           tickReason = "reasoner_invalid_json";
@@ -929,22 +761,22 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
         } else {
           // Fixed authority order: normalize(parse) -> validate -> enforce ->
           // world capability gate. A second validation materializes the exact
-          // subtractive accepted set passed to critic and persistence.
+          // subtractive accepted set passed to persistence.
           const scopedCandidate = applyWorldCapabilitySafetyDefaults(parsedCandidate, capabilityProfile);
-          const initialValidation = validateDirectorPlan(scopedCandidate);
-          const enforced = enforceDirectorPlan(scopedCandidate, {
+          const initialValidation = validateChapterPacingPlan(scopedCandidate);
+          const enforced = enforceChapterPacingPlan(scopedCandidate, {
             currentPhase: directorState?.phase,
             activeNpcIds: payload.presentNpcIds.length > 0
               ? payload.presentNpcIds
               : capabilityProfile.registeredNpcIds,
             deadOrInactiveNpcIds: payload.deadNpcIds,
           });
-          const capabilityResult = validateDirectorPlanCapabilities(
+          const capabilityResult = validateChapterPacingPlanCapabilities(
             { ...scopedCandidate, ...enforced.plan },
             capabilityProfile,
           );
           const parsed = capabilityResult.plan;
-          const deterministicValidation = validateDirectorPlan(parsed);
+          const deterministicValidation = validateChapterPacingPlan(parsed);
           deterministicValidation.issues.push(
             ...initialValidation.issues,
             ...enforced.rejections.map((rejection) => ({
@@ -982,7 +814,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
           }
 
           if (!deterministicValidation.accepted) {
-            void recordGenericAnalyticsEvent({
+            if (directorActualTokens > 0) void recordGenericAnalyticsEvent({
               eventId: `${payload.requestId}:validation_failed`,
               idempotencyKey: `${payload.requestId}:validation_failed`,
               userId: payload.userId,
@@ -992,7 +824,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
               page: null,
               source: "world_engine",
               platform: "unknown",
-              tokenCost: 0,
+              tokenCost: directorActualTokens,
               playDurationDeltaSec: 0,
               payload: {
                 reason: "deterministic_validation_rejected",
@@ -1002,17 +834,13 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
                 issues: deterministicValidation.issues.map((i) => ({ code: i.code, severity: i.severity })),
                 rejectedEventCodes: deterministicValidation.rejectedEventCodes,
                 triggerSignals: payload.triggerSignals,
+                usage: res.actualUsage,
               },
             }).catch(() => {});
           }
           tickValidatorIssueCount = deterministicValidation.issues.length;
 
-          const validation = await runOptionalCritic({
-            payload,
-            plan: parsed,
-            recentFacts,
-            validation: deterministicValidation,
-          });
+          const validation = deterministicValidation;
 
           const socialGmInput: Omit<ApplySocialGmDeltasArgs, "client"> | null =
             socialTickTriggered && parsed.social_events_to_schedule.length > 0
@@ -1057,7 +885,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
             eventCodesAccepted: validation.acceptedEventCodes.length,
             eventCodesRejected: validation.rejectedEventCodes.length,
             issues: validation.issues.length,
-            criticRan: cfg.criticEnabled ? 1 : 0,
+            modelCriticCalls: 0,
             latencyMs: Date.now() - validateStartedAt,
           });
           validateSpan.end();

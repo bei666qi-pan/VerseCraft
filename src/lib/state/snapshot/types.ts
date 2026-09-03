@@ -100,9 +100,11 @@ export interface SnapshotWorld {
   discoveredSecrets: string[];
   anchorUnlocks: Record<"B1" | "1" | "7", boolean>;
   pendingEvents: string[];
-  /** Phase-4: 轻量剧情导演层状态（可选；旧存档缺省应平滑加载） */
+  /** Deterministic chapter pacing state. */
+  chapterPacing?: unknown;
+  /** @deprecated Read-only migration input; new snapshots never write it. */
   storyDirector?: unknown;
-  /** Phase-4: 轻量突发事件队列（可选；旧存档缺省应平滑加载） */
+  /** @deprecated Read-only migration input; server agenda is authoritative. */
   incidentQueue?: unknown;
   floorThreatTier: Record<string, number>;
   mainThreatByFloor: Record<string, SnapshotMainThreatState>;

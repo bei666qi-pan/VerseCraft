@@ -31,7 +31,7 @@ export interface SubmitNarrativeArgs {
   decision_required: true;
 }
 
-/** 单个 write tool 的 typed result（来自 dmToolHandlers 的返回 data 字段） */
+/** 单个 write tool 的 typed result（来自 mechanicsToolHandlers 的返回 data 字段） */
 export interface WriteToolResult {
   toolName: string;
   ok: boolean;
@@ -63,7 +63,7 @@ export interface PlayerNarrativeMergeInput {
 
 /**
  * write tool result → DM JSON state 字段的映射表。
- * 与 dmAgentStateDeltaMerger (Phase 1) 的合并规则保持一致。
+ * 与 mechanicsStateDeltaMerger (Phase 1) 的合并规则保持一致。
  *
  * 字段写空 = 工具没被调用；写非空 = 工具的 typed result data 进入。
  */

@@ -15,7 +15,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
-import { middleware, config } from "@/middleware";
+import { proxy as middleware, config } from "@/proxy";
 import {
   VERSECRAFT_CHAT_PURPOSE_HEADER,
   VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,

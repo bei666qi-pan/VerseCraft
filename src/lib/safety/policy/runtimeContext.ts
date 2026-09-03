@@ -31,12 +31,12 @@ export function buildSafetyRuntimeContextFromPackets(packets: Record<string, unk
   const isB1SafeZone = Boolean(locationId && String(locationId).startsWith("B1"));
 
   return {
-    locationId,
-    floorId,
+    locationId: locationId ?? undefined,
+    floorId: floorId ?? undefined,
     isB1SafeZone,
     threat: {
       activeThreatId: typeof mainThreat.activeThreatId === "string" ? mainThreat.activeThreatId : null,
-      phase: typeof mainThreat.phase === "string" ? mainThreat.phase : null,
+      phase: typeof mainThreat.phase === "string" ? mainThreat.phase : undefined,
       suppressionProgress: typeof mainThreat.suppressionProgress === "number" ? mainThreat.suppressionProgress : null,
     },
     activeTasks,
@@ -45,4 +45,3 @@ export function buildSafetyRuntimeContextFromPackets(packets: Record<string, unk
     isPublic: false,
   };
 }
-

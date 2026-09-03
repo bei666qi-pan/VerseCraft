@@ -6,10 +6,9 @@
  * Reads from session store + campaign state files.
  */
 
-import { getActiveSession, getSession, readJson } from "./ds-session-store.mjs";
+import { getActiveSession } from "./ds-session-store.mjs";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 
 // ── Terminal helpers ───────────────────────────────────
 
@@ -23,7 +22,6 @@ const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
 const CYAN = "\x1b[36m";
-const MAGENTA = "\x1b[35m";
 
 function colorForStatus(status) {
   if (!status) return DIM;
@@ -31,10 +29,6 @@ function colorForStatus(status) {
   if (status.includes("FAIL") || status.includes("BLOCKED") || status.includes("EXHAUSTED")) return RED;
   if (status.includes("RUNNING") || status.includes("STARTED")) return CYAN;
   return YELLOW;
-}
-
-function colorForHealth(healthy) {
-  return healthy ? GREEN : RED;
 }
 
 function formatDuration(ms) {

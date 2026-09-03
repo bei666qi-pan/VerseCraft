@@ -172,7 +172,6 @@ jobs:
       - name: Comment disk remediation result
         if: steps.disk.outcome == 'success' && steps.issue.outputs.number != ''
         run: |
-          ISSUE="${{ steps.issue.outputs.number }}"
           EXIT="${{ steps.disk.outputs.exit_code }}"
           if [ "$EXIT" = "0" ]; then
             MSG="Disk remediation completed successfully. See workflow artifacts for details."

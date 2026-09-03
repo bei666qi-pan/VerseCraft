@@ -728,9 +728,6 @@ test.describe("mobile reading UI", () => {
     const errors = trackPageErrors(page);
     await openSeededPlay(page);
     const submittedActions = await installChatSseMock(page);
-    // Record baseline — page may have fired initial auto-requests before mock was installed
-    const baselineCount = submittedActions.length;
-
     const input = page.getByTestId("manual-action-input");
     await input.click();
     await expect(input).toBeFocused();

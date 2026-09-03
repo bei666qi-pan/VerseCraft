@@ -140,13 +140,10 @@ async function callApi(scenario: Scenario): Promise<TurnResult> {
     const decoder = new TextDecoder();
     let buffer = "";
     let finalJsonStr = "";
-    let rawSse = "";
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-      rawSse += chunk;
       buffer += chunk;
 
       const lines = buffer.split("\n");

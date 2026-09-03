@@ -18,7 +18,7 @@ export type ModerationScene = string;
 
 export type ModerationCategory = string;
 
-export type ModerationErrorKind = "auth_error" | "network_timeout" | "service_error" | "response_structure_error" | "unknown_error";
+export type ModerationErrorKind = "auth_error" | "network_timeout" | "service_error" | "response_structure_error" | "circuit_open" | "unknown_error";
 
 export type ModerationEvidence = {
   provider: string;
@@ -82,4 +82,3 @@ export interface ContentSafetyProvider {
   readonly name: string;
   moderateText(req: ModerationRequest): Promise<ModerationResult>;
 }
-

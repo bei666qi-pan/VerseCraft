@@ -18,8 +18,6 @@
 //
 // Outputs: JSON report + Langfuse scores
 
-import type { LorePacket } from "@/lib/worldKnowledge/types";
-
 // ── Test Scenarios ──────────────────────────────────────
 
 interface RagTestScenario {

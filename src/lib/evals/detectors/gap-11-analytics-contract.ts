@@ -17,7 +17,6 @@ const KNOWN_EVENTS = [
   "world_engine_enqueued",
   "world_engine_runs",
   "world_engine_event_queue",
-  "world_engine_agenda_snapshots",
   "game_session_memory",
 ];
 

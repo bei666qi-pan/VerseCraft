@@ -77,10 +77,6 @@ export interface ResolvedAiEnv {
   logLevel: "silent" | "error" | "info" | "debug";
   /** Two role=system messages (stable + dynamic) for PLAYER_CHAT when true. */
   splitPlayerChatDualSystem: boolean;
-  /** Keep enhancement pipeline enabled by default; explicit env can still disable it. */
-  enableNarrativeEnhancement: boolean;
-  /** Optional post-stream narrative-only expansion; never required for first visible token. */
-  enableNarrativeExpansion: boolean;
   /**
    * PLAYER_CHAT: whether to request stream_options.include_usage from upstream.
    * Disabled can reduce vendor overhead and payload size; usage still best-effort via fallback estimation.
@@ -157,10 +153,6 @@ export interface ResolvedAiEnv {
    */
   controlPreflightBudgetMs: number;
   /**
-   * Max time for optional narrative enhancement LLM; 0 = wait for task timeout only (legacy).
-   */
-  narrativeEnhanceBudgetMs: number;
-  /**
    * Min interval between postModelModeration calls on stream deltas; 0 = moderate every delta (legacy).
    */
   streamModerationThrottleMs: number;
@@ -225,10 +217,6 @@ function resolvePlayerChatMaxTokensOverride(): number | null {
   if (!raw) return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function defaultNarrativeExpansionEnabled(): boolean {
-  return true;
 }
 
 function resolveMemoryPrimaryRole(): AiLogicalRole {
@@ -301,11 +289,6 @@ export function resolveAiEnv(): ResolvedAiEnv {
     enableStream: envBoolean("AI_ENABLE_STREAM", true),
     logLevel: envEnum("AI_LOG_LEVEL", ["silent", "error", "info", "debug"] as const, "info"),
     splitPlayerChatDualSystem: envBoolean("AI_PLAYER_CHAT_SPLIT_SYSTEM", false),
-    enableNarrativeEnhancement: envBoolean("AI_ENABLE_NARRATIVE_ENHANCEMENT", true),
-    enableNarrativeExpansion: envBoolean(
-      "AI_NARRATIVE_EXPANSION_ENABLED",
-      defaultNarrativeExpansionEnabled()
-    ),
     playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", false),
     playerChatFastLaneRelaxResponseFormat: envBoolean("AI_PLAYER_CHAT_FASTLANE_RELAX_RESPONSE_FORMAT", false),
     aiGatewayJsonSchemaEnabled: envBoolean("AI_PLAYER_CHAT_JSON_SCHEMA_ENABLED", false),
@@ -360,10 +343,6 @@ export function resolveAiEnv(): ResolvedAiEnv {
         10_000,
         envNumber("AI_CONTROL_PREFLIGHT_BUDGET_MS", VC_WAITING.controlPreflightDefaultBudgetMs)
       )
-    ),
-    narrativeEnhanceBudgetMs: Math.max(
-      0,
-      Math.min(60_000, envNumber("AI_NARRATIVE_ENHANCE_BUDGET_MS", 4_500))
     ),
     streamModerationThrottleMs: Math.max(
       0,

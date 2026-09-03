@@ -13,7 +13,7 @@
  * 这是纯函数，方便在 store / engine / live test 中复用，不引入任何随机或副作用。
  */
 import type { ChapterDefinition, ChapterId, ChapterState } from "./types";
-import type { ChapterDirectorState, NextChapterSeed } from "@/lib/storyDirector/types";
+import type { PacingChapterState, NextChapterSeed } from "@/lib/chapters/pacing/types";
 import { isUniqueChapterTitleKey } from "./engine";
 import { sanitizeChapterTitleCandidate } from "./title";
 
@@ -30,12 +30,12 @@ export type ChapterAdvanceGate =
 
 /**
  * 取章节的 Director plan（NextChapterSeed）。Director state 可能来自：
- *   - store 的 `state.storyDirector.chapter`
- *   - 外部传入的 `ChapterDirectorState`
+ *   - store 的 `state.chapterPacing.chapter`
+ *   - 外部传入的 `PacingChapterState`
  *   - 测试里的纯函数调用
  */
 export function pickDirectorNextChapterSeed(input: {
-  directorChapter?: ChapterDirectorState | null;
+  directorChapter?: PacingChapterState | null;
 }): NextChapterSeed | null {
   if (!input.directorChapter) return null;
   const seed = input.directorChapter.nextChapterSeed;
@@ -47,7 +47,7 @@ export function evaluateChapterAdvanceGate(input: {
   state: ChapterState;
   definition: ChapterDefinition;
   nextDefinition: ChapterDefinition | null;
-  directorChapter?: ChapterDirectorState | null;
+  directorChapter?: PacingChapterState | null;
 }): ChapterAdvanceGate {
   const { state, definition, nextDefinition, directorChapter } = input;
 

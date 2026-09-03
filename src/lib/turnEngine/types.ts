@@ -1,11 +1,10 @@
 import type { AnalyticsPlatform } from "@/lib/analytics/types";
-import type { EnhanceAfterMainStreamResult } from "@/lib/ai/logicalTasks";
 import type { TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
-import type { EpistemicValidatorTelemetry } from "@/lib/epistemic/validator";
 import type { ClientStructuredContextV1 } from "@/lib/security/chatValidation";
 
 export type RiskLane = "fast" | "slow";
+
 
 /**
  * Phase-2: "structured turn execution" lane.
@@ -275,7 +274,7 @@ export type UpstreamErrorFields = {
 };
 
 export type TurnRequestMetadata = {
-  clientIp: string | null;
+  clientIp: string;
   requestId: string;
   platform: AnalyticsPlatform;
   requestStartedAt: number;
@@ -296,13 +295,4 @@ export type ControlPreflightStageResult = {
   pipelinePreflightFailed: boolean;
   controlPreflightBudgetHit: boolean;
   preflightTurnMetrics: TurnPreflightMetrics;
-};
-
-export type FinalizationMutableState = {
-  enhancePathDmParsed: boolean;
-  lastEnhanceAnalytics: EnhanceAfterMainStreamResult | null;
-  finalJsonParseSuccess: boolean;
-  settlementGuardApplied: boolean;
-  settlementAwardPruned: number;
-  epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null;
 };

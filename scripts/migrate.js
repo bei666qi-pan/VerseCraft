@@ -109,7 +109,6 @@ async function ensurePresencePlaytimeTables(client) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS guest_sessions_last_seen_at_idx ON guest_sessions (last_seen_at);
   `);
-  await client.query(`ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS last_presence_ok_at TIMESTAMPTZ NULL;`);
   await client.query(`ALTER TABLE guest_sessions ADD COLUMN IF NOT EXISTS last_presence_ok_at TIMESTAMPTZ NULL;`);
   await client.query(`
     CREATE TABLE IF NOT EXISTS guest_registry (
@@ -125,32 +124,6 @@ async function ensurePresencePlaytimeTables(client) {
   `);
   await client.query(`
     CREATE INDEX IF NOT EXISTS guest_registry_last_seen_at_idx ON guest_registry (last_seen_at);
-  `);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS guest_daily_activity (
-      guest_id VARCHAR(128) NOT NULL,
-      date_key DATE NOT NULL,
-      first_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      last_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      chat_action_count INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (guest_id, date_key)
-    );
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS guest_daily_activity_date_key_idx ON guest_daily_activity (date_key);
-  `);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS guest_daily_tokens (
-      guest_id VARCHAR(128) NOT NULL,
-      date_key DATE NOT NULL,
-      daily_token_cost INTEGER NOT NULL DEFAULT 0,
-      daily_play_duration_sec INTEGER NOT NULL DEFAULT 0,
-      chat_action_count INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (guest_id, date_key)
-    );
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS guest_daily_tokens_date_key_idx ON guest_daily_tokens (date_key);
   `);
   await client.query(`
     CREATE TABLE IF NOT EXISTS presence_heartbeat_dedupe (
@@ -265,54 +238,7 @@ async function applySchemaV1(client) {
   // ========= Analytics Data Foundation =========
   await ensureAnalyticsFoundationTables(client);
 
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS user_sessions (
-      session_id VARCHAR(191) PRIMARY KEY,
-      user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE CASCADE,
-      started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      last_page TEXT NULL,
-      total_token_cost INTEGER NOT NULL DEFAULT 0,
-      total_play_duration_sec INTEGER NOT NULL DEFAULT 0,
-      chat_action_count INTEGER NOT NULL DEFAULT 0,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS user_sessions_user_last_seen_idx ON user_sessions (user_id, last_seen_at);
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS user_sessions_last_seen_at_idx ON user_sessions (last_seen_at);
-  `);
   await ensurePresencePlaytimeTables(client);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS user_daily_activity (
-      user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      date_key DATE NOT NULL,
-      first_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      last_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      chat_action_count INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (user_id, date_key)
-    );
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS user_daily_activity_date_key_idx ON user_daily_activity (date_key);
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS user_daily_tokens (
-      user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      date_key DATE NOT NULL,
-      daily_token_cost INTEGER NOT NULL DEFAULT 0,
-      daily_play_duration_sec INTEGER NOT NULL DEFAULT 0,
-      chat_action_count INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (user_id, date_key)
-    );
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS user_daily_tokens_date_key_idx ON user_daily_tokens (date_key);
-  `);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS admin_metrics_daily (
@@ -344,7 +270,7 @@ async function applySchemaV1(client) {
 }
 
 /**
- * KG：pgvector + IVFFlat 语义缓存与世界元数据（幂等）。
+ * KG：pgvector + IVFFlat 世界事实与世界元数据（幂等）。
  * 无 pgvector 扩展时跳过（应用层对 42P01/缺扩展静默降级）。
  */
 async function ensureKgCoreLayer(client) {
@@ -379,33 +305,6 @@ async function ensureKgSemanticLayer(client) {
   await client.query(`
     INSERT INTO vc_world_meta (id, world_revision) VALUES (1, 0)
     ON CONFLICT (id) DO NOTHING;
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS vc_semantic_cache (
-      id BIGSERIAL PRIMARY KEY,
-      cache_scope TEXT NOT NULL,
-      task TEXT NOT NULL,
-      user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
-      world_revision BIGINT NOT NULL,
-      request_embedding vector(256) NOT NULL,
-      request_norm TEXT,
-      request_text_preview TEXT,
-      request_hash TEXT NOT NULL UNIQUE,
-      response_text TEXT NOT NULL,
-      is_valid BOOLEAN NOT NULL DEFAULT TRUE,
-      expires_at TIMESTAMPTZ NOT NULL,
-      hit_count INTEGER NOT NULL DEFAULT 0,
-      last_hit_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS vc_semantic_cache_ivfflat_global_codex
-    ON vc_semantic_cache USING ivfflat (request_embedding vector_cosine_ops)
-    WITH (lists = 100)
-    WHERE cache_scope = 'global' AND is_valid = TRUE AND task = 'codex';
   `);
 
   await client.query(`
@@ -553,6 +452,31 @@ async function ensureKgSchemaV1(client) {
   await ensureKgWorkerLayer(client);
 }
 
+async function applyAgentDirectorArchitectureCleanupV1(client) {
+  await client.query("BEGIN");
+  try {
+    // These compatibility projections have no runtime readers or writers in
+    // the consolidated architecture. Deliberately omit CASCADE: an unknown
+    // dependency must fail deployment instead of being deleted silently.
+    for (const table of [
+      "world_engine_agenda_snapshots",
+      "world_engine_hint_envelopes",
+      "user_sessions",
+      "user_daily_activity",
+      "user_daily_tokens",
+      "guest_daily_activity",
+      "guest_daily_tokens",
+    ]) {
+      await client.query(`DROP TABLE IF EXISTS ${table}`);
+    }
+    await markMigration(client, "agent_director_architecture_cleanup_v1");
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
 async function main() {
   const url = getDatabaseUrl();
   const client = new Client({ connectionString: url });
@@ -578,6 +502,13 @@ async function main() {
     console.log("[migrate] ensureAnalyticsFoundationTables ok");
     await ensurePresencePlaytimeTables(client);
     console.log("[migrate] ensurePresencePlaytimeTables ok");
+
+    const architectureCleanupName = "agent_director_architecture_cleanup_v1";
+    if (!(await hasMigration(client, architectureCleanupName))) {
+      console.log(`[migrate] applying ${architectureCleanupName} ...`);
+      await applyAgentDirectorArchitectureCleanupV1(client);
+      console.log(`[migrate] applied ${architectureCleanupName}`);
+    }
 
     const kgName = "kg_schema_v1";
     const kgApplied = await hasMigration(client, kgName);
@@ -608,5 +539,5 @@ main().catch((err) => {
     hint: err?.hint,
     stack: err?.stack,
   });
-  process.exitCode = 0;
+  process.exitCode = 1;
 });

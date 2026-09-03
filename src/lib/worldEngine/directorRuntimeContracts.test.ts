@@ -7,11 +7,10 @@ import {
 import {
   applyWorldCapabilitySafetyDefaults,
   getWorldDirectorCapabilityProfile,
-  validateDirectorPlanCapabilities,
+  validateChapterPacingPlanCapabilities,
 } from "./directorCapabilities";
-import { validateDirectorPlan } from "./validator";
+import { validateChapterPacingPlan } from "./validator";
 import { QINGSHI_MAP_ID, XINGNI_WORLD_ID } from "@/lib/worlds/types";
-import { readFileSync } from "node:fs";
 
 const base = {
   requestId: "req-1",
@@ -66,9 +65,11 @@ test("pacing and structured collections are bounded", () => {
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.payload.presentNpcIds.length, 64);
-  assert.equal(result.payload.pacingChapterSignals.tension, 1);
-  assert.equal(result.payload.pacingChapterSignals.progress, 0);
-  assert.equal(result.payload.pacingChapterSignals.phase, "quiet");
+  assert.equal(result.payload.pacingChapterSignals.tension, 5);
+  assert.equal(result.payload.pacingChapterSignals.turnsInChapter, 0);
+  assert.equal(result.payload.pacingChapterSignals.phase, "opening");
+  assert.equal(result.payload.pacingChapterSignals.chapterId, "chapter-unknown");
+  assert.deepEqual(result.payload.pacingChapterSignals.completedBeatIds, []);
 });
 
 test("Xingni capability profile removes cross-world NPCs and invented events", () => {
@@ -89,7 +90,7 @@ test("Xingni capability profile removes cross-world NPCs and invented events", (
   assert.ok(parsed);
   const profile = getWorldDirectorCapabilityProfile({ worldId: XINGNI_WORLD_ID, mapId: QINGSHI_MAP_ID });
   assert.ok(profile);
-  const result = validateDirectorPlanCapabilities(parsed, profile);
+  const result = validateChapterPacingPlanCapabilities(parsed, profile);
   assert.deepEqual(result.plan.npc_next_actions.map((x) => x.npc_code), ["XQ-N005"]);
   assert.deepEqual(result.plan.world_events_to_schedule.map((x) => x.event_code), ["XQ-EV01"]);
   assert.equal(result.plan.social_events_to_schedule.length, 0);
@@ -108,7 +109,7 @@ test("Xingni registered events still reject foreign references and progression m
   assert.ok(parsed);
   const profile = getWorldDirectorCapabilityProfile({ worldId: XINGNI_WORLD_ID, mapId: QINGSHI_MAP_ID });
   assert.ok(profile);
-  const result = validateDirectorPlanCapabilities(parsed, profile);
+  const result = validateChapterPacingPlanCapabilities(parsed, profile);
   assert.deepEqual(result.plan.world_events_to_schedule.map((event) => event.event_code), ["XQ-EV03"]);
   assert.deepEqual(result.rejectedCodes.sort(), ["XQ-EV01", "XQ-EV02"].sort());
 });
@@ -133,7 +134,7 @@ test("registered low-risk Xingni micro-events receive fixed agency boundaries be
   const normalized = applyWorldCapabilitySafetyDefaults(parsed, profile);
   assert.equal(normalized.world_events_to_schedule[0]?.agency_constraints.length, 1);
   assert.equal(normalized.world_events_to_schedule[0]?.forbidden_outcomes.length, 1);
-  assert.equal(validateDirectorPlan(normalized).accepted, true);
+  assert.equal(validateChapterPacingPlan(normalized).accepted, true);
 });
 
 test("capability defaults never repair invented, high-risk, or consequential Xingni events", () => {
@@ -150,15 +151,5 @@ test("capability defaults never repair invented, high-risk, or consequential Xin
   assert.ok(parsed && profile);
   const normalized = applyWorldCapabilitySafetyDefaults(parsed, profile);
   assert.ok(normalized.world_events_to_schedule.every((event) => event.agency_constraints.length === 0));
-  assert.equal(validateDirectorPlan(normalized).accepted, false);
-});
-
-test("legacy storyDirector remains a deterministic signal controller without Writer prose", () => {
-  const types = readFileSync("src/lib/storyDirector/types.ts", "utf8");
-  const planner = readFileSync("src/lib/storyDirector/planner.ts", "utf8");
-  const prompt = readFileSync("src/lib/storyDirector/prompt.ts", "utf8");
-  assert.match(types, /PacingChapterControllerState/);
-  assert.match(types, /PacingChapterControllerPlan/);
-  assert.doesNotMatch(planner, /softPressureHint|hardConstraint/);
-  assert.doesNotMatch(prompt, /buildDirectorPromptBlock/);
+  assert.equal(validateChapterPacingPlan(normalized).accepted, false);
 });

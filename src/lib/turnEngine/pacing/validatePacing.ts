@@ -200,15 +200,16 @@ function collectFactEvidence(input: PacingInput): PacingFactEvidence[] {
   }
 
   for (const candidate of input.candidate.candidateNewFacts ?? []) {
+    const factId = candidate.factId;
     out.push({
-      ...(candidate.factId ? { factId: candidate.factId } : {}),
+      ...(factId ? { factId } : {}),
       ...(candidate.category ? { category: candidate.category } : {}),
       ...(candidate.truthLevel ? { truthLevel: candidate.truthLevel } : {}),
       ...(typeof candidate.revealTier === "number" ? { revealTier: candidate.revealTier } : {}),
       source: "candidate_new_fact",
       text: candidate.text,
-      hasEvidenceFactId: Boolean(candidate.factId),
-      allowed: Boolean(candidate.factId) && (allowed.size === 0 || allowed.has(candidate.factId)),
+      hasEvidenceFactId: Boolean(factId),
+      allowed: Boolean(factId) && (allowed.size === 0 || allowed.has(factId!)),
     });
   }
 

@@ -55,6 +55,17 @@ test("high value clue resolves to reveal budget", () => {
   assert.equal(budget.reasonCodes.includes("high_value_clue"), true);
 });
 
+test("ordinary key interaction does not inflate into a reveal budget", () => {
+  const budget = resolveNarrativeBudget({
+    latestUserInput: "我用钥匙试开防火门上的挂锁，同时照一下锁孔。",
+    playerContext: "inventory: 铜钥匙, 手机",
+    riskLane: "fast",
+  });
+
+  assert.notEqual(budget.tier, "reveal");
+  assert.equal(budget.reasonCodes.includes("high_value_clue"), false);
+});
+
 test("danger stop and key choice resolve to micro budget", () => {
   const budget = resolveNarrativeBudget({
     plannedTurnMode: "decision_required",

@@ -43,7 +43,6 @@ const kgRequired = [
   "vc_world_candidate",
   "vc_world_cluster",
   "vc_cluster_observation",
-  "vc_semantic_cache",
   "vc_jobs",
 ];
 

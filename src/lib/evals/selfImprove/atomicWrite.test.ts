@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it, afterEach } from "node:test";
-import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync } from "node:fs";
+import { writeFileSync, rmSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { atomicWriteJsonSync, loadJsonWithFallback } from "./atomicWrite";
 

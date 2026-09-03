@@ -144,9 +144,6 @@ describe("NPC 一致性 — 确定性断言", () => {
 
     it("同一 NPC 不应使用另一个 NPC 的标志性口吻", () => {
       // 模拟：欣蓝不应说出老刘的工地口吻
-      const xinlan = NPC_PROFILES.npc_xinlan!;
-      const laoliuStyle = NPC_PROFILES.npc_laoliu!.speechStyle;
-
       // 检测欣蓝的台词中不应包含老刘的风格特征
       const laoliuKeywords = ["小姑娘", "你在这儿干嘛呢", "有道理"];
       const xinlanDialogue = "欣蓝想了想说：「也许吧，事情比看起来复杂。」";
@@ -157,7 +154,7 @@ describe("NPC 一致性 — 确定性断言", () => {
 
       // 验证函数可用性
       const confusionErrors = detectNpcIdentityConfusion(xinlanDialogue, {
-        npc_laoliu: laoliuStyle,
+        npc_laoliu: NPC_PROFILES.npc_laoliu!.speechStyle,
       });
       // 简化检测：函数应可执行
       assert.ok(Array.isArray(confusionErrors));

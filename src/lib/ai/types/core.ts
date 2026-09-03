@@ -9,7 +9,6 @@ export type AiProviderId = "openai_compatible" | "openai_responses" | "ark_multi
  * - PLAYER_CHAT: online DM / SSE (forbidden roles: reasoner, enhance).
  * - Control-plane tasks: PLAYER_CONTROL_PREFLIGHT, INTENT_PARSE, SAFETY_PREFILTER (control role).
  * - Adjudication / combat text: RULE_RESOLUTION, COMBAT_NARRATION (main role).
- * - Sensory polish: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH, NARRATIVE_EXPANSION (enhance role).
  * - Presentation-only localization: GAMEPLAY_LOCALIZATION (main role, no state changes).
  * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION.
  * - Eval / judge: EVAL_JUDGE (reasoning JSON, reasoner role, no streaming).
@@ -22,19 +21,15 @@ export type TaskType =
   | "SAFETY_PREFILTER"
   | "RULE_RESOLUTION"
   | "COMBAT_NARRATION"
-  | "SCENE_ENHANCEMENT"
-  | "NARRATIVE_EXPANSION"
-  | "NPC_EMOTION_POLISH"
   | "GAMEPLAY_LOCALIZATION"
   | "WORLDBUILD_OFFLINE"
   | "STORYLINE_SIMULATION"
-  | "DIRECTOR_PLAN_CRITIC"
   | "DEV_ASSIST"
   | "MEMORY_COMPRESSION"
   /** LLM-as-Judge: structured rubric scoring, non-streaming, control-role fast path. */
   | "EVAL_JUDGE"
-  /** DM Agent: bounded tool-calling for interactive narrative (feature-flagged). */
-  | "DM_AGENT";
+  /** Mechanics Workflow: bounded tool-calling for interactive narrative (feature-flagged). */
+  | "MECHANICS";
 
 /** Declared abilities for registry entries (extensible for future tools / vision). */
 export type ModelCapability =

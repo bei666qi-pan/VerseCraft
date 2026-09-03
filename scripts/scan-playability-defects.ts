@@ -10,11 +10,10 @@
  */
 
 import { readdirSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 import {
   scanAllTraces,
   TRACE_DETECTORS,
-  type Defect,
 } from "../src/lib/evals/detectors/playabilityDefects";
 
 interface Trace {
@@ -52,7 +51,7 @@ function loadTraces(): Trace[] {
             terminatedReason: raw.terminatedReason ?? "unknown",
           });
         }
-      } catch (err) {
+      } catch {
         console.warn(`⚠️ 跳过损坏文件: ${file}`);
       }
     }

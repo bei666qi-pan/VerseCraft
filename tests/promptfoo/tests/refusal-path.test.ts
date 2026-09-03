@@ -222,7 +222,6 @@ describe("Refusal Path — 拒绝路径确定性断言", () => {
         is_death: true,
         options: ["继续", "放弃"],
       };
-      const errs = collectAllErrors(validateFullDmJson(output));
       // 业务级断言由 narrativeJudge 处理，但 schema 层至少能识别字段一致性
       assert.ok(typeof output.is_death === "boolean");
     });

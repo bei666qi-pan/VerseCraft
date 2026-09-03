@@ -27,7 +27,7 @@
 - 逻辑：`src/lib/epistemic/validator.ts`、`src/lib/epistemic/rewrite.ts`
 - 接线：`src/app/api/chat/route.ts` 的 `runStreamFinalHooks`  
   - 在首次 options 补救之后、`resolveDmTurn` **之前**执行一次；  
-  - 若 post-resolve 再次 `generateOptionsOnlyFallback`，会**再跑**一次 guard 并重新 `resolveDmTurn`，避免补选项引入新泄露。
+  - 候选进入唯一 TurnFinalizer 后会执行一次 guard 并重新 `resolveDmTurn`；缺失选项只做确定性补齐，不触发第二条模型链。
 
 ## 遥测（`chat_request_finished`）
 

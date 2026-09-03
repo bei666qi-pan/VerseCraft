@@ -12,7 +12,7 @@ import {
   SMOKE_CAMPAIGN_CONFIG,
   type CampaignStopConfig,
 } from "./stopPolicy";
-import { initState, incrementRound, transitionTo } from "./stateMachine";
+import { initState, incrementRound } from "./stateMachine";
 import type { QualityGateResult } from "./types";
 
 const TEST_RUN_ID = "test-stop-policy";

@@ -127,27 +127,24 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
   const legacySchema = `director_legacy_${process.pid}_${Date.now()}`;
   assert.match(legacySchema, /^[a-z0-9_]+$/);
 
-  const [{ pool }, queueCore, jobs, contracts, validator, engine, hintRepository, writerConsumer] =
+  const [{ pool }, { ensureRuntimeSchema }, queueCore, jobs, contracts, validator, engine, writerConsumer] =
     await Promise.all([
       import("@/db/index"),
+      import("@/db/ensureSchema"),
       import("./queueCore"),
       import("@/lib/kg/jobs"),
       import("./contracts"),
       import("./validator"),
       import("./engine"),
-      import("./hintRepository"),
       import("./writerHintConsumer"),
     ]);
 
-  await admin.query(
-    `ALTER TABLE IF EXISTS public.world_engine_hint_envelopes
-     DROP CONSTRAINT IF EXISTS director_integration_force_hint_failure`,
-  );
+  await ensureRuntimeSchema();
 
   t.after(async () => {
     await admin.query(
-      `ALTER TABLE IF EXISTS public.world_engine_hint_envelopes
-       DROP CONSTRAINT IF EXISTS director_integration_force_hint_failure`,
+      `ALTER TABLE IF EXISTS public.world_engine_event_queue
+       DROP CONSTRAINT IF EXISTS director_integration_force_agenda_failure`,
     );
     await admin.query(`DROP SCHEMA IF EXISTS ${legacySchema} CASCADE`);
     await admin.end();
@@ -250,11 +247,11 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       changedTaskIds: [],
       changedClueIds: [],
       pacingChapterSignals: {
-        phase: "build_up" as const,
-        tension: 0.4,
-        chapterId: null,
-        chapterIndex: 0,
-        progress: 0.2,
+        phase: "rising" as const,
+        tension: 2 as const,
+        chapterId: "integration-chapter",
+        completedBeatIds: [],
+        turnsInChapter: 12,
       },
       worldStateSummary: {
         day: 1,
@@ -327,12 +324,8 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
     });
   });
 
-  await t.test("same-session Writer hints stay world-scoped and fail open on deadline", async () => {
-    await admin.query(
-      `ALTER TABLE IF EXISTS public.world_engine_hint_envelopes
-       DROP CONSTRAINT IF EXISTS director_integration_force_hint_failure`,
-    );
-    const sessionId = `director-hint-${Date.now()}`;
+  await t.test("same-session Writer directives stay world-scoped and fail open on deadline", async () => {
+    const sessionId = `director-directive-${Date.now()}`;
     const runRows = await admin.query<{ run_id: number; world_id: string }>(
       `INSERT INTO public.world_engine_runs
        (world_id, map_id, dedup_key, request_id, session_id,
@@ -346,57 +339,28 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       [`dedup-${sessionId}`, `dark-${sessionId}`, sessionId, `xingni-${sessionId}`],
     );
     const runByWorld = new Map(runRows.rows.map((row) => [row.world_id, row.run_id]));
-    const client = await pool.connect();
-    try {
-      await hintRepository.insertDirectorHintEnvelope({
-        hintId: `hint-dark-${sessionId}`,
-        runId: runByWorld.get("dark_moon_prologue")!,
-        worldId: "dark_moon_prologue",
-        mapId: "dark_moon_apartment",
-        sessionId,
-        worldRevision: "11",
-        validFromTurn: 13,
-        validThroughTurn: 16,
-        phase: "build_up",
-        directions: ["只推进暗月走廊的可观察异常。"],
-        must: [],
-        should: [],
-        may: ["让远处灯光短暂闪烁。"],
-        forbid: ["不得出现青石县人物。"],
-        factRefs: [],
-        eventRefs: ["EV_DARK_TEST"],
-        npcRefs: [],
-        sources: ["world_director"],
-        lifecycle: "active",
-        createdAt: new Date().toISOString(),
-      }, client);
-      await hintRepository.insertDirectorHintEnvelope({
-        hintId: `hint-xingni-${sessionId}`,
-        runId: runByWorld.get("xingni_taichu")!,
-        worldId: "xingni_taichu",
-        mapId: "xingni_qingshi_county",
-        sessionId,
-        worldRevision: "12",
-        validFromTurn: 13,
-        validThroughTurn: 16,
-        phase: "build_up",
-        directions: ["只推进青石县集市的登记微事件。"],
-        must: [],
-        should: [],
-        may: ["让药香随风掠过。"],
-        forbid: ["不得出现暗月公寓人物。"],
-        factRefs: [],
-        eventRefs: ["XQ-EV01"],
-        npcRefs: ["XQ-N006"],
-        sources: ["world_director"],
-        lifecycle: "active",
-        createdAt: new Date().toISOString(),
-      }, client);
-    } finally {
-      client.release();
-    }
+    await admin.query(
+      `INSERT INTO public.world_engine_director_state
+       (world_id, map_id, session_id, turn_index, phase, pacing_json, recent_director_intent)
+       VALUES
+       ('dark_moon_prologue', 'dark_moon_apartment', $1, 12, 'build_up', '{}'::jsonb, '只推进暗月走廊的可观察异常。'),
+       ('xingni_taichu', 'xingni_qingshi_county', $1, 12, 'build_up', '{}'::jsonb, '只推进青石县集市的登记微事件。')`,
+      [sessionId],
+    );
+    await admin.query(
+      `INSERT INTO public.world_engine_event_queue
+       (run_id, world_id, map_id, session_id, event_code, title, status,
+        due_in_turns, due_turn_index, ttl_turns, expires_turn_index, priority,
+        salience, reveal_policy, injection_hint, agency_constraints, forbidden_outcomes, dedup_key)
+       VALUES
+       ($1, 'dark_moon_prologue', 'dark_moon_apartment', $3, 'EV_DARK_TEST', '暗月测试', 'pending',
+        1, 13, 3, 16, 'medium', 80, 'hint_only', '让远处灯光短暂闪烁。', '["player_can_ignore"]'::jsonb, '["不得出现青石县人物"]'::jsonb, $4),
+       ($2, 'xingni_taichu', 'xingni_qingshi_county', $3, 'XQ-EV01', '星逆测试', 'pending',
+        1, 13, 3, 16, 'medium', 80, 'hint_only', '让药香随风掠过。', '["player_can_ignore"]'::jsonb, '["不得出现暗月公寓人物"]'::jsonb, $5)`,
+      [runByWorld.get("dark_moon_prologue"), runByWorld.get("xingni_taichu"), sessionId, `dark-${sessionId}`, `xingni-${sessionId}`],
+    );
 
-    const darkHint = await writerConsumer.loadCommittedDirectorHintForWriter({
+    const darkDirective = await writerConsumer.loadDirectorDirectiveForWriter({
       scope: {
         worldId: "dark_moon_prologue",
         mapId: "dark_moon_apartment",
@@ -405,7 +369,7 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       turnIndex: 13,
       timeoutMs: 80,
     });
-    const xingniHint = await writerConsumer.loadCommittedDirectorHintForWriter({
+    const xingniDirective = await writerConsumer.loadDirectorDirectiveForWriter({
       scope: {
         worldId: "xingni_taichu",
         mapId: "xingni_qingshi_county",
@@ -414,19 +378,19 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       turnIndex: 13,
       timeoutMs: 80,
     });
-    assert.equal(darkHint?.envelope.hintId, `hint-dark-${sessionId}`);
-    assert.equal(xingniHint?.envelope.hintId, `hint-xingni-${sessionId}`);
-    assert.match(darkHint?.block ?? "", /暗月走廊/);
-    assert.doesNotMatch(darkHint?.block ?? "", /青石县集市/);
-    assert.match(xingniHint?.block ?? "", /青石县集市/);
-    assert.doesNotMatch(xingniHint?.block ?? "", /暗月走廊/);
+    assert.match(darkDirective?.directive.directiveId ?? "", /^directive_/);
+    assert.match(xingniDirective?.directive.directiveId ?? "", /^directive_/);
+    assert.match(darkDirective?.block ?? "", /暗月走廊/);
+    assert.doesNotMatch(darkDirective?.block ?? "", /青石县集市/);
+    assert.match(xingniDirective?.block ?? "", /青石县集市/);
+    assert.doesNotMatch(xingniDirective?.block ?? "", /暗月走廊/);
 
     const locker = new Client({ connectionString: databaseUrl });
     await locker.connect();
     await locker.query("BEGIN");
-    await locker.query("LOCK TABLE public.world_engine_hint_envelopes IN ACCESS EXCLUSIVE MODE");
+    await locker.query("LOCK TABLE public.world_engine_event_queue IN ACCESS EXCLUSIVE MODE");
     const startedAt = Date.now();
-    const timedOut = await writerConsumer.loadCommittedDirectorHintForWriter({
+    const timedOut = await writerConsumer.loadDirectorDirectiveForWriter({
       scope: {
         worldId: "dark_moon_prologue",
         mapId: "dark_moon_apartment",
@@ -437,7 +401,7 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
     });
     const elapsedMs = Date.now() - startedAt;
     assert.equal(timedOut, null);
-    assert.ok(elapsedMs < 300, `hint lookup should fail open, got ${elapsedMs}ms`);
+    assert.ok(elapsedMs < 300, `directive lookup should fail open, got ${elapsedMs}ms`);
     await locker.query("ROLLBACK");
     await locker.end();
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -495,7 +459,7 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       player_private_hooks: [],
     }));
     assert.ok(delta);
-    const validation = validator.validateDirectorPlan(delta);
+    const validation = validator.validateChapterPacingPlan(delta);
     assert.equal(validation.accepted, true);
     const payload: WorldEngineTickPayload = {
       version: 2,
@@ -513,11 +477,11 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       changedTaskIds: [],
       changedClueIds: [],
       pacingChapterSignals: {
-        phase: "build_up",
-        tension: 0.4,
-        chapterId: null,
-        chapterIndex: 0,
-        progress: 0.2,
+        phase: "rising",
+        tension: 2,
+        chapterId: "integration-chapter",
+        completedBeatIds: [],
+        turnsInChapter: 1,
       },
       worldStateSummary: {
         day: 1,
@@ -566,15 +530,13 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       previousDirectorState: null,
     };
     await admin.query(
-      `ALTER TABLE public.world_engine_hint_envelopes
-       ADD CONSTRAINT director_integration_force_hint_failure CHECK (false) NOT VALID`,
+      `ALTER TABLE public.world_engine_event_queue
+       ADD CONSTRAINT director_integration_force_agenda_failure CHECK (false) NOT VALID`,
     );
     try {
       await assert.rejects(engine.writeWorldEngineOutputs(args));
       for (const [table, predicate, value] of [
-        ["world_engine_agenda_snapshots", "run_id = $1", runId],
         ["world_engine_event_queue", "run_id = $1", runId],
-        ["world_engine_hint_envelopes", "run_id = $1", runId],
         ["world_engine_director_state", "session_id = $1", sessionId],
       ] as const) {
         const count = await admin.query<{ count: string }>(
@@ -597,8 +559,8 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       assert.equal(failedRun.rows[0]?.status, "running");
     } finally {
       await admin.query(
-        `ALTER TABLE public.world_engine_hint_envelopes
-         DROP CONSTRAINT IF EXISTS director_integration_force_hint_failure`,
+        `ALTER TABLE public.world_engine_event_queue
+         DROP CONSTRAINT IF EXISTS director_integration_force_agenda_failure`,
       );
     }
     const committed = await engine.writeWorldEngineOutputs(args);
@@ -613,13 +575,10 @@ test("unified Director PostgreSQL integration", { skip: !enabled }, async (t) =>
       "worldRevision" in recovered ? recovered.worldRevision : 0n,
       committed.worldRevision,
     );
-    const persisted = await admin.query<{ snapshots: string; hints: string; agenda: string }>(
-      `SELECT
-         (SELECT COUNT(*) FROM public.world_engine_agenda_snapshots WHERE run_id = $1)::text AS snapshots,
-         (SELECT COUNT(*) FROM public.world_engine_hint_envelopes WHERE run_id = $1)::text AS hints,
-         (SELECT COUNT(*) FROM public.world_engine_event_queue WHERE run_id = $1)::text AS agenda`,
+    const persisted = await admin.query<{ agenda: string }>(
+      `SELECT (SELECT COUNT(*) FROM public.world_engine_event_queue WHERE run_id = $1)::text AS agenda`,
       [runId],
     );
-    assert.deepEqual(persisted.rows[0], { snapshots: "1", hints: "1", agenda: "1" });
+    assert.deepEqual(persisted.rows[0], { agenda: "1" });
   });
 });

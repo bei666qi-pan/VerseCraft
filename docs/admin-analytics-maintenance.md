@@ -75,7 +75,7 @@ referrer URL、域名、搜索词、UTM 或页面路径。后台的 UV 仅对格
 - `GET /api/admin/users/[actorKey]`
 - `GET /api/admin/audit-logs?limit=20&cursor=`
 - `POST /api/admin/rebuild-daily?days=3`
-- `POST /api/admin/cron/world-engine-cleanup?runsDays=30&queueDays=14&snapshotsDays=14`：清理 `world_engine_runs`/`world_engine_event_queue`（仅终态 `resolved`/`expired`）/`world_engine_agenda_snapshots`（仅保留每个 session 最新 revision）。需要 `x-cron-secret`。
+- `POST /api/admin/cron/world-engine-cleanup?runsDays=30&queueDays=14`：只清理超过保留期、且没有非终态 agenda 的 `world_engine_runs`，以及终态 `resolved`/`expired` 的 `world_engine_event_queue`。需要 `x-cron-secret`；已删除的 agenda snapshot 不再参与维护。
 
 ### 北极星指标（North Star Metric）
 

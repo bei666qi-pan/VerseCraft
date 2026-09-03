@@ -12,7 +12,6 @@ VerseCraft 以短事务为主，优先考虑 `transaction pooling`。
 
 ## 与当前 KG 查询的关系
 
-- KG 语义缓存查询在事务内使用 `SET LOCAL ivfflat.probes`，在单事务单连接内生效。
 - 该模式与 transaction pooling 兼容，不要求跨请求保持 session 状态。
 
 ## 注意事项
@@ -30,4 +29,3 @@ default_pool_size = 20
 reserve_pool_size = 5
 reserve_pool_timeout = 3
 ```
-

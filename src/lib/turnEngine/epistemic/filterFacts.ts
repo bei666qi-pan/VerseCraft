@@ -7,7 +7,7 @@
  *
  * - Pure function. No I/O, no store access, no env reads.
  * - Reuses the existing visibility oracle `canActorKnowFact` from
- *   `@/lib/epistemic/guards` 鈥?we do NOT invent a second permission model.
+ *   `@/lib/epistemic/guards`; we do not invent a second permission model.
  * - Nominal types are applied *after* classification so downstream code can
  *   rely on the brand guarantees without casting everywhere.
  * - Xinlan (and any future `isXinlanException`) is handled here explicitly:

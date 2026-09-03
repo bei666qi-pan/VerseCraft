@@ -175,7 +175,7 @@ export function IntroPageClient({ xingniEnabled = true }: { xingniEnabled?: bool
     router.prefetch("/create");
   }, [router]);
 
-  const activeSlide = INTRO_WORLD_SLIDES[activeIndex];
+  const activeSlide: IntroWorldSlide = INTRO_WORLD_SLIDES[activeIndex];
   const activeAvailable = activeSlide.available && (activeSlide.worldId !== "xingni_taichu" || xingniEnabled);
   const previousSlide = INTRO_WORLD_SLIDES[(activeIndex - 1 + INTRO_WORLD_SLIDES.length) % INTRO_WORLD_SLIDES.length];
   const nextSlide = INTRO_WORLD_SLIDES[(activeIndex + 1) % INTRO_WORLD_SLIDES.length];

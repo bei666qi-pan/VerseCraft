@@ -50,7 +50,7 @@ function addDistinct(out: string[], value: unknown): void {
 export function buildVisibleOptionsSceneAnchors(input: {
   playerLocation?: string | null;
   presentNpcIds?: string[] | null;
-  equippedWeapon?: Record<string, unknown> | null;
+  equippedWeapon?: { name?: unknown } | null;
   inventoryHints?: string[] | null;
   latestNarrative?: string | null;
 }): string[] {

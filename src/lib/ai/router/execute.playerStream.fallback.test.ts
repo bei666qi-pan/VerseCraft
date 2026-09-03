@@ -135,6 +135,49 @@ test("executePlayerChatStream falls back when primary upstream returns 503", asy
   assert.ok(result.response.body);
 });
 
+test("executePlayerChatStream honors a one-call workflow budget without provider fallback", async (t) => {
+  const restoreEnv = patchEnv({
+    AI_GATEWAY_BASE_URL: "https://gateway.test",
+    AI_GATEWAY_API_KEY: "k",
+    AI_MODEL_WRITER: "upstream-main",
+    AI_MODEL_MAIN: "upstream-main",
+    AI_MODEL_CONTROL: "upstream-control",
+    AI_MODEL_ENHANCE: "e",
+    AI_MODEL_REASONER: "r",
+    AI_PLAYER_ROLE_CHAIN: "main,control",
+    AI_MAX_RETRIES: "2",
+    AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES: "3",
+    AI_CIRCUIT_FAILURE_THRESHOLD: "99",
+  });
+  const origFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("upstream unavailable", { status: 503 });
+  };
+
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restoreEnv();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const result = await executePlayerChatStream({
+    messages: [{ role: "user", content: "hello" }],
+    ctx: { requestId: "one-call-budget", task: "PLAYER_CHAT", userId: null },
+    maxProviderCalls: 1,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(calls, 1);
+  assert.equal(result.httpAttempts.length, 1);
+});
+
 test("executePlayerChatStream falls back when primary upstream fetch times out", async (t) => {
   const restoreEnv = patchEnv({
     AI_GATEWAY_BASE_URL: "https://gateway.test",

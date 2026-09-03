@@ -1,23 +1,10 @@
 // src/lib/worldKnowledge/retrieval/queryRewriter.test.ts
-// Tests for enhancedSegmentCJK, shouldRewriteQuery, and enrichQueryHeuristically.
+// Tests for deterministic CJK segmentation and query enrichment.
 
-import { describe, it, expect, vi } from "vitest";
-
-// queryRewriter.ts imports from @/ at module level — mock those so
-// vitest can resolve the module under test.
-vi.mock("@/lib/config/envRaw", () => ({
-  envBoolean: vi.fn(() => false),
-  envRaw: vi.fn(() => ""),
-}));
-vi.mock("@/lib/observability/langfuse", () => ({
-  startGeneration: vi.fn(() => ({
-    end: vi.fn(),
-  })),
-}));
+import { describe, it, expect } from "vitest";
 
 import {
   enhancedSegmentCJK,
-  shouldRewriteQuery,
   enrichQueryHeuristically,
 } from "./queryRewriter";
 
@@ -108,41 +95,6 @@ describe("enhancedSegmentCJK", () => {
     // "老王" is a bigram, "走了" is a bigram
     // "走" is not a function word but is 1 char so no full-word entry
     expect(tokens).not.toContain("走");
-  });
-});
-
-// ── shouldRewriteQuery ──────────────────────────────────────
-
-describe("shouldRewriteQuery", () => {
-  it("returns false for very short inputs (< 4 chars)", () => {
-    expect(shouldRewriteQuery("去")).toBe(false);
-    expect(shouldRewriteQuery("看")).toBe(false);
-    expect(shouldRewriteQuery("走吧")).toBe(false);
-  });
-
-  it("returns false for single-word short queries (≤ 6 chars, no spaces)", () => {
-    expect(shouldRewriteQuery("暗月")).toBe(false);
-    expect(shouldRewriteQuery("门厅探索")).toBe(false);
-  });
-
-  it("returns false for commands starting with /", () => {
-    expect(shouldRewriteQuery("/help")).toBe(false);
-    expect(shouldRewriteQuery("/status")).toBe(false);
-  });
-
-  it("returns false for pure punctuation or emoji", () => {
-    expect(shouldRewriteQuery("…")).toBe(false);
-    expect(shouldRewriteQuery("？。！")).toBe(false);
-  });
-
-  it("returns true for longer meaningful queries", () => {
-    expect(shouldRewriteQuery("帮忙找一下钥匙")).toBe(true);
-    expect(shouldRewriteQuery("我想知道那个NPC的故事")).toBe(true);
-  });
-
-  it("returns true for multi-word short queries", () => {
-    // 8 chars with a space => len > 4 and has a space, so passes single-word check
-    expect(shouldRewriteQuery("钥匙 在哪")).toBe(true);
   });
 });
 
