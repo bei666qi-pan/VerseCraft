@@ -35,11 +35,6 @@
 // See AGENTS.md §3.2.6 for the full current picture.
 import type { NormalizedCompletionRequest, ProviderRequestFactory } from "@/lib/ai/providers/types";
 import {
-  buildPlayerTurnTerminalTool,
-  buildPlayerTurnTerminalToolChoice,
-  shouldUsePlayerTurnTerminalTool,
-} from "@/lib/ai/tools/playerTurnTerminalTool";
-import {
   buildPlayerNarrativeTerminalTool,
   buildPlayerNarrativeTerminalToolChoice,
   shouldUsePlayerNarrativeTerminalTool,
@@ -119,18 +114,8 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
       // we keep the stream alive long enough to collect it.
       payload.stream_options = { include_usage: true };
     }
-    // Tools are not used in the realtime player turn by default; the
-    // Chat Completions path uses the submit_player_turn terminal tool, the
-    // Responses path keeps the same JSON-only contract and skips tools
-    // when no `body.tools` is supplied. The `submit_player_turn` strict
-    // function tool is also wired into the Responses channel for PLAYER_CHAT
-    // (see change `open-responses-streaming-for-player-turn` and AGENTS.md
-    // §3.2.6): the router layer decides whether to attach the terminal tool
-    // based on the same `usePlayerTurnTerminalTool` condition used by
-    // `openaiCompatibleGateway`, and this gateway only emits the tool when
-    // it is present in `body.tools`. Strict function tool and
-    // `text.format.json_schema` remain mutually exclusive in the same
-    // request (AGENTS.md §3.2.2).
+    // The realtime Writer has one terminal contract: submit_narrative.
+    // Explicit caller tools still pass through for non-Writer tasks.
     const extra = body.extraBody;
     // Skip the default reasoning effort when the task already disables
     // upstream thinking via extraBody (the Responses API rejects
@@ -200,20 +185,18 @@ export const openaiResponsesGateway: ProviderRequestFactory = {
     //
     // Strict function mode and `text.format.json_schema` are mutually
     // exclusive in the same request (AGENTS.md §3.2.2). When we append
-    // `submit_player_turn` automatically we must therefore drop the
+    // `submit_narrative` automatically we must therefore drop the
     // `text` block — otherwise upstream providers (notably Volcengine
     // Ark agent-plan) reject the request with conflicting
     // constraint-decoder instructions. See change
     // `open-responses-streaming-for-player-turn` and AGENTS.md §3.2.6.
     //
-    // Phase 5.B：flag 开启时优先 `submit_narrative`（4 字段 subset），否则
-    // fallback 到 `submit_player_turn` envelope path。两条分支都把 `text` 块删掉。
+    // Writer has one narrow candidate protocol: submit_narrative. There is no
+    // parallel full-DM terminal envelope.
     const useNarrative = shouldUsePlayerNarrativeTerminalTool(body);
-  if (useNarrative || shouldUsePlayerTurnTerminalTool(body)) {
-      const tool = useNarrative ? buildPlayerNarrativeTerminalTool() : buildPlayerTurnTerminalTool();
-      const toolChoice = useNarrative
-        ? buildPlayerNarrativeTerminalToolChoice()
-        : buildPlayerTurnTerminalToolChoice();
+    if (useNarrative) {
+      const tool = buildPlayerNarrativeTerminalTool();
+      const toolChoice = buildPlayerNarrativeTerminalToolChoice();
       payload.tools = [
         {
           type: tool.type,

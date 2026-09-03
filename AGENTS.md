@@ -4,6 +4,7 @@
 
 - Read `CONTEXT.md` before changing narrative-runtime terms.
 - Architecture decisions live in `docs/adr/`: [ADR-0001](docs/adr/0001-single-turn-and-director-workflows.md) defines the workflows, [ADR-0002](docs/adr/0002-director-storage-and-save-migration.md) defines storage convergence and legacy-save migration, and [ADR-0003](docs/adr/0003-no-online-turn-response-cache.md) prohibits cached turn responses from bypassing the sole Finalizer.
+- ADR-0001 was amended on 2026-09-03: Writer has one four-field narrative-candidate wire contract; the full DM JSON terminal and compatibility retry no longer exist.
 - Code and executable tests describe current behavior. `openspec/specs/` describes accepted behavior; an active change is not proof of implementation.
 - Use simplified Chinese in user-facing work. Never fabricate test, deployment or live-integration success.
 
@@ -11,7 +12,7 @@
 
 `Player action → PlayerTurnWorkflow → Writer or Mechanics Workflow → Turn Engine commit → __VERSECRAFT_FINAL__ → asynchronous World Director → later Director Directive`
 
-- Writer is the only source of player-visible narrative and produces candidates only.
+- Writer is the only source of player-visible narrative and emits only narrative, four options and bounded turn-shape fields; it never proposes state.
 - Mechanics Workflow is bounded, world-scoped and cannot commit or emit FINAL.
 - Turn Engine is the only validation, resolution and commit authority. Every successful request emits exactly one authoritative FINAL.
 - Complete online turn responses are never cached or replayed; knowledge caches may hold only non-authoritative retrieval inputs.
@@ -32,7 +33,8 @@
 
 ## Budgets
 
-- Credible feedback p95 ≤ 800ms; first visible text p95 ≤ 5s; ordinary final p95 ≤ 20s.
+- Credible feedback p95 ≤ 800ms; first visible text p95 ≤ 5s; concrete narrative hard max ≤ 8s; ordinary final p95 ≤ 20s.
+- Options maintenance is deterministic and must complete within a 5s client/server ceiling.
 - Narrative lane: at most one generative invocation.
 - Mechanics lane: at most two generative invocations, one state-changing command and 20s total.
 - World Director: at most one invocation, 2048 output tokens and 45s per eligible tick, normally no more often than every four turns.

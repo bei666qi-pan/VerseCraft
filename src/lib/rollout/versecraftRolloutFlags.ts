@@ -24,8 +24,6 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enablePlayerFacingTaskCopyV2: boolean;
   /** 普通回合 options 为空时自动走一次 options-only 补全 */
   enableOptionsAutoRegenOnEmpty: boolean;
-  /** options-only 独立链路 V2（独立 prompt/packet，绕开主叙事管线） */
-  enableOptionsOnlyRegenPathV2: boolean;
   /** 双核新手引导 V2（老刘生存轴 + 麟泽边界轴） */
   enableNewPlayerGuideDualCoreV2: boolean;
   /** NPC 同场社交表层（npc_social_surface_packet + peerRelationalCues） */
@@ -166,10 +164,6 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableTaskAutoOpenOnNarrativeGrant: readFlag("VERSECRAFT_ENABLE_TASK_AUTO_OPEN_ON_NARRATIVE_GRANT", true),
     enablePlayerFacingTaskCopyV2: readFlag("VERSECRAFT_ENABLE_PLAYER_FACING_TASK_COPY_V2", true),
     enableOptionsAutoRegenOnEmpty: readFlag("VERSECRAFT_ENABLE_OPTIONS_AUTO_REGEN_ON_EMPTY", true),
-    enableOptionsOnlyRegenPathV2: readFlagFirst(
-      ["VERSECRAFT_ENABLE_OPTIONS_ONLY_REGEN_PATH_V2"],
-      true
-    ),
     enableNewPlayerGuideDualCoreV2: readFlagFirst(
       ["VERSECRAFT_ENABLE_NEW_PLAYER_GUIDE_DUAL_CORE_V2", "VERSECRAFT_ENABLE_NEW_PLAYER_GUIDE_DUAL_CORE"],
       true

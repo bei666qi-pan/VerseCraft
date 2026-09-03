@@ -67,17 +67,6 @@ export type ClientStructuredContextV1 = {
   narrativeLinkageDigest?: string;
 };
 
-export type OptionsRegenContextPayload = {
-  latestPlayerAction: string;
-  latestNarrativeExcerpt: string;
-  currentOptions: string[];
-  recentOptions: string[];
-  activeTaskSummaries: string[];
-  inventoryHints?: string[];
-  repairNeedCount?: number;
-  repairLockedOptions?: string[];
-};
-
 export type ChatValidationResult =
   | {
       ok: true;
@@ -94,8 +83,6 @@ export type ChatValidationResult =
       clientReason: string;
       /** 客户端最近一次提交回合的模式提示，仅用于 options-only 刷新分流。 */
       clientTurnModeHint: "decision_required" | "narrative_only" | "system_transition" | null;
-      /** options-only 专用轻量上下文包（不用于主回合推进）。 */
-      optionsRegenContext: OptionsRegenContextPayload | null;
       /** Requested player-facing response language. Defaults to legacy Chinese. */
       language: GameLanguage;
     }
@@ -272,7 +259,6 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
   const rawClientPurpose = bodyObj.clientPurpose;
   const rawClientReason = bodyObj.clientReason;
   const rawClientTurnModeHint = bodyObj.clientTurnModeHint;
-  const rawOptionsRegenContext = bodyObj.optionsRegenContext;
   const rawLanguage = bodyObj.language;
 
   if (!Array.isArray(rawMessages)) {
@@ -332,26 +318,6 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
     rawClientTurnModeHint === "system_transition"
       ? rawClientTurnModeHint
       : null;
-  const optionsCtxObj = asPlainObject(rawOptionsRegenContext);
-  const optionsRegenContext: OptionsRegenContextPayload | null = optionsCtxObj
-    ? {
-        latestPlayerAction: sanitizeInputText(String(optionsCtxObj.latestPlayerAction ?? ""), 280),
-        latestNarrativeExcerpt: sanitizeInputText(String(optionsCtxObj.latestNarrativeExcerpt ?? ""), 1200),
-        currentOptions: asStringArray(optionsCtxObj.currentOptions, 8).map((s) => sanitizeInputText(s, 40)).filter(Boolean),
-        recentOptions: asStringArray(optionsCtxObj.recentOptions, 12).map((s) => sanitizeInputText(s, 40)).filter(Boolean),
-        activeTaskSummaries: asStringArray(optionsCtxObj.activeTaskSummaries, 6)
-          .map((s) => sanitizeInputText(s, 80))
-          .filter(Boolean),
-        inventoryHints: asStringArray(optionsCtxObj.inventoryHints, 6)
-          .map((s) => sanitizeInputText(s, 40))
-          .filter(Boolean),
-        repairLockedOptions: asStringArray(optionsCtxObj.repairLockedOptions, 4)
-          .map((s) => sanitizeInputText(s, 40))
-          .filter(Boolean),
-        repairNeedCount: clampInt(optionsCtxObj.repairNeedCount, 0, 4),
-      }
-    : null;
-
   return {
     ok: true,
     messages: sanitizedMessages,
@@ -364,7 +330,6 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
     clientPurpose,
     clientReason,
     clientTurnModeHint,
-    optionsRegenContext,
   };
 }
 

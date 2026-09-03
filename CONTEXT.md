@@ -9,7 +9,7 @@ A player's submitted action together with the authoritative outcome committed fo
 _Avoid_: chat message, DM response
 
 **Writer**:
-The sole author of player-visible narrative. Writer output is always a candidate until the Turn Engine commits it.
+The sole author of player-visible narrative. It emits only narrative, four candidate options and bounded turn-shape fields; state is code-owned. Writer output is always a candidate until the Turn Engine commits it.
 _Avoid_: main model, narrator agent, DM Agent
 
 **Mechanics Workflow**:
@@ -21,7 +21,7 @@ The sole authority that validates, resolves and commits a Player Turn and emits 
 _Avoid_: route finalizer, DM final chain
 
 **Turn Candidate**:
-Untrusted structured narrative and state proposals produced by Writer or the Mechanics Workflow.
+Untrusted narrative/options from Writer plus any separately validated Mechanics Receipt. It contains no authoritative state.
 _Avoid_: result, final turn
 
 **Mechanics Receipt**:

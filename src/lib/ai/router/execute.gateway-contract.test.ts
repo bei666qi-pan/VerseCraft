@@ -9,7 +9,11 @@ import assert from "node:assert/strict";
 import { resetProviderCircuitsForTests } from "@/lib/ai/fallback/circuitBreaker";
 import { resetModelCircuitsForTests } from "@/lib/ai/fallback/modelCircuit";
 import type { ChatMessage } from "@/lib/ai/types/core";
-import { executeChatCompletion, executePlayerChatStream } from "@/lib/ai/router/execute";
+import {
+  executeChatCompletion,
+  executePlayerChatStream,
+  resolvePlayerChatNativeStream,
+} from "@/lib/ai/router/execute";
 import { installManagedAiTestSnapshotFromEnv } from "@/lib/ai/managed/testFixtures";
 import { getManagedBindingsForTask } from "@/lib/ai/managed/state";
 
@@ -74,6 +78,11 @@ const baseGateway = {
   AI_TIMEOUT_MS: "5000",
   AI_CIRCUIT_FAILURE_THRESHOLD: "99",
 };
+
+test("PLAYER_CHAT keeps native streaming on Responses transport", () => {
+  assert.equal(resolvePlayerChatNativeStream("openai_responses", true), true);
+  assert.equal(resolvePlayerChatNativeStream("openai_responses", false), false);
+});
 
 test("executePlayerChatStream CHAIN_EXHAUSTED after all roles return 5xx", async (t) => {
   const restore = patchEnv(baseGateway);

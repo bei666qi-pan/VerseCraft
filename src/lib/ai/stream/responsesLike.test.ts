@@ -117,7 +117,7 @@ test("function_call streaming: header -> args deltas concatenated -> finish chun
   const upstream = sse([
     {
       type: "response.output_item.added",
-      item: { type: "function_call", id: "call_abc", name: "submit_player_turn" },
+      item: { type: "function_call", id: "call_abc", name: "submit_narrative" },
     },
     { type: "response.function_call_arguments.delta", delta: '{"narrative":"你' },
     { type: "response.function_call_arguments.delta", delta: '好","options":["a","b","c","d"]}' },
@@ -139,7 +139,7 @@ test("function_call streaming: header -> args deltas concatenated -> finish chun
   const headerCall = header?.choices?.[0]?.delta?.tool_calls?.[0];
   assert.equal(headerCall?.id, "call_abc");
   assert.equal(headerCall?.type, "function");
-  assert.equal(headerCall?.function?.name, "submit_player_turn");
+  assert.equal(headerCall?.function?.name, "submit_narrative");
   assert.equal(headerCall?.function?.arguments, "");
 
   // args deltas are emitted verbatim — concatenation happens in the consumer
@@ -192,7 +192,7 @@ test("nonStreamResponsesToChatCompletionsStream wraps a non-stream function_call
       {
         type: "function_call",
         call_id: "call_xyz",
-        name: "submit_player_turn",
+        name: "submit_narrative",
         arguments: '{"narrative":"hi","options":["1","2","3","4"]}',
       },
     ],
@@ -206,7 +206,7 @@ test("nonStreamResponsesToChatCompletionsStream wraps a non-stream function_call
   assert.equal(chunks.length, 4);
   const header = chunks[0];
   assert.equal(header?.choices?.[0]?.delta?.tool_calls?.[0]?.id, "call_xyz");
-  assert.equal(header?.choices?.[0]?.delta?.tool_calls?.[0]?.function?.name, "submit_player_turn");
+  assert.equal(header?.choices?.[0]?.delta?.tool_calls?.[0]?.function?.name, "submit_narrative");
   assert.equal(chunks[1]?.choices?.[0]?.delta?.tool_calls?.[0]?.function?.arguments, '{"narrative":"hi","options":["1","2","3","4"]}');
   assert.equal(chunks[2]?.choices?.[0]?.finish_reason, "tool_calls");
   assert.equal(chunks[3]?.choices?.[0]?.finish_reason, "stop");
@@ -238,14 +238,14 @@ test("extractResponsesNonStreamContent surfaces text + tool calls + usage", () =
       {
         type: "function_call",
         call_id: "c1",
-        name: "submit_player_turn",
+        name: "submit_narrative",
         arguments: '{"narrative":"x","options":["a","b","c","d"]}',
       },
     ],
   };
   const extracted = extractResponsesNonStreamContent(data);
   assert.equal(extracted.toolCalls.length, 1);
-  assert.equal(extracted.toolCalls[0]?.function.name, "submit_player_turn");
+  assert.equal(extracted.toolCalls[0]?.function.name, "submit_narrative");
   assert.equal(extracted.toolCalls[0]?.function.arguments, '{"narrative":"x","options":["a","b","c","d"]}');
   assert.equal(extracted.usage?.totalTokens, 3);
   // tool_calls path also surfaces the raw JSON as `content` so the downstream

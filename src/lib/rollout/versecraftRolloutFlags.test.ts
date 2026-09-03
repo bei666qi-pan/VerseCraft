@@ -27,7 +27,6 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   assert.equal(f.enableTaskAutoOpenOnNarrativeGrant, true);
   assert.equal(f.enablePlayerFacingTaskCopyV2, true);
   assert.equal(f.enableOptionsAutoRegenOnEmpty, true);
-  assert.equal(f.enableOptionsOnlyRegenPathV2, true);
   assert.equal(f.enableNewPlayerGuideDualCoreV2, true);
   assert.equal(f.enableWorldFeelPackets, true);
   assert.equal(f.enableMonthStartStudentWorldlogic, true);

@@ -166,13 +166,6 @@ test("POST /api/chat/queue skips options_regen_only requests", async () => {
         chatBody("qo1", {
           clientPurpose: "options_regen_only",
           clientReason: "manual_button",
-          optionsRegenContext: {
-            latestPlayerAction: "查看门后",
-            latestNarrativeExcerpt: "走廊很安静。",
-            currentOptions: [],
-            recentOptions: [],
-            activeTaskSummaries: [],
-          },
         }),
         "203.0.113.31",
         "rq-options-only"

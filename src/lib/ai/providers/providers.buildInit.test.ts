@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { openaiCompatibleGateway } from "@/lib/ai/gateway/openaiCompatible";
 import { openaiResponsesGateway } from "@/lib/ai/gateway/openaiResponses";
 import { getProviderFactory } from "@/lib/ai/providers/index";
-import { PLAYER_TURN_TERMINAL_TOOL_NAME } from "@/lib/ai/tools/playerTurnTerminalTool";
+import { PLAYER_NARRATIVE_TERMINAL_TOOL_NAME } from "@/lib/ai/tools/playerNarrativeTerminalTool";
 
 test("getProviderFactory routes openai_responses transport to openaiResponsesGateway", () => {
   assert.strictEqual(getProviderFactory("openai_responses"), openaiResponsesGateway);
@@ -19,8 +19,8 @@ test("getProviderFactory routes openai_compatible / ark_multimodal / mock / unde
   }
 });
 
-test("openaiResponsesGateway wires submit_player_turn into a Responses-flavored payload and drops text", () => {
-  // End-to-end snapshot: same `shouldUsePlayerTurnTerminalTool` decision that
+test("openaiResponsesGateway wires submit_narrative into a Responses-flavored payload and drops text", () => {
+  // End-to-end snapshot: same narrow Writer decision that
   // `openaiCompatibleGateway` uses, but rendered in Responses wire shape
   // (flattened `tools`, `tool_choice: { type, name }`, no `messages`).
   const init = openaiResponsesGateway.buildInit("k", {
@@ -40,8 +40,8 @@ test("openaiResponsesGateway wires submit_player_turn into a Responses-flavored 
   assert.ok(Array.isArray(body.input));
   assert.equal("text" in body, false);
   assert.equal(body.tools?.length, 1);
-  assert.equal(body.tools?.[0]?.name, PLAYER_TURN_TERMINAL_TOOL_NAME);
-  assert.deepEqual(body.tool_choice, { type: "function", name: PLAYER_TURN_TERMINAL_TOOL_NAME });
+  assert.equal(body.tools?.[0]?.name, PLAYER_NARRATIVE_TERMINAL_TOOL_NAME);
+  assert.deepEqual(body.tool_choice, { type: "function", name: PLAYER_NARRATIVE_TERMINAL_TOOL_NAME });
 });
 
 test("openaiCompatibleGateway sets Authorization and json_object when requested", () => {

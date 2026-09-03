@@ -1,11 +1,9 @@
 import { normalizeRegeneratedOptions } from "@/features/play/turnCommit/phaseRegressionGuards";
 import { parseOptionsFromSsePayload } from "@/app/play/optionsRegenParsing";
 import { VERSECRAFT_CHAT_PURPOSE_HEADER, VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY } from "@/lib/chatPurpose";
-import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
 import { buildVisibleOptionsSceneAnchors } from "@/lib/play/optionsSceneAnchors";
 import { mapOptionRejectReasonToCodes } from "@/lib/play/optionsRegenObservability";
-import { getClientOptionsRegenRepairPassEnabled } from "@/lib/rollout/versecraftClientRollout";
 import { isCompleteRegeneratedOptions, isPlayableRegeneratedOptions } from "@/lib/play/optionsRegenPlayability";
 import { buildClientStructuredSnapshot } from "./playthrough/orchestrator";
 import type { GameStateSnapshot } from "./playthrough/types";
@@ -40,7 +38,7 @@ export type RequestClientOptionsRegenEvidenceInput = {
   fetcher?: FetchLike;
 };
 
-/** The UI aims for four actions and asks the model to repair only a short list. */
+/** The UI requests deterministic maintenance when fewer than four actions remain. */
 export function shouldRequestClientOptionsRegen(options: readonly unknown[]): boolean {
   return options.filter((option) => typeof option === "string" && option.trim().length > 0).length < 4;
 }
@@ -73,14 +71,6 @@ export async function requestClientOptionsRegenEvidence(input: RequestClientOpti
     inventoryHints: input.state.inventoryItemIds,
     latestNarrative: input.narrative,
   });
-  const context = buildClientOptionsRegenContext({
-    latestPlayerAction: input.playerAction,
-    latestNarrativeExcerpt: input.narrative,
-    currentOptions,
-    recentOptions,
-    inventoryHints: input.state.inventoryItemIds,
-    tasks: input.state.activeTaskIds.map((title) => ({ title, status: "active" })),
-  });
   const accepted: string[] = [];
   const rejectCodes = new Set<string>();
   let requestId: string | null = null;
@@ -92,20 +82,8 @@ export async function requestClientOptionsRegenEvidence(input: RequestClientOpti
   let acceptedOptionsCount = 0;
   let rawCandidateOptions: string[] = [];
 
-  const requestOnce = async (repairLockedOptions: string[]): Promise<string[]> => {
+  const requestOnce = async (): Promise<string[]> => {
     attempts += 1;
-    const repairContext = repairLockedOptions.length > 0
-      ? buildClientOptionsRegenContext({
-          latestPlayerAction: input.playerAction,
-          latestNarrativeExcerpt: input.narrative,
-          currentOptions,
-          recentOptions,
-          inventoryHints: input.state.inventoryItemIds,
-          tasks: input.state.activeTaskIds.map((title) => ({ title, status: "active" })),
-          repairNeedCount: Math.max(0, 4 - repairLockedOptions.length),
-          repairLockedOptions,
-        })
-      : context;
     let response: Response;
     try {
       response = await fetcher(`${input.baseUrl.replace(/\/$/, "")}/api/chat`, {
@@ -127,7 +105,6 @@ export async function requestClientOptionsRegenEvidence(input: RequestClientOpti
           openingOptionsOnlyRound: false,
           clientPurpose: "options_regen_only",
           clientReason: "【为何需要整理选项】主回合 narrative 正常但 options 缺失",
-          optionsRegenContext: repairContext,
           clientTurnModeHint: "decision_required",
         }),
       });
@@ -142,7 +119,7 @@ export async function requestClientOptionsRegenEvidence(input: RequestClientOpti
       return [];
     }
     const parsed = parseOptionsFromSsePayload(raw, {
-      normalizeOptions: (rawOptions) => normalizeRegeneratedOptions(rawOptions, recentOptions, [...currentOptions, ...repairLockedOptions]),
+      normalizeOptions: (rawOptions) => normalizeRegeneratedOptions(rawOptions, recentOptions, currentOptions),
       runSemanticQualityGate: (candidateOptions, extraBlocked = []) => {
         rawCandidateOptions = candidateOptions.slice(0, 4);
         const quality = evaluateOptionsSemanticQuality({
@@ -165,16 +142,12 @@ export async function requestClientOptionsRegenEvidence(input: RequestClientOpti
     return parsed.options;
   };
 
-  const firstPass = await requestOnce([]);
+  const firstPass = await requestOnce();
   accepted.push(...firstPass);
-  if (accepted.length < 4 && getClientOptionsRegenRepairPassEnabled()) {
-    const repair = await requestOnce(accepted);
-    accepted.splice(0, accepted.length, ...normalizeRegeneratedOptions([...accepted, ...repair], recentOptions, currentOptions));
-  }
   const options = accepted.slice(0, 4);
   const applied = isPlayableRegeneratedOptions(options);
   const complete = isCompleteRegeneratedOptions(options);
-  if (!applied && (!failureReason || failureReason === "unknown")) failureReason = "insufficient_options_after_repair";
+  if (!applied && (!failureReason || failureReason === "unknown")) failureReason = "insufficient_deterministic_options";
   return {
     source: "api_chat_options_regen_only",
     attempted: true,

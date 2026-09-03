@@ -1,62 +1,58 @@
-# player-turn-responses-streaming Specification
+# Player Turn Responses Streaming Specification
 
 ## Purpose
-TBD - created by archiving change open-responses-streaming-for-player-turn. Update Purpose after archive.
+
+Define the single narrow Writer terminal protocol and its streaming transport across OpenAI-compatible and Responses gateways.
 
 ## Requirements
 
-### Requirement: PLAYER_CHAT SHALL stream natively over the Responses channel
-The `/api/chat` player-chat coordinator SHALL route a `PLAYER_CHAT` request that lands on a service whose `ai_service_connections.transport` is `openai_responses` through `openaiResponsesGateway` and consume the upstream OpenAI Responses API SSE stream natively. The native streaming translator at `src/lib/ai/stream/responsesLike.ts` SHALL render upstream `response.output_text.delta`, `response.function_call_arguments.delta`, and `response.completed` events into the same Chat-Completions-shaped SSE chunks the rest of the consumer pipeline expects, so `parseOpenAiLikeStreamData`, the `__VERSECRAFT_STATUS__` and `__VERSECRAFT_FINAL__` envelope, and `resolveDmTurn` are unchanged.
+### Requirement: PLAYER_CHAT SHALL use one narrow Writer terminal
 
-#### Scenario: Responses channel emits native text deltas
-- **WHEN** the upstream Responses endpoint emits a `response.output_text.delta` event
-- **THEN** the translator emits a `data: {choices:[{delta:{content:...}, finish_reason:null}]}\n\n` chunk followed by any pending `data: [DONE]\n\n` after `response.completed`
+The Writer SHALL submit exactly one `submit_narrative` call containing only `narrative`, four `options`, `turn_mode` and `decision_required`. The schema SHALL reject additional properties. It SHALL NOT contain health, sanity, inventory, task, location, NPC, relationship, world delta or commit fields.
 
-#### Scenario: Responses channel emits native function call deltas
-- **WHEN** the upstream Responses endpoint emits a `response.function_call` item with `arguments` deltas
-- **THEN** the translator buffers the `arguments` across events and emits Chat-Completions `tool_calls` chunks whose `function.arguments` strings concatenate to the final JSON; on `response.completed` the translator emits a final chunk with `finish_reason:"tool_calls"` and then `[DONE]`
+#### Scenario: Writer submits a candidate
 
-#### Scenario: Responses channel error terminates the stream safely
-- **WHEN** the upstream Responses endpoint emits `response.error` or `response.failed`
-- **THEN** the translator emits an empty content chunk with `finish_reason:"stop"` followed by `[DONE]`, leaving `__VERSECRAFT_FINAL__` envelope production to the existing pipeline
+- **WHEN** a normal PLAYER_CHAT request reaches either supported gateway without caller-supplied tools
+- **THEN** the request pins `tool_choice` to `submit_narrative` and its parameter schema contains exactly the four candidate fields
 
-### Requirement: PLAYER_CHAT SHALL use the `submit_player_turn` strict function tool on the Responses channel
-When `AI_PLAYER_CHAT_FUNCTION_CALLING_MODE !== "off"` and the active service transport is `openai_responses`, the `openaiResponsesGateway` SHALL append the `submit_player_turn` `ToolDefinition` to the request payload and pin `tool_choice: { type: "function", name: "submit_player_turn" }`. The gateway SHALL NOT also enable `text.format.json_schema` for the same request, in order to preserve the §3.2.2 strict-function-vs-json-schema mutual exclusion.
+#### Scenario: Code projects candidate defaults
 
-#### Scenario: Strict function mode on Responses channel
-- **WHEN** a `PLAYER_CHAT` request reaches `openaiResponsesGateway` with `body.stream === true`, `body.tools` empty, and `resolvePlayerChatFunctionCallingMode()` returns `prefer` or `required`
-- **THEN** the request body contains `tools: [{ type: "function", function: { name: "submit_player_turn", description: "...", parameters: PLAYER_DM_JSON_STRICT_TOOL_PARAMETERS } }]`, `tool_choice: { type: "function", name: "submit_player_turn" }`, and SHALL NOT also contain `text.format: { type: "json_schema", ... }`
+- **WHEN** the terminal arguments contain a valid narrow Writer candidate
+- **THEN** server normalization projects deterministic non-authoritative defaults and the sole Turn Finalizer remains responsible for validation and commit
 
-#### Scenario: Function-calling mode `off` skips the terminal tool
-- **WHEN** `AI_PLAYER_CHAT_FUNCTION_CALLING_MODE === "off"`
-- **THEN** `openaiResponsesGateway` does not append `submit_player_turn` and the existing `text.format.json_schema` path remains in effect
+### Requirement: PLAYER_CHAT SHALL not retain a full DM terminal or compatibility model retry
 
-#### Scenario: Caller-supplied tools win over the terminal tool
-- **WHEN** a `PLAYER_CHAT` request reaches `openaiResponsesGateway` with non-empty `body.tools`
-- **THEN** the gateway passes through the caller-supplied tools and does not append `submit_player_turn`; this mirrors the `openaiCompatibleGateway` `else if` branch
+The runtime SHALL NOT expose a state-bearing `submit_player_turn` or `submit_player_dm` Writer tool, a function-calling mode switch, or a tool-rejection retry that starts another generation request. Provider incompatibility SHALL surface to deterministic failure handling.
 
-### Requirement: Responses channel rejection SHALL fall back to a JSON-mode retry
-When `AI_PLAYER_CHAT_FUNCTION_CALLING_MODE === "prefer"` and the upstream Responses endpoint returns HTTP 400 mentioning `tool_choice` / `function_call` / `tools`, `fetchWithRetry` SHALL retry exactly once with `tool_choice` and `tools` removed. On the Responses wire the retry body MUST set `text: { format: { type: "json_object" } }` (see AGENTS.md §3.2.6); on the Chat-Completions wire the retry body MUST set `response_format: { type: "json_object" }`. The wire shape is chosen by `buildPlayerTurnJsonFallbackInit` based on the request's `tool_choice` shape. When `AI_PLAYER_CHAT_FUNCTION_CALLING_MODE === "required"` the gateway SHALL surface the incompatibility instead of silently downgrading.
+#### Scenario: Provider rejects tools
 
-#### Scenario: Prefer-mode rejection rewrites the Responses body with text.format.json_object
-- **WHEN** a `PLAYER_CHAT` request with strict function tool reaches the Responses endpoint and the endpoint returns 400 with a `tool_choice` / `function_call` / `tools` error
-- **THEN** `fetchWithRetry` rewrites the request body to drop `tools` and `tool_choice` and to set `text: { format: { type: "json_object" } }`; the retry response is processed as if it were a Responses API response
+- **WHEN** the upstream provider rejects `tools` or `tool_choice`
+- **THEN** the runtime makes no compatibility generation call and closes through the existing deterministic SSE failure path
 
-#### Scenario: Prefer-mode rejection rewrites the Chat-Completions body with response_format: json_object
-- **WHEN** the same 4xx rejection occurs on a Chat-Completions request (tool_choice nested under `function`)
-- **THEN** the retry body sets `response_format: { type: "json_object" }` instead and drops `tools` / `tool_choice` / `parallel_tool_calls`
+### Requirement: Responses events SHALL preserve the PLAYER_CHAT stream contract
 
-#### Scenario: Required-mode rejection surfaces incompatibility
-- **WHEN** `AI_PLAYER_CHAT_FUNCTION_CALLING_MODE === "required"` and the upstream Responses endpoint rejects `tool_choice` / `tools`
-- **THEN** the request fails with the upstream error code propagated to the route, the existing `__VERSECRAFT_FINAL__` keys_missing / incompatible-provider envelope is produced, and there is no silent retry
+The Responses translator SHALL render `response.output_text.delta`, `response.function_call_arguments.delta`, completion and error events into the Chat-Completions-shaped stream consumed by the Turn Engine.
 
-### Requirement: Ark-incompatible streaming+thinking:disabled+json_object combo SHALL fall back to non-stream wrap
-When the active service is `Volcengine Ark agent-plan minimax-m3` (or any other endpoint previously observed to emit non-DM-JSON narrative deltas under `streaming + thinking:disabled + json_object`) and the caller is using `text.format.json_schema` (i.e. not in strict function mode), the route SHALL switch to `nonStreamResponsesToChatCompletionsStream` and wrap the upstream non-stream JSON body as a virtual Chat-Completions stream. The terminal tool path is unaffected: when strict function mode is in effect the route continues to use native streaming per the previous requirement.
+#### Scenario: Function arguments stream incrementally
 
-#### Scenario: Non-strict function request hits Ark incompatible combo
-- **WHEN** `AI_PLAYER_CHAT_FUNCTION_CALLING_MODE === "off"` and the active service is Ark agent-plan minimax-m3 with `text.format.json_schema` enabled
-- **THEN** the route issues a non-stream Responses request and `nonStreamResponsesToChatCompletionsStream` produces a synthetic Chat-Completions stream whose terminal chunk is the upstream JSON body
+- **WHEN** the upstream emits `submit_narrative` argument deltas
+- **THEN** the deltas are projected to incremental content, parsed as one candidate and followed by exactly one authoritative FINAL produced by the Turn Finalizer
 
-#### Scenario: Strict function mode skips the non-stream wrap
-- **WHEN** strict function mode is in effect
-- **THEN** the route uses native streaming even on Ark endpoints; the non-stream wrap is reserved for the `text.format.json_schema` code path
+#### Scenario: Responses error terminates safely
+
+- **WHEN** the upstream emits `response.error` or `response.failed`
+- **THEN** the translator terminates its stream and leaves FINAL production to deterministic Turn Engine failure handling
+
+### Requirement: Live latency SHALL measure concrete narrative separately from protocol bytes
+
+The performance probe SHALL record the first actual character within the `narrative` value. JSON keys, quotes and tool-call metadata SHALL NOT count as concrete narrative. First visible text p95 SHALL remain at most 5 seconds and every normal turn SHALL begin concrete narrative within 8 seconds.
+
+#### Scenario: Tool JSON prefix arrives without prose
+
+- **WHEN** the stream has emitted only `{"narrative":"`
+- **THEN** the concrete narrative timer remains unset
+
+#### Scenario: First narrative character arrives
+
+- **WHEN** the first non-whitespace character inside `narrative` arrives
+- **THEN** the probe records its elapsed time and the live budget gate fails if it exceeds 8 seconds

@@ -1,10 +1,5 @@
 import type { NormalizedCompletionRequest, ProviderRequestFactory } from "@/lib/ai/providers/types";
 import {
-  buildPlayerTurnTerminalTool,
-  buildPlayerTurnTerminalToolChoice,
-  shouldUsePlayerTurnTerminalTool,
-} from "@/lib/ai/tools/playerTurnTerminalTool";
-import {
   buildPlayerNarrativeTerminalTool,
   buildPlayerNarrativeTerminalToolChoice,
   shouldUsePlayerNarrativeTerminalTool,
@@ -68,21 +63,9 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
       payload.temperature = body.temperature;
     }
 
-    // PLAYER_CHAT is the only realtime streaming task. In function-calling mode,
-    // the model must submit one terminal `submit_player_turn` call. Its arguments
-    // are rewritten back into the existing DM JSON stream by fetchWithRetry, so
-    // the route keeps one model call and all downstream contracts stay unchanged.
-    // The decision is shared with `openaiResponsesGateway` via
-    // `shouldUsePlayerTurnTerminalTool` so both transports gate strict-function
-    // mode on the same condition (see change
-    // `open-responses-streaming-for-player-turn` and AGENTS.md §3.2.6).
-    //
-    // Phase 5.B：flag 开启时优先 `submit_narrative`（4 字段 subset），否则
-    // fallback 到 `submit_player_turn` envelope path。两条都走 provider-level
-    // strict tool_choice（A only — server-side 投影降级不在这里做，冗余）。
+    // PLAYER_CHAT is the only realtime streaming task. Writer submits the four
+    // non-authoritative narrative fields; state remains solely server-owned.
     const usePlayerNarrativeTerminalTool = shouldUsePlayerNarrativeTerminalTool(body);
-    const usePlayerTurnTerminalTool =
-      !usePlayerNarrativeTerminalTool && shouldUsePlayerTurnTerminalTool(body);
 
     // Preserve the existing response-format contract even when the terminal tool
     // is enabled. The function parameter schema governs tool arguments; the
@@ -110,9 +93,6 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
     if (usePlayerNarrativeTerminalTool) {
       payload.tools = [buildPlayerNarrativeTerminalTool()];
       payload.tool_choice = buildPlayerNarrativeTerminalToolChoice();
-    } else if (usePlayerTurnTerminalTool) {
-      payload.tools = [buildPlayerTurnTerminalTool()];
-      payload.tool_choice = buildPlayerTurnTerminalToolChoice();
     } else if (body.tools && body.tools.length > 0) {
       payload.tools = body.tools;
       if (body.toolChoice) payload.tool_choice = body.toolChoice;

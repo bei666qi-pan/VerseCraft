@@ -87,7 +87,7 @@ const REPAIR_KNOWLEDGE_BASE: Record<string, Record<string, RepairSuggestion>> = 
       rootCause: "Options are generated without verifying they can be executed in current game state.",
       candidateFiles: [
         "src/lib/playRealtime/normalizePlayerDmJson.ts",
-        "src/lib/play/optionsRegenContext.ts",
+        "src/lib/play/optionsSemanticGuards.ts",
       ],
       approach: "Add option validation against current state before presenting to player.",
       risks: ["Could reduce option variety", "Dynamic option generation may be affected"],

@@ -322,7 +322,30 @@ export function parseAccumulatedPlayerDmJson(accumulated: string): unknown | nul
  */
 export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | null {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
-  const o = obj as Record<string, unknown>;
+  const o = { ...(obj as Record<string, unknown>) };
+
+  // Writer owns prose and choices only. The narrow terminal schema prevents
+  // it from proposing authoritative state; deterministic defaults below are
+  // the candidate-to-DM projection consumed by the unique TurnFinalizer.
+  const isNarrowWriterCandidate =
+    typeof o.narrative === "string" &&
+    Array.isArray(o.options) &&
+    o.turn_mode === "decision_required" &&
+    o.decision_required === true &&
+    !(
+      "is_action_legal" in o ||
+      "sanity_damage" in o ||
+      "is_death" in o ||
+      "consumes_time" in o ||
+      "dm_change_set" in o ||
+      "world_delta" in o
+    );
+  if (isNarrowWriterCandidate) {
+    o.is_action_legal = true;
+    o.sanity_damage = 0;
+    o.is_death = false;
+    o.consumes_time = true;
+  }
 
   // Defensive guard: deepseek-v4-flash occasionally emits only the
   // security_meta-style envelope (action/stage/risk_level/request_id/reason)

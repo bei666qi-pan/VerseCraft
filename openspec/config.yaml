@@ -10,8 +10,8 @@ context: |
   技术栈固定为 Next.js 16 App Router、React 19、TypeScript、Tailwind CSS v4、Zustand 5、
   Drizzle + PostgreSQL 和 IndexedDB。包管理器为 pnpm@10，Node.js 基线为 >=22.22.0。
   目标产品架构只有一个玩家可见叙事责任主体 Writer；enhance、润色、扩写和翻译只能作为
-  Writer 内部能力，不能成为第二叙事权威。PLAYER_CHAT 优先通过 submit_player_turn Function
-  Calling/结构化输出提交候选，但候选仍必须经过 normalization、guards、validators、
+  Writer 内部能力，不能成为第二叙事权威。PLAYER_CHAT 只通过 submit_narrative Function
+  Calling 提交 narrative/options/turn-shape 候选，但候选仍必须经过 normalization、guards、validators、
   resolveDmTurn 和 commit。Writer 不裁决领域规则、不直接写状态或权威 final。
   后台 Director 通过 worker 异步推演 plan/agenda，可使用有界最小权限工具；其候选经校验、
   持久化后只以方向性 hint 引导后续 Writer，不进入当前回合首字前路径，也不直接提交玩家状态。

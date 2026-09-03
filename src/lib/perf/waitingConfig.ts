@@ -16,6 +16,8 @@ export type ChatLatencyBudget = {
   firstVisibleTextP50Ms: number;
   /** Normal live gateway p95 for first visible streamed text / first non-control token. */
   firstVisibleTextP95Ms: number;
+  /** Every live turn must begin concrete narrative content within this hard ceiling. */
+  firstConcreteNarrativeHardMaxMs: number;
   /** Normal turn p50 from submit to `__VERSECRAFT_FINAL__`. */
   normalTurnFinalP50Ms: number;
   /** Normal turn p95 from submit to `__VERSECRAFT_FINAL__`. */
@@ -38,6 +40,7 @@ export const CHAT_LATENCY_BUDGET: ChatLatencyBudget = {
   firstStatusShownP95Ms: 800,
   firstVisibleTextP50Ms: 2_500,
   firstVisibleTextP95Ms: 5_000,
+  firstConcreteNarrativeHardMaxMs: 8_000,
   normalTurnFinalP50Ms: 12_000,
   normalTurnFinalP95Ms: 20_000,
   maxNoFeedbackGapMs: 5_000,
@@ -56,20 +59,14 @@ export type OptionsRegenLatencyBudget = {
   p50TargetMs: number;
   /** Target p75 for model-generated options. */
   p75TargetMs: number;
-  /** Target p95 for model-generated options. */
+  /** Target p95 for deterministic options maintenance. */
   p95TargetMs: number;
-  /** Hard p99/service ceiling for model-generated options. */
-  p99TargetMs: number;
   /** Normal client hard deadline for `/api/chat` options_regen_only. */
   clientDeadlineMs: number;
-  /** Opening-only client hard deadline, slightly wider for cold context. */
+  /** Opening-only client hard deadline. */
   openingClientDeadlineMs: number;
-  /** Server wall-clock budget for the full options-only chain. */
+  /** Server wall-clock ceiling for the deterministic options-only chain. */
   serverBudgetMs: number;
-  /** First model attempt timeout; this is not a narrative turn. */
-  firstAttemptTimeoutMs: number;
-  /** Repair pass timeout; repair may only fill missing model options. */
-  repairAttemptTimeoutMs: number;
   /** Product paths must never synthesize generic local clickable options. */
   localFallbackOptionsAllowed: boolean;
 };
@@ -79,13 +76,10 @@ export const OPTIONS_REGEN_LATENCY_BUDGET: OptionsRegenLatencyBudget = {
   perceivedFeedbackMs: 300,
   p50TargetMs: 2_500,
   p75TargetMs: 4_000,
-  p95TargetMs: 6_000,
-  p99TargetMs: 8_500,
-  clientDeadlineMs: 9_000,
-  openingClientDeadlineMs: 11_000,
-  serverBudgetMs: 8_500,
-  firstAttemptTimeoutMs: 8_000,
-  repairAttemptTimeoutMs: 3_000,
+  p95TargetMs: 5_000,
+  clientDeadlineMs: 5_000,
+  openingClientDeadlineMs: 5_000,
+  serverBudgetMs: 5_000,
   localFallbackOptionsAllowed: false,
 } as const;
 
@@ -120,7 +114,7 @@ export const VC_WAITING = {
    */
   playOptionsOnlyClientDeadlineMs: OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs,
 
-  /** Opening fallback carries a colder context and often runs on first load. */
+  /** Opening fallback uses the same deterministic projection and hard ceiling. */
   playOpeningOptionsOnlyClientDeadlineMs: OPTIONS_REGEN_LATENCY_BUDGET.openingClientDeadlineMs,
 
   /** Waiting UX timer tick for `usePlayWaitUx`. */
@@ -143,18 +137,7 @@ export const VC_WAITING = {
    */
   playInterChunkLongGapMs: CHAT_LATENCY_BUDGET.maxInterChunkGapWarnMs,
 
-  /**
-   * Options/decision-only short JSON repair calls. These are not the main
-   * PLAYER_CHAT narrative stream and must stay bounded.
-   */
-  optionsOnlyFallbackRequestTimeoutMs: OPTIONS_REGEN_LATENCY_BUDGET.p99TargetMs,
-  optionsOnlyFallbackAttempt1TimeoutMs: OPTIONS_REGEN_LATENCY_BUDGET.firstAttemptTimeoutMs,
-  optionsOnlyFallbackAttempt2TimeoutMs: OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs,
-
-  /**
-   * Server wall-clock budget for the full options/decision repair chain.
-   * This keeps repair attempts bounded without touching the main stream.
-   */
+  /** Server ceiling for deterministic options maintenance. */
   optionsOnlyServerBudgetMs: OPTIONS_REGEN_LATENCY_BUDGET.serverBudgetMs,
 
   /**
