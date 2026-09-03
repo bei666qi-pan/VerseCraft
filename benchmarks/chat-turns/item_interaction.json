@@ -1,8 +1,8 @@
 {
   "scenario": "item_interaction",
   "description": "使用道具与调查物品，验证结构化结果和选项仍围绕场景行动。",
-  "latestUserInput": "[mock_scenario:normal_stream] 我用钥匙试开防火门上的挂锁，同时用手机灯照锁孔周围有没有刮痕。",
-  "playerContext": "player_location: 楼梯间\ninventory: 铜钥匙, 手机, 绷带\nquest_flags: 寻找逃生通道",
+  "latestUserInput": "[mock_scenario:normal_stream] 我用生锈的钥匙试开防火门上的挂锁，同时用手机灯照锁孔周围有没有刮痕。",
+  "playerContext": "player_location: 楼梯间\ninventory: 生锈的钥匙, 手机, 绷带\nquest_flags: 寻找逃生通道",
   "clientState": {
     "playerLocation": "楼梯间",
     "inventoryItemIds": ["I-D14", "I-D46"]

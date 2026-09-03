@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildChatRequestFinishedPayload,
   optionalFiniteInt,
-  toEnhanceTurnMetrics,
+  NO_ENHANCE_TURN_METRICS,
 } from "@/lib/analytics/chatRequestFinishedPayload";
 
 test("optionalFiniteInt rejects NaN and negative", () => {
@@ -98,40 +98,17 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
   assert.equal(p.rateLimited, true);
 });
 
-test("toEnhanceTurnMetrics maps applied and exception", () => {
-  assert.deepEqual(
-    toEnhanceTurnMetrics(false, null),
-    expectShapeNone()
-  );
-  const applied = toEnhanceTurnMetrics(true, {
-    kind: "applied",
-    wallMs: 12,
-    usage: { promptTokens: 3, completionTokens: 5, totalTokens: 8 },
-  });
-  assert.equal(applied.outcome, "applied");
-  assert.equal(applied.promptTokens, 3);
-  assert.equal(applied.completionTokens, 5);
-  assert.equal(applied.totalTokens, 8);
-  const err = toEnhanceTurnMetrics(true, {
-    kind: "skipped",
-    reason: "exception",
-    wallMs: 9,
-  });
-  assert.equal(err.outcome, "error");
-  assert.equal(err.skipReason, "exception");
-});
-
-function expectShapeNone() {
-  return {
+test("removed enhancement lane remains explicit in compatibility analytics", () => {
+  assert.deepEqual(NO_ENHANCE_TURN_METRICS, {
     attempted: false,
-    outcome: "none" as const,
-    skipReason: null,
-    latencyMs: null,
+    outcome: "none",
+    skipReason: "single_writer_workflow",
+    latencyMs: 0,
     promptTokens: null,
     completionTokens: null,
     totalTokens: null,
-  };
-}
+  });
+});
 
 test("buildChatRequestFinishedPayload derives totalTokens from prompt+completion", () => {
   const p = buildChatRequestFinishedPayload({

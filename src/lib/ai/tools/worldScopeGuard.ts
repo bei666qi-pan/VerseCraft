@@ -11,14 +11,14 @@
  * 实现要点：
  * - `enforceWorldScope(args, ctx, opts)` 入参 = tool args + ctx + 守卫选项。
  * - read tool 仍走守卫（即使只读也必须世界作用域正确，否则可能读到错误世界的快照）。
- * - 守卫失败时返回 `DmToolResult` 失败形态（`ok: false, code: "world_mismatch"`），
+ * - 守卫失败时返回 `MechanicsToolResult` 失败形态（`ok: false, code: "world_mismatch"`），
  *   handler 直接 return，不再继续业务逻辑。
  *
  * 参考：
  * - AGENTS.md §2.5.3
  * - openspec/changes/integrate-bounded-dm-agent-tools/specs/symbolic-world-model-player-chat/spec.md
  */
-import type { DmAgentContext, DmToolResult } from "./dmAgentTypes";
+import type { MechanicsToolResult } from "./mechanicsTypes";
 
 export type WorldScopeGuardOptions = {
   /**
@@ -57,7 +57,7 @@ function readStringField(args: Record<string, unknown>, key: string): string | n
 
 /**
  * 在 handler 入口校验 worldId / mapId 隔离。
- * 失败时返回 DmToolResult 失败形态，handler 应直接 return。
+ * 失败时返回 MechanicsToolResult 失败形态，handler 应直接 return。
  * 成功时返回 null，handler 继续业务逻辑。
  *
  * 校验规则：
@@ -71,7 +71,7 @@ export function enforceWorldScope(
   args: Record<string, unknown>,
   ctx: { worldId: string; mapId?: string },
   opts: WorldScopeGuardOptions
-): DmToolResult | null {
+): MechanicsToolResult | null {
   const worldIdKey = opts.worldIdKey ?? "worldId";
   const mapIdKey = opts.mapIdKey ?? "mapId";
   const requireWorldIdInArgs = opts.requireWorldIdInArgs ?? true;
@@ -135,7 +135,7 @@ export function enforceWorldScope(
 }
 
 /**
- * 仅做布尔判定（不返回 DmToolResult）。用于 read tool 的早返回路径
+ * 仅做布尔判定（不返回 MechanicsToolResult）。用于 read tool 的早返回路径
  * 或 telemetry 旁路统计。失败原因通过 errorOut 参数返回。
  */
 export function checkWorldScope(

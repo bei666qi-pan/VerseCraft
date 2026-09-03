@@ -14,7 +14,6 @@
 import { spawn, exec, execSync, type ChildProcess } from "node:child_process";
 import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { networkInterfaces } from "node:os";
 import { extractRunId, diffSnapshots, type WorkingTreeSnapshot } from "./supervisor-utils";
 import { atomicWriteJsonSync, loadJsonWithFallback } from "../../src/lib/evals/selfImprove/atomicWrite";
 
@@ -33,7 +32,6 @@ const KNOWN_CODEX_PATHS = [
 ];
 
 let resolvedCodexBin: string | null = null;
-let codexVersion: string | null = null;
 
 function discoverCodexBin(config: SupervisorConfig): { found: boolean; path: string; version: string; source: string } {
   // 1. CLI arg
@@ -74,7 +72,6 @@ function detectBackendCapability(backend: string, config: SupervisorConfig): Bac
     resolvedCodexBin = discovery.path;
     try {
       const ver = execSync(`"${resolvedCodexBin}" --version`, { encoding: "utf-8", stdio: "pipe", timeout: 5000, env: process.env }).trim();
-      codexVersion = ver;
       console.log(`[Supervisor] Codex found: ${resolvedCodexBin} (${ver}, source: ${discovery.source})`);
     } catch {
       console.log(`[Supervisor] Codex found at ${resolvedCodexBin} but --version failed`);

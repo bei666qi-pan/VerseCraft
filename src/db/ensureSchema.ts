@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import { envNumber } from "@/lib/config/envRaw";
 import {
   buildWorldKnowledgeChunksIvfflatIndexSql,
+  parsePgVectorDimension,
   PG_VECTOR_IVFFLAT_MAX_DIMENSIONS,
 } from "./ensureSchema.ivfflat";
 
@@ -394,20 +395,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS analytics_events_payload_world_id_time_idx ON analytics_events ((payload->>'worldId'), event_time);
     `);
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS user_sessions (
-        session_id VARCHAR(191) PRIMARY KEY,
-        user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE CASCADE,
-        started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_page TEXT NULL,
-        total_token_cost INTEGER NOT NULL DEFAULT 0,
-        total_play_duration_sec INTEGER NOT NULL DEFAULT 0,
-        chat_action_count INTEGER NOT NULL DEFAULT 0,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
     // ========= Admin guest aliases =========
     // Global stable mapping: guest_id -> 游客N
     await client.query(`
@@ -418,14 +405,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
       );
     `);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS guest_aliases_guest_no_unique ON guest_aliases (guest_no);`);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS user_sessions_user_last_seen_idx ON user_sessions (user_id, last_seen_at);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS user_sessions_last_seen_at_idx ON user_sessions (last_seen_at);
-    `);
-    await client.query(`ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS last_presence_ok_at TIMESTAMPTZ NULL;`);
-
     await client.query(`
       CREATE TABLE IF NOT EXISTS guest_sessions (
         session_id VARCHAR(191) PRIMARY KEY,
@@ -460,34 +439,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS guest_registry_last_seen_at_idx ON guest_registry (last_seen_at);
-    `);
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS guest_daily_activity (
-        guest_id VARCHAR(128) NOT NULL,
-        date_key DATE NOT NULL,
-        first_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        chat_action_count INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (guest_id, date_key)
-      );
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS guest_daily_activity_date_key_idx ON guest_daily_activity (date_key);
-    `);
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS guest_daily_tokens (
-        guest_id VARCHAR(128) NOT NULL,
-        date_key DATE NOT NULL,
-        daily_token_cost INTEGER NOT NULL DEFAULT 0,
-        daily_play_duration_sec INTEGER NOT NULL DEFAULT 0,
-        chat_action_count INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (guest_id, date_key)
-      );
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS guest_daily_tokens_date_key_idx ON guest_daily_tokens (date_key);
     `);
 
     await client.query(`
@@ -585,44 +536,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS actor_daily_tokens_guest_idx ON actor_daily_tokens (guest_id);`);
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS user_daily_activity (
-        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
-        date_key DATE NOT NULL,
-        first_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        chat_action_count INTEGER NOT NULL DEFAULT 0
-      );
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS user_daily_activity_user_date_unique ON user_daily_activity (user_id, date_key);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS user_daily_activity_date_key_idx ON user_daily_activity (date_key);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS user_daily_activity_user_idx ON user_daily_activity (user_id);
-    `);
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS user_daily_tokens (
-        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
-        date_key DATE NOT NULL,
-        daily_token_cost INTEGER NOT NULL DEFAULT 0,
-        daily_play_duration_sec INTEGER NOT NULL DEFAULT 0,
-        chat_action_count INTEGER NOT NULL DEFAULT 0
-      );
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS user_daily_tokens_user_date_unique ON user_daily_tokens (user_id, date_key);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS user_daily_tokens_date_key_idx ON user_daily_tokens (date_key);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS user_daily_tokens_user_idx ON user_daily_tokens (user_id);
-    `);
-
-    await client.query(`
       CREATE TABLE IF NOT EXISTS admin_metrics_daily (
         date_key DATE PRIMARY KEY,
         dau INTEGER NOT NULL DEFAULT 0,
@@ -673,7 +586,7 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS safety_audit_events_trace_idx ON safety_audit_events (trace_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS safety_audit_events_fingerprint_idx ON safety_audit_events (content_fingerprint);`);
 
-    // ========= KG / 语义缓存（pgvector + IVFFlat；无扩展时跳过，与 /api/chat 降级一致）=========
+    // ========= KG facts（pgvector + IVFFlat；无扩展时跳过，与 /api/chat 降级一致）=========
     try {
       await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
       await client.query(`
@@ -685,31 +598,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
       await client.query(`
         INSERT INTO vc_world_meta (id, world_revision) VALUES (1, 0)
         ON CONFLICT (id) DO NOTHING;
-      `);
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS vc_semantic_cache (
-          id BIGSERIAL PRIMARY KEY,
-          cache_scope TEXT NOT NULL,
-          task TEXT NOT NULL,
-          user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
-          world_revision BIGINT NOT NULL,
-          request_embedding vector(256) NOT NULL,
-          request_norm TEXT,
-          request_text_preview TEXT,
-          request_hash TEXT NOT NULL UNIQUE,
-          response_text TEXT NOT NULL,
-          is_valid BOOLEAN NOT NULL DEFAULT TRUE,
-          expires_at TIMESTAMPTZ NOT NULL,
-          hit_count INTEGER NOT NULL DEFAULT 0,
-          last_hit_at TIMESTAMPTZ,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      await client.query(`
-        CREATE INDEX IF NOT EXISTS vc_semantic_cache_ivfflat_global_codex
-        ON vc_semantic_cache USING ivfflat (request_embedding vector_cosine_ops)
-        WITH (lists = 100)
-        WHERE cache_scope = 'global' AND is_valid = TRUE AND task = 'codex';
       `);
       await client.query(`
         CREATE TABLE IF NOT EXISTS vc_user_fact (
@@ -827,7 +715,7 @@ export async function ensureRuntimeSchema(): Promise<void> {
         }
       }
     } catch {
-      /* 无 vector 扩展或非 PG 时跳过；语义缓存模块对缺表静默 */
+      /* 无 vector 扩展或非 PG 时跳过；KG facts 走注册表降级 */
     }
 
     // keep KG reconcile at the end so runtime fallback stays aligned with migrate.js.
@@ -968,19 +856,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
           AND NOT attisdropped
       `);
       const embeddingColumnType = embeddingColumn.rows?.[0]?.type_str ?? "";
-      // Existing local databases can predate pgvector and keep this column as text.
-      // Never retry an incompatible ivfflat create on startup/heartbeat.
-      if (embeddingColumnType.startsWith("vector(")) {
-        const ivfflatSql = buildWorldKnowledgeChunksIvfflatIndexSql(worldKnowledgeEmbeddingDimension);
-        if (ivfflatSql) {
-          await client.query(ivfflatSql);
-        } else {
-          console.warn(
-            `[ensureSchema] skip world_knowledge_chunks_embedding_ivfflat: dimension ${worldKnowledgeEmbeddingDimension} > ${PG_VECTOR_IVFFLAT_MAX_DIMENSIONS}`,
-          );
-        }
-      }
-
       // `CREATE TABLE IF NOT EXISTS` 不会改动已存在表的列类型——如果之前用旧维度建过表
       // （比如从 256 迁移到 1024），这里补一段幂等自愈：只有列已存在且宽度不等于目标维度时才动手
       // （先 drop 依赖的 ivfflat 索引再改列类型再重建索引）。表为空或宽度已匹配时是无操作的。
@@ -992,17 +867,31 @@ export async function ensureRuntimeSchema(): Promise<void> {
           await client.query(
             `ALTER TABLE world_knowledge_chunks ALTER COLUMN embedding_vector TYPE ${targetTypeStr}`
           );
-          const migratedIvfflatSql = buildWorldKnowledgeChunksIvfflatIndexSql(worldKnowledgeEmbeddingDimension);
-          if (migratedIvfflatSql) {
-            await client.query(migratedIvfflatSql);
-          } else {
-            console.warn(
-              `[ensureSchema] skip world_knowledge_chunks_embedding_ivfflat (post-migration): dimension ${worldKnowledgeEmbeddingDimension} > ${PG_VECTOR_IVFFLAT_MAX_DIMENSIONS}`,
-            );
-          }
         }
       } catch {
         /* 迁移失败不阻塞启动；下次自愈会重试 */
+      }
+
+      // Index eligibility must follow the live column width, not the configured
+      // target. A failed or pending 3072 -> 1024 migration otherwise makes every
+      // heartbeat retry an ivfflat index that pgvector can never build.
+      const liveEmbeddingColumn = await client.query<{ type_str: string }>(`
+        SELECT format_type(atttypid, atttypmod) AS type_str
+        FROM pg_attribute
+        WHERE attrelid = 'world_knowledge_chunks'::regclass
+          AND attname = 'embedding_vector'
+          AND NOT attisdropped
+      `);
+      const liveEmbeddingDimension = parsePgVectorDimension(liveEmbeddingColumn.rows?.[0]?.type_str ?? "");
+      if (liveEmbeddingDimension !== null) {
+        const ivfflatSql = buildWorldKnowledgeChunksIvfflatIndexSql(liveEmbeddingDimension);
+        if (ivfflatSql) {
+          await client.query(ivfflatSql);
+        } else {
+          console.warn(
+            `[ensureSchema] skip world_knowledge_chunks_embedding_ivfflat: live dimension ${liveEmbeddingDimension} > ${PG_VECTOR_IVFFLAT_MAX_DIMENSIONS}`,
+          );
+        }
       }
     }
 
@@ -1110,23 +999,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
        ON world_engine_event_queue (session_id, status, due_turn_index);`
     );
     await client.query(`
-      CREATE TABLE IF NOT EXISTS world_engine_agenda_snapshots (
-        id SERIAL PRIMARY KEY,
-        run_id INTEGER NOT NULL REFERENCES world_engine_runs(run_id) ON DELETE CASCADE,
-        session_id VARCHAR(191) NOT NULL,
-        world_id VARCHAR(64) NOT NULL,
-        map_id VARCHAR(64) NOT NULL,
-        user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
-        agenda_revision INTEGER NOT NULL,
-        snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    await client.query(
-      `CREATE INDEX IF NOT EXISTS world_engine_agenda_session_created_idx
-       ON world_engine_agenda_snapshots (session_id, created_at);`
-    );
-    await client.query(`
       CREATE TABLE IF NOT EXISTS world_engine_director_state (
         id SERIAL PRIMARY KEY,
         session_id VARCHAR(191) NOT NULL,
@@ -1173,7 +1045,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
     for (const table of [
       "world_engine_runs",
       "world_engine_event_queue",
-      "world_engine_agenda_snapshots",
       "world_engine_director_state",
       "npc_agent_state",
     ]) {
@@ -1193,27 +1064,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS world_engine_event_queue_scope_director_dedup_unique ON world_engine_event_queue (world_id, map_id, session_id, event_code, dedup_key);`);
     await client.query(`CREATE INDEX IF NOT EXISTS world_engine_event_queue_scope_status_due_idx ON world_engine_event_queue (world_id, map_id, session_id, status, due_in_turns);`);
     await client.query(`CREATE INDEX IF NOT EXISTS world_engine_event_queue_scope_director_due_idx ON world_engine_event_queue (world_id, map_id, session_id, status, due_turn_index);`);
-    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS world_engine_agenda_scope_revision_unique ON world_engine_agenda_snapshots (world_id, map_id, session_id, agenda_revision);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS world_engine_agenda_scope_created_idx ON world_engine_agenda_snapshots (world_id, map_id, session_id, created_at);`);
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS world_engine_hint_envelopes (
-        id SERIAL PRIMARY KEY,
-        hint_id VARCHAR(128) NOT NULL UNIQUE,
-        run_id INTEGER NOT NULL REFERENCES world_engine_runs(run_id) ON DELETE CASCADE,
-        world_id VARCHAR(64) NOT NULL,
-        map_id VARCHAR(64) NOT NULL,
-        session_id VARCHAR(191) NOT NULL,
-        world_revision BIGINT NOT NULL,
-        valid_from_turn INTEGER NOT NULL,
-        valid_through_turn INTEGER NOT NULL,
-        phase VARCHAR(24) NOT NULL,
-        envelope_json JSONB NOT NULL,
-        lifecycle VARCHAR(24) NOT NULL DEFAULT 'active',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    await client.query(`CREATE INDEX IF NOT EXISTS world_engine_hint_envelopes_scope_turn_idx ON world_engine_hint_envelopes (world_id, map_id, session_id, lifecycle, valid_from_turn, valid_through_turn);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS npc_relation_edges (
@@ -1397,25 +1247,6 @@ async function ensureKgSchema(
       );
     `);
     await client.query(`
-      CREATE TABLE IF NOT EXISTS vc_semantic_cache (
-        id BIGSERIAL PRIMARY KEY,
-        cache_scope TEXT NOT NULL,
-        task TEXT NOT NULL,
-        user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
-        world_revision BIGINT NOT NULL,
-        request_embedding vector(256) NOT NULL,
-        request_norm TEXT,
-        request_text_preview TEXT,
-        request_hash TEXT NOT NULL UNIQUE,
-        response_text TEXT NOT NULL,
-        is_valid BOOLEAN NOT NULL DEFAULT TRUE,
-        expires_at TIMESTAMPTZ NOT NULL,
-        hit_count INTEGER NOT NULL DEFAULT 0,
-        last_hit_at TIMESTAMPTZ,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    await client.query(`
       CREATE INDEX IF NOT EXISTS vc_world_cluster_ivfflat_centroid
       ON vc_world_cluster USING ivfflat (centroid vector_cosine_ops)
       WITH (lists = 100)
@@ -1426,12 +1257,6 @@ async function ensureKgSchema(
       ON vc_world_fact USING ivfflat (embedding vector_cosine_ops)
       WITH (lists = 100)
       WHERE is_hot = TRUE;
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS vc_semantic_cache_ivfflat_global_codex
-      ON vc_semantic_cache USING ivfflat (request_embedding vector_cosine_ops)
-      WITH (lists = 100)
-      WHERE cache_scope = 'global' AND is_valid = TRUE AND task = 'codex';
     `);
   } catch (e) {
     console.warn("[ensureSchema] ensureKgSchema skipped:", e);

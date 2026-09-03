@@ -1,13 +1,13 @@
 import type { NpcAgentState } from "@/lib/socialWorld/types";
 import { QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
 import { QINGSHI_NPC_PROFILES } from "@/lib/worlds/xingni/qingshiProductionContent";
-import type { ActorSimulationContext } from "./actorSimulation/integration";
+import type { ActorScopedContext } from "./actorContextProjector";
 
-export function buildXingniActorSimulationContext(args: {
+export function buildXingniActorContext(args: {
   presentNpcIds: readonly string[];
   deadNpcIds: readonly string[];
   turnIndex: number;
-}): Pick<ActorSimulationContext, "npcStates" | "sceneNpcIds" | "playerMentionedNpcIds" | "worldFacts" | "relationEdges" | "epistemicIndex"> {
+}): Pick<ActorScopedContext, "npcStates" | "sceneNpcIds" | "playerMentionedNpcIds" | "worldFacts" | "relationEdges" | "epistemicIndex"> {
   const dead = new Set(args.deadNpcIds);
   const registered = new Set(QINGSHI_NPCS.map((npc) => npc.id));
   const sceneNpcIds = args.presentNpcIds.filter((id) => registered.has(id) && !dead.has(id)).slice(0, 32);

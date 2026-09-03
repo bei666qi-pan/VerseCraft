@@ -1,5 +1,6 @@
 import { PLAYER_DM_JSON_SCHEMA } from "@/lib/ai/schemas/playerDmJsonSchema";
-import type { NamedFunctionToolChoice, NormalizedCompletionRequest, ToolDefinition } from "@/lib/ai/types/core";
+import type { NamedFunctionToolChoice, ToolDefinition } from "@/lib/ai/types/core";
+import type { NormalizedCompletionRequest } from "@/lib/ai/providers/types";
 import { envEnum } from "@/lib/config/envRaw";
 
 /**
@@ -30,7 +31,7 @@ export function resolvePlayerChatFunctionCallingMode(): PlayerChatFunctionCallin
  *      requests (e.g. Director reasoner) keep their caller-supplied tools.
  *   2. Mode must not be `off` (skip strict function entirely).
  *   3. The caller must not have supplied its own `body.tools` — caller tools
- *      always win (DM Agent tool loop / `tool_loop` chain paths).
+ *      always win (Mechanics Workflow tool loop / `tool_loop` chain paths).
  *
  * See AGENTS.md §3.2.6 and the change `open-responses-streaming-for-player-turn`.
  */

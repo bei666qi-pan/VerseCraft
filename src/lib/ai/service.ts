@@ -8,7 +8,6 @@ import "server-only";
 
 export {
   compressSessionMemory,
-  enhanceScene,
   generateMainReply,
   localizeGameplayHistory,
   localizeGameplayPresentation,
@@ -23,6 +22,7 @@ export {
   executePlayerChatStream,
   executeChatCompletion,
   type PlayerChatStreamResult,
+  type PlayerChatStreamSuccess,
 } from "@/lib/ai/router/execute";
 export {
   runToolLoop,

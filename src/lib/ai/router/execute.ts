@@ -103,7 +103,6 @@ function isOfflineTask(task: TaskType): boolean {
   return (
     task === "WORLDBUILD_OFFLINE" ||
     task === "STORYLINE_SIMULATION" ||
-    task === "DIRECTOR_PLAN_CRITIC" ||
     task === "DEV_ASSIST" ||
     task === "EVAL_JUDGE"
   );
@@ -116,11 +115,8 @@ const PLAYER_GAMEPLAY_TASKS = new Set<TaskType>([
   "SAFETY_PREFILTER",
   "RULE_RESOLUTION",
   "COMBAT_NARRATION",
-  "SCENE_ENHANCEMENT",
-  "NARRATIVE_EXPANSION",
-  "NPC_EMOTION_POLISH",
   "GAMEPLAY_LOCALIZATION",
-  "DM_AGENT",
+  "MECHANICS",
 ]);
 
 function mergeExtraBody(
@@ -210,10 +206,7 @@ const STRICT_JSON_TRANSPORT_TASKS = new Set<TaskType>([
   "EVAL_JUDGE",
 ]);
 
-const ONLINE_FAIL_FAST_JSON_TASKS = new Set<TaskType>([
-  ...ONLINE_SHORT_JSON_TASKS,
-  "NARRATIVE_EXPANSION",
-]);
+const ONLINE_FAIL_FAST_JSON_TASKS = new Set<TaskType>(ONLINE_SHORT_JSON_TASKS);
 
 function buildPlayerStreamBody(
   gatewayModel: string,
@@ -301,6 +294,8 @@ export async function executePlayerChatStream(params: {
   timeoutMs?: number;
   skipRoles?: readonly AiLogicalRole[];
   maxTokensOverride?: number;
+  /** Hard cap on actual upstream HTTP model attempts for this turn. */
+  maxProviderCalls?: number;
 }): Promise<PlayerChatStreamResult> {
   if (params.ctx.task !== "PLAYER_CHAT") {
     console.warn(
@@ -348,7 +343,9 @@ export async function executePlayerChatStream(params: {
   let sawRateLimit = false;
 
   const failedServices = new Set<string>();
+  let providerCalls = 0;
   for (const managedBinding of managedBindings) {
+    if (providerCalls >= Math.max(1, params.maxProviderCalls ?? Number.POSITIVE_INFINITY)) break;
     const role = managedBinding.logicalRole;
     const providerId: AiProviderId =
       managedBinding.transport === "ark_multimodal"
@@ -552,7 +549,9 @@ export async function executePlayerChatStream(params: {
       // Phase-3: per-role retry budget. First role gets at most 1 retry (unless env already lower).
       // Fallback roles get 0 retries to avoid long chain stalls.
       const isFirstRole = attempts.length === 0;
-      const maxRetries = env.playerChatAggressiveFailover
+      const maxRetries = params.maxProviderCalls === 1
+        ? 0
+        : env.playerChatAggressiveFailover
         ? (isFastLane && env.playerChatFastLaneZeroRetry)
           ? 0
           : isFirstRole
@@ -560,6 +559,7 @@ export async function executePlayerChatStream(params: {
             : 0
         : maxRetriesBase;
 
+      providerCalls += 1;
       let res = await resilientFetch(url, init, {
         timeoutMs,
         maxRetries,

@@ -199,8 +199,3 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     });
   }
 }
-
-export function estimateCostTokensFromText(text: string): number {
-  if (!text) return 0;
-  return Math.max(50, Math.ceil(text.length / 2.5));
-}

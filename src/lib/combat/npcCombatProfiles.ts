@@ -202,9 +202,9 @@ export function getHiddenNpcCombatProfile(args: {
   const weakTags = weakTagsHeuristic({ ...axes, storyClass, styleTags });
 
   const displayName =
-    clipName(args.codexEntry?.name) ||
-    clipName(profile?.display?.name) ||
-    clipName(canon?.name);
+    clipName(args.codexEntry?.name ?? "") ||
+    clipName(profile?.display?.name ?? "") ||
+    clipName(canon?.canonicalName ?? "");
 
   const dangerForPlayer = dangerTierFromBasePower(Number.isFinite(basePower) ? basePower : null);
   return {
@@ -225,4 +225,3 @@ export function getHiddenNpcCombatProfile(args: {
     dangerForPlayer,
   };
 }
-

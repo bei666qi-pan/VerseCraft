@@ -7,4 +7,4 @@
 ## 2. Verification
 
 - [x] 2.1 Add regression coverage for one retry, no duplicate player log, and no retry for unrelated 409/model failures.
-- [ ] 2.2 Run targeted tests, lint, OpenSpec strict validation, and local browser `/play` recovery verification.
+- [x] 2.2 Run targeted tests, lint, OpenSpec strict validation, and local browser `/play` recovery verification.

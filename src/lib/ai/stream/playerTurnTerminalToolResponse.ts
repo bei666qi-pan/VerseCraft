@@ -43,7 +43,7 @@ export function isPlayerTurnTerminalToolRequest(init: RequestInit): boolean {
  * (`tool_choice: { type: "function", name }`, no `messages`, has `input`).
  * Used to decide which JSON-mode fallback field to write.
  */
-function isResponsesApiPayload(payload: JsonRecord | null): boolean {
+export function isResponsesApiPayload(payload: JsonRecord | null): boolean {
   if (!payload) return false;
   const toolChoice = asRecord(payload.tool_choice);
   if (!toolChoice) return false;

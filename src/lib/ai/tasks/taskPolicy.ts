@@ -73,8 +73,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     budgetLevel: "critical",
     responseFormatJsonObject: true,
   },
-  DM_AGENT: {
-    task: "DM_AGENT",
+  MECHANICS: {
+    task: "MECHANICS",
     primaryRole: WRITER,
     fallbackRoles: [],
     stream: false,
@@ -143,39 +143,6 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     budgetLevel: "high",
     responseFormatJsonObject: true,
   },
-  SCENE_ENHANCEMENT: {
-    task: "SCENE_ENHANCEMENT",
-    primaryRole: ENHANCE,
-    fallbackRoles: [MAIN],
-    stream: false,
-    maxTokens: 448,
-    temperature: 0.75,
-    timeoutMs: 22_000,
-    budgetLevel: "high",
-    responseFormatJsonObject: false,
-  },
-  NARRATIVE_EXPANSION: {
-    task: "NARRATIVE_EXPANSION",
-    primaryRole: ENHANCE,
-    fallbackRoles: [MAIN],
-    stream: false,
-    maxTokens: 768,
-    temperature: 0.65,
-    timeoutMs: 7_000,
-    budgetLevel: "medium",
-    responseFormatJsonObject: true,
-  },
-  NPC_EMOTION_POLISH: {
-    task: "NPC_EMOTION_POLISH",
-    primaryRole: ENHANCE,
-    fallbackRoles: [MAIN, CONTROL],
-    stream: false,
-    maxTokens: 384,
-    temperature: 0.82,
-    timeoutMs: 18_000,
-    budgetLevel: "high",
-    responseFormatJsonObject: false,
-  },
   // Used only when the player explicitly changes display language. It translates
   // the already-resolved latest scene and choices; it must never adjudicate game
   // state or enter the realtime /api/chat first-token path.
@@ -208,17 +175,6 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     stream: false,
     maxTokens: 8192,
     temperature: 0.25,
-    timeoutMs: 180_000,
-    budgetLevel: "medium",
-    responseFormatJsonObject: true,
-  },
-  DIRECTOR_PLAN_CRITIC: {
-    task: "DIRECTOR_PLAN_CRITIC",
-    primaryRole: REASONER,
-    fallbackRoles: [],
-    stream: false,
-    maxTokens: 8192,
-    temperature: 0,
     timeoutMs: 180_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
@@ -265,18 +221,15 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
 /** Roles that must never run under a given task (enforced before network). */
 export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogicalRole>>> = {
   PLAYER_CHAT: new Set([REASONER, ENHANCE]),
+  MECHANICS: new Set([MAIN, CONTROL, ENHANCE, REASONER]),
   PLAYER_CONTROL_PREFLIGHT: new Set([REASONER, ENHANCE]),
   INTENT_PARSE: new Set([REASONER, ENHANCE]),
   SAFETY_PREFILTER: new Set([REASONER, ENHANCE]),
   RULE_RESOLUTION: new Set([REASONER, ENHANCE]),
   COMBAT_NARRATION: new Set([REASONER, ENHANCE]),
-  SCENE_ENHANCEMENT: new Set([REASONER]),
-  NARRATIVE_EXPANSION: new Set([REASONER]),
-  NPC_EMOTION_POLISH: new Set([REASONER]),
   GAMEPLAY_LOCALIZATION: new Set([REASONER, ENHANCE]),
   WORLDBUILD_OFFLINE: new Set([ENHANCE]),
   STORYLINE_SIMULATION: new Set([ENHANCE]),
-  DIRECTOR_PLAN_CRITIC: new Set([MAIN, CONTROL, ENHANCE]),
   DEV_ASSIST: new Set([ENHANCE]),
   MEMORY_COMPRESSION: new Set([ENHANCE]),
   EVAL_JUDGE: new Set([MAIN, CONTROL, ENHANCE]),
@@ -291,7 +244,7 @@ export const TASK_TOOLS_ALLOWED: ReadonlySet<TaskType> = new Set<TaskType>([
   "WORLDBUILD_OFFLINE",
   "STORYLINE_SIMULATION",
   "DEV_ASSIST",
-  "DM_AGENT",
+  "MECHANICS",
 ]);
 
 export function isToolUseAllowedForTask(task: TaskType): boolean {

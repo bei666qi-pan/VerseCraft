@@ -15,7 +15,7 @@
  * 与 NPCS 表的关系：alias 是 NPC 真名的口语化补充，**不是**独立身份。
  * 增加/修改 alias 时必须同步检查：
  *   1. `src/lib/registry/npcs.ts` 中对应 NPC 的 lore 字段
- *   2. `src/lib/playRealtime/playerChatSystemPrompt.ts:151` 的 canonical 名册
+ *   2. `npcConsistencyBoundaryPackets.ts` 在每回合从 canonical registry 即时投影名册
  *   3. `scripts/verify-canonical-name-prompt.mjs` 通过 (`pnpm prompts:regen:verify`)
  */
 export const NPC_ALIASES: Record<string, readonly string[]> = {

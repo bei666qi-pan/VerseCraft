@@ -123,6 +123,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
   };
 
   const prim = parseRuntimeNpcPrimitives(args.playerContext, args.playerLocation);
+  const maxRevealRank = Math.max(0, Math.min(3, Math.trunc(args.maxRevealRank))) as RevealTierRank;
   const location = prim.location;
   const globalRollout = getVerseCraftRolloutFlags();
   const legacyNearbyNpcIds = selectLegacyNearbyNpcIds(prim.npcPositions, location);
@@ -160,7 +161,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
             scene: {
               locationId: location ?? "unknown",
               hotThreatPresent: threatPacket.phase === "active" || threatPacket.phase === "breached",
-              maxRevealRank: args.maxRevealRank,
+              maxRevealRank,
             },
           })
         : buildEmptyNpcPlayerBaselinePacket();
@@ -172,7 +173,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
         sceneAppearanceAlreadyWrittenIds: prim.sceneNpcAppearanceWritten,
         mentionedNpcIdsFromInput: extractMentionedNpcIdsFromUserInput(args.latestUserInput),
         codexOrHintNpcIds: extractNpcIdsFromRelationshipHints(prim.relationshipHints),
-        maxRevealRank: args.maxRevealRank,
+        maxRevealRank,
       })
     : null;
 

@@ -172,27 +172,6 @@ test("scene_actor_gate_packet stays compact and prevents multi-present focus fal
   assert.ok(!personaText.includes('"id":"N-018"'));
 });
 
-/*
-test("SceneActorGate rollout off falls back without gate packet", () => {
-  withEnv("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_V1", "0", () => {
-    const packet = buildRuntimeContextPackets({
-      playerContext:
-        "娓告垙鏃堕棿[绗?鏃?11鏃禲銆傜敤鎴蜂綅缃甗B1_SafeZone]銆? +
-        "NPC褰撳墠浣嶇疆锛歂-015@B1_SafeZone锛孨-020@B1_SafeZone銆? +
-        "鍥鹃壌宸茶В閿侊細欣蓝[npc|濂芥劅10|N-015]銆?,
-      latestUserInput: "她怎么看我？",
-      playerLocation: "B1_SafeZone",
-      maxChars: 40000,
-    });
-    const packets = parseRuntimePackets(packet);
-
-    assert.equal("scene_actor_gate_packet" in packets, false);
-    assert.deepEqual(packets.nearby_npc_packet, ["N-015", "N-020"]);
-    assert.equal((packets.npc_player_baseline_packet as { npcId: string | null }).npcId, "N-015");
-  });
-});
-*/
-
 test("SceneActorGate rollout off falls back without gate packet", () => {
   withEnv("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_V1", "0", () => {
     const packet = buildRuntimeContextPackets({
@@ -208,4 +187,3 @@ test("SceneActorGate rollout off falls back without gate packet", () => {
     assert.equal((packets.current_location_packet as { location: string | null }).location, "B1_SafeZone");
   });
 });
-

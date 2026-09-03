@@ -1,8 +1,0 @@
-{"suite":"detectors","mode":"mock","total":12,"pass":9,"passRate":0.75,"gate":"pass","timestamp":"2026-07-09T01:56:30.285Z","gitSha":"ref: re"}
-{"suite":"detectors","mode":"mock","total":12,"pass":11,"passRate":0.9166666666666666,"gate":"pass","timestamp":"2026-07-09T01:58:09.475Z","gitSha":"ref: re"}
-{"suite":"detectors","mode":"mock","total":12,"pass":12,"passRate":1,"gate":"pass","timestamp":"2026-07-09T02:01:28.430Z","gitSha":"ref: re"}
-{"suite":"detectors","mode":"mock","total":12,"pass":12,"passRate":1,"gate":"pass","timestamp":"2026-07-09T02:29:25.827Z","gitSha":"ref: re"}
-{"suite":"detectors","mode":"mock","total":12,"pass":12,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:51:11.674Z","gitSha":"ref: re"}
-{"suite":"detectors","mode":"mock","total":12,"pass":12,"passRate":1,"gate":"pass","timestamp":"2026-07-09T04:02:25.072Z","gitSha":"ref: re"}
-{"suite":"detectors","mode":"mock","total":12,"pass":12,"passRate":1,"gate":"pass","timestamp":"2026-07-09T04:27:58.540Z","gitSha":"ref: re"}
-{"suite":"detectors","mode":"mock","total":12,"pass":12,"passRate":1,"gate":"pass","timestamp":"2026-07-09T06:00:47.607Z","gitSha":"ref: re"}

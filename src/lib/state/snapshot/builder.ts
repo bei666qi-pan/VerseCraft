@@ -16,7 +16,7 @@ import type { MemorySpineState } from "@/lib/memorySpine/types";
 import { createEmptyMemorySpine } from "@/lib/memorySpine/types";
 import { createDefaultProfessionState } from "@/lib/profession/registry";
 import type { ProfessionStateV1 } from "@/lib/profession/types";
-import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
+import { createInitialChapterPacingState } from "@/lib/chapters/pacing/types";
 import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/template";
 import { createEmptyJournalState, type JournalState } from "@/lib/domain/narrativeDomain";
 import { createInitialChapterState, normalizeChapterState, type ChapterState } from "@/lib/chapters";
@@ -57,8 +57,7 @@ export interface BuildRunSnapshotV2Input {
   discoveredSecrets?: string[];
   anchorUnlocks?: Record<"B1" | "1" | "7", boolean>;
   pendingEvents?: string[];
-  storyDirector?: unknown;
-  incidentQueue?: unknown;
+  chapterPacing?: unknown;
   floorThreatTier?: Record<string, number>;
   mainThreatByFloor?: Record<string, SnapshotMainThreatState>;
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
@@ -156,8 +155,7 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       discoveredSecrets: [...(input.discoveredSecrets ?? [])],
       anchorUnlocks: { ...(input.anchorUnlocks ?? createDefaultAnchorUnlocks()) },
       pendingEvents: [...(input.pendingEvents ?? [])],
-      storyDirector: input.storyDirector ?? createEmptyDirectorState(nowTurn),
-      incidentQueue: input.incidentQueue ?? createEmptyIncidentQueue(),
+      chapterPacing: input.chapterPacing ?? createInitialChapterPacingState(nowTurn),
       floorThreatTier: { ...(input.floorThreatTier ?? {}) },
       mainThreatByFloor: { ...(input.mainThreatByFloor ?? {}) },
     },

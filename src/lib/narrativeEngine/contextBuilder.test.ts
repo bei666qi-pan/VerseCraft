@@ -50,7 +50,7 @@ const snapshot = {
     discoveredSecrets: ["fact:door"],
     worldFlags: {},
     pendingEvents: [],
-    storyDirector: {
+    chapterPacing: {
       chapter: {
         currentChapterId: "chapter-1",
         chapterOrder: 1,
@@ -369,7 +369,7 @@ test("buildDialogueContext falls back to legacy chapter objective when director 
     ...(snapshot as any),
     world: {
       ...((snapshot as any).world ?? {}),
-      storyDirector: undefined,
+      chapterPacing: undefined,
     },
   } as unknown as RunSnapshotV2;
   const context = await buildDialogueContext({

@@ -17,7 +17,7 @@ const payload = {
   deadNpcIds: [],
   changedTaskIds: [],
   changedClueIds: [],
-  pacingChapterSignals: { phase: "quiet" as const, tension: 0.3, chapterId: null, chapterIndex: 0, progress: 0 },
+  pacingChapterSignals: { phase: "opening" as const, tension: 2 as const, chapterId: "chapter-1", completedBeatIds: [], turnsInChapter: 1 },
   worldStateSummary: { day: 0, timeSlot: "unknown" as const, danger: "low" as const, stateCodes: [] },
   latestTurnSignals: { actionKinds: ["movement" as const], legal: true, death: false, riskTags: [] },
   npcLocationUpdateCount: 0,
@@ -54,4 +54,24 @@ test("database-resolved duplicate returns the one real job", async () => {
   assert.equal(duplicate.jobId, 42);
   assert.equal(first.dedupKey, duplicate.dedupKey);
   assert.equal(seen.size, 1);
+});
+
+test("different triggers for the same committed turn resolve to one Director job", async () => {
+  const keys: string[] = [];
+  const persistJob = async (
+    _payload: Parameters<Parameters<typeof enqueueWorldEngineTickWithDeps>[1]["persistJob"]>[0],
+    dedupKey: string,
+  ) => {
+    keys.push(dedupKey);
+    return { persisted: true, inserted: keys.length === 1, jobId: 9, idempotencyKey: dedupKey };
+  };
+
+  const first = await enqueueWorldEngineTickWithDeps(payload, { persistJob });
+  const replay = await enqueueWorldEngineTickWithDeps({
+    ...payload,
+    requestId: "req-queue-replay",
+    triggerSignals: ["npc_agenda_due"],
+  }, { persistJob });
+
+  assert.equal(first.dedupKey, replay.dedupKey);
 });

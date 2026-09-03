@@ -136,8 +136,6 @@ describe("玩家选择尊重 — 确定性断言", () => {
 
   describe("玩家意图对齐", () => {
     it("玩家明确表达意图时 narrative 应回应", () => {
-      // 模拟玩家输入 "我想打开门"
-      const playerInput = "我想打开门";
       const output = mockOutput({
         narrative: "你握住门把手，用力转动。门发出沉重的吱呀声，缓缓向内打开。",
         is_action_legal: true,
@@ -150,7 +148,6 @@ describe("玩家选择尊重 — 确定性断言", () => {
     });
 
     it("玩家选择探索时不应被强制推进剧情", () => {
-      const playerInput = "我想先看看周围";
       const output = mockOutput({
         narrative: "你环顾四周。走廊很长，灯管在头顶闪烁。墙壁上有几道刮痕，像是某种尖锐物体留下的。",
         is_action_legal: true,

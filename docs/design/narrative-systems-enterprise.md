@@ -207,7 +207,7 @@
 ### 6.6 更强的世界状态联动
 
 - **数据**：统一 `worldFlags` 与 `scene_changes` 的归并层（例如 `applyWorldDelta.ts`），由 `task.status` 与 `clue.status` 触发 `worldFlags.add/remove`。  
-- **存档**：`RunSnapshotV2` 已能带 world 相关字段的投影；需在 **单入口**（如 `postTurnStoryDirectorUpdate`）收敛副作用。  
+- **存档**：`RunSnapshotV2` 只持久化 `chapterPacing`；章节副作用统一由确定性的 `ChapterPacingController` 收敛，旧 `storyDirector` 字段仅在读取迁移时兼容。
 - **现状**：`worldFlags`、导演层、逃脱主线等**多条链路并存**；**未**建立与「目标终态」绑定的单一世界 FSM。
 
 ### 6.7 管理员调试面板

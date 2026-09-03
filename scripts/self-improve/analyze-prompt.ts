@@ -15,7 +15,7 @@
  *   pnpm tsx scripts/self-improve/analyze-prompt.ts --optimize (generate optimized version)
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 

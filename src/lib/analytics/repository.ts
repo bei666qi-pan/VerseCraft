@@ -143,6 +143,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
     await insertAnalyticsEventIdempotent({ ...input, eventName: "chat_action_completed", eventTime });
     return;
   }
+  const guestId = actor?.guestId ?? null;
 
   // Atomic rollup: only updates aggregates when analytics event was inserted.
   // We rely on CTE + EXISTS semantics to avoid double counting on retries.
@@ -153,7 +154,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           event_id, actor_id, actor_type, guest_id, user_id, session_id, event_name, event_time, page, source, platform,
           environment, token_cost, play_duration_delta_sec, active_play_duration_delta_sec, payload, idempotency_key
         ) VALUES (
-          ${input.eventId}, ${actorId}, ${actorType}, ${actor.guestId ?? null}, ${input.userId}, ${input.sessionId}, 'chat_action_completed',
+          ${input.eventId}, ${actorId}, ${actorType}, ${guestId}, ${input.userId}, ${input.sessionId}, 'chat_action_completed',
           ${eventTime}, ${input.page}, ${input.source}, ${input.platform},
           ${ANALYTICS_ENVIRONMENT_TAG}, ${input.tokenCost}, ${input.playDurationDeltaSec}, ${input.playDurationDeltaSec}, ${JSON.stringify(input.payload ?? {})}::jsonb,
           ${input.idempotencyKey}
@@ -163,7 +164,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
       ),
       upsert_actor AS (
         INSERT INTO analytics_actors (actor_id, actor_type, user_id, guest_id, created_at, last_seen_at)
-        SELECT ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null}, ${eventTime}, ${eventTime}
+        SELECT ${actorId}, ${actorType}, ${input.userId}, ${guestId}, ${eventTime}, ${eventTime}
         WHERE EXISTS (SELECT 1 FROM ins_event)
         ON CONFLICT (actor_id) DO UPDATE SET
           user_id = COALESCE(EXCLUDED.user_id, analytics_actors.user_id),
@@ -178,7 +179,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           online_sec, active_play_sec, read_sec, idle_sec, updated_at
         )
         SELECT
-          ${input.sessionId}, ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null},
+          ${input.sessionId}, ${actorId}, ${actorType}, ${input.userId}, ${guestId},
           ${eventTime}, ${eventTime}, ${input.page},
           ${input.tokenCost}, 1,
           0, ${input.playDurationDeltaSec}, 0, 0, CURRENT_TIMESTAMP
@@ -203,7 +204,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           online_sec, active_play_sec, read_sec, idle_sec
         )
         SELECT
-          ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null}, ${dateKey}::date,
+          ${actorId}, ${actorType}, ${input.userId}, ${guestId}, ${dateKey}::date,
           ${eventTime}, ${eventTime},
           0, 1,
           0, ${input.playDurationDeltaSec}, 0, 0
@@ -219,7 +220,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           daily_token_cost, chat_action_count, active_play_sec
         )
         SELECT
-          ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null}, ${dateKey}::date,
+          ${actorId}, ${actorType}, ${input.userId}, ${guestId}, ${dateKey}::date,
           ${input.tokenCost}, 1, ${input.playDurationDeltaSec}
         WHERE EXISTS (SELECT 1 FROM ins_event)
         ON CONFLICT (actor_id, date_key) DO UPDATE SET
@@ -419,4 +420,3 @@ export async function recordOnboardingViewedAnalytics(input: Omit<AnalyticsEvent
     suppressOrLogAnalyticsError(err, "[analytics][recordOnboardingViewedAnalytics] failed");
   }
 }
-

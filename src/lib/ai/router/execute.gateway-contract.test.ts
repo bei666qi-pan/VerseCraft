@@ -530,51 +530,6 @@ test("executeChatCompletion stops before upstream fetch when caller signal is al
   assert.equal(fetchCalled, false);
 });
 
-test("NARRATIVE_EXPANSION is non-stream json without a max_tokens cap", async (t) => {
-  const restore = patchEnv(baseGateway);
-  const origFetch = globalThis.fetch;
-  let maxTokens: number | undefined;
-  let responseFormatType = "";
-  let stream: boolean | undefined;
-  let model = "";
-  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body)) as {
-      model?: string;
-      max_tokens?: number;
-      response_format?: { type?: string };
-      stream?: boolean;
-    };
-    model = body.model ?? "";
-    maxTokens = body.max_tokens;
-    responseFormatType = body.response_format?.type ?? "";
-    stream = body.stream;
-    return new Response(JSON.stringify({ choices: [{ message: { content: "{\"narrative\":\"expanded\"}" } }] }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  };
-  t.after(() => {
-    globalThis.fetch = origFetch;
-    restore();
-    resetModelCircuitsForTests();
-    resetProviderCircuitsForTests();
-  });
-  resetModelCircuitsForTests();
-  resetProviderCircuitsForTests();
-
-  const res = await executeChatCompletion({
-    task: "NARRATIVE_EXPANSION",
-    messages: [{ role: "user", content: "{}" }],
-    ctx: { requestId: "gw-contract-narrative-expansion", task: "NARRATIVE_EXPANSION" },
-  });
-
-  assert.equal(res.ok, true);
-  assert.equal(model, "model-enhance");
-  assert.equal(maxTokens, undefined);
-  assert.equal(responseFormatType, "json_object");
-  assert.equal(stream, false);
-});
-
 test("managed test bindings normalize local and production-style base URLs", async () => {
   const restoreA = patchEnv({
     AI_GATEWAY_BASE_URL: "http://127.0.0.1:8080",

@@ -4,6 +4,7 @@ import { gateCandidatesForLorePacketV1 } from "../reveal/revealGate";
 import type { LoreFact, LorePacket, RetrievalPlan, RuntimeLoreRequest } from "../types";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { QINGSHI_LOCATIONS, QINGSHI_NPCS } from "@/lib/worlds/xingni/qingshiContent";
+import type { RevealTierRank } from "@/lib/registry/revealTierRank";
 
 function buildXingniFallbackFacts(): LoreFact[] {
   const locationFacts = Object.entries(QINGSHI_LOCATIONS).map(([id, location]) => ({
@@ -51,7 +52,7 @@ export function buildRegistryFallbackLorePacket(args: {
     .slice(0, Math.max(24, Math.floor(args.input.tokenBudget / 15)));
 
   const gateResult = gateCandidatesForLorePacketV1(scored, {
-    maxRank: args.plan.maxRevealRank,
+    maxRank: Math.max(0, Math.min(3, Math.trunc(args.plan.maxRevealRank))) as RevealTierRank,
     actorNpcId: args.plan.actorNpcId,
     presentNpcIds: args.plan.presentNpcIds,
   });

@@ -2,13 +2,14 @@ import type { GameTime } from "@/store/useGameStore";
 import type { MainThreatPhase, SceneCombatContext } from "./types";
 import { B1_ABSOLUTE_SAFE_ROOMS } from "@/lib/registry/world";
 import { getFloorCombatModifier } from "@/lib/registry/combatCanon";
+import type { FloorId } from "@/lib/registry/types";
 
-function floorFromLocation(locationId: string): string {
+function floorFromLocation(locationId: string): FloorId | null {
   const t = String(locationId ?? "").trim();
   if (t.startsWith("B2_")) return "B2";
   if (t.startsWith("B1_")) return "B1";
   const m = t.match(/^(\d)F_/);
-  return m ? m[1]! : "unknown";
+  return m ? (m[1] as FloorId) : null;
 }
 
 function timeOfDay(time: GameTime | null | undefined): "day" | "night" {
@@ -32,13 +33,14 @@ export function buildSceneCombatContext(args: {
 }): SceneCombatContext {
   const locationId = String(args.locationId ?? "").trim() || "unknown";
   const floorId = floorFromLocation(locationId);
+  const floorKey = floorId ?? "unknown";
   const tod = timeOfDay(args.time);
   const isSafeZone = B1_ABSOLUTE_SAFE_ROOMS.includes(locationId as any) || floorId === "B1";
 
   // Scene modifiers: phase-based pressure + canon-sourced floor pressure
   // Floor pressure read from FLOOR_COMBAT_MODIFIERS, single source of truth with combatCanon.ts
-  const floorMod = getFloorCombatModifier(floorId);
-  const pressure = phasePressure(args.threatPhase, floorId) + (floorMod?.pressure ?? 0);
+  const floorMod = floorId ? getFloorCombatModifier(floorId) : null;
+  const pressure = phasePressure(args.threatPhase, floorKey) + (floorMod?.pressure ?? 0);
   const concealment = tod === "night" ? 0.4 : 0;
   const footing = isSafeZone ? 0.7 : floorId === "7" ? -0.4 : 0;
 
@@ -50,7 +52,7 @@ export function buildSceneCombatContext(args: {
 
   return {
     locationId,
-    floorId,
+    floorId: floorKey,
     threatPhase: args.threatPhase,
     isSafeZone,
     timeOfDay: tod,

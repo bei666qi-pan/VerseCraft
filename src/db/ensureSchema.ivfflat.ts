@@ -5,6 +5,13 @@
 
 export const PG_VECTOR_IVFFLAT_MAX_DIMENSIONS = 2000;
 
+export function parsePgVectorDimension(typeName: string): number | null {
+  const match = /^vector\((\d+)\)$/i.exec(String(typeName ?? "").trim());
+  if (!match) return null;
+  const dimension = Number(match[1]);
+  return Number.isSafeInteger(dimension) && dimension > 0 ? dimension : null;
+}
+
 export function buildWorldKnowledgeChunksIvfflatIndexSql(dimension: number): string | null {
   if (!Number.isFinite(dimension) || dimension <= 0) {
     throw new Error(`world_knowledge_chunks ivfflat: invalid dimension ${dimension}`);

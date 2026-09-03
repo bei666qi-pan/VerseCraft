@@ -57,8 +57,7 @@
  * For telemetry, `narrativeLengthTelemetry.ts` wraps the assessment into
  * analytics-friendly fields (`narrativeUnderMin`, `narrativeOverMax`, etc.).
  *
- * For under-minimum recovery, `narrativeExpansion.ts` may re-request the model
- * to expand short narratives (gated by tier and safety).
+ * Under-minimum recovery is deterministic; it never re-requests the model.
  */
 import { resolveActionsFromNarrative, getBackfillTelemetrySummary, type ActionBackfillResult } from "@/lib/turnEngine/actionResolver";
 import { getVerseCraftStyleProfile, type VerseCraftStyleProfile } from "@/lib/narrativeStyle/styleBible";
@@ -301,7 +300,7 @@ export type ValidateNarrativeArgs = {
  * 当验证器判断模型返回的 options 存在问题时，仅以“清空”形式下发覆盖信号
  * （空数组 → caller 识别“需要重新向大模型请求实时选项”），避免用罐头短句
  * 冒充实时模型输出，继而掩盖大模型链路真实故障。
- * 下游 route 在 Phase-8.5 会在此信号后再调用 `generateOptionsOnlyFallback`。
+ * 下游 PlayerTurnWorkflow 在唯一 Finalizer 前使用确定性选项补全处理该信号。
  */
 const CLEAR_OPTIONS_SIGNAL: readonly string[] = [];
 
@@ -967,7 +966,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
   } else if (hasMediumOptionsIssue || hasOptionsShapeIssue) {
     // 不再注入罐头短句；用空数组作为“需要重新生成实时选项”的显式信号。
     // caller（api/chat 的 Phase-8.5）会在看到非空 optionsOverride 为空数组时，
-    // 重新调用 `generateOptionsOnlyFallback` 以获得大模型实时输出。
+    // 交由 PlayerTurnWorkflow 的确定性选项补全处理，不再触发额外模型调用。
     optionsOverride = [...CLEAR_OPTIONS_SIGNAL];
   }
   if (!hasHigh && possessionNarrativeOverride && possessionNarrativeOverride !== narrative) {

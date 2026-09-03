@@ -65,8 +65,6 @@ export function resetExportErrors(): void {
 }
 
 type LangfuseSpan = import("@langfuse/tracing").LangfuseSpan;
-type LangfuseGeneration = import("@langfuse/tracing").LangfuseGeneration;
-
 // ----- SDK lazy-loading (shared, loaded once) -----
 
  
@@ -203,7 +201,7 @@ function createRealAdapter(): TracingAdapter {
             ...(metadata.skippedReason ? { skippedReason: metadata.skippedReason } : {}),
             ...(metadata.cacheHit !== undefined ? { cacheHit: String(metadata.cacheHit) } : {}),
             ...(metadata.budgetHit !== undefined ? { budgetHit: String(metadata.budgetHit) } : {}),
-          } as Record<string, unknown>) as Record<string, unknown>,
+          }),
           level: metadata.status === "error" ? "ERROR" : "DEFAULT",
           statusMessage: metadata.errorCode,
           ...(metadata.resultSummary ? { output: metadata.resultSummary } : {}),
@@ -276,7 +274,7 @@ function createRealAdapter(): TracingAdapter {
                 gen.update({
                   ...(update.finishReason !== undefined ? { metadata: { finishReason: update.finishReason } } : {}),
                   ...(update.totalLatencyMs !== undefined ? { metadata: { totalLatencyMs: String(update.totalLatencyMs) } } : {}),
-                  ...(update.usageDetails ? {
+                  ...(update.promptTokens != null || update.completionTokens != null || update.totalTokens != null ? {
                     usageDetails: {
                       ...(update.promptTokens != null ? { input: update.promptTokens } : {}),
                       ...(update.completionTokens != null ? { output: update.completionTokens } : {}),

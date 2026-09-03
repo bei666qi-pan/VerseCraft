@@ -457,12 +457,14 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   const narrativeAudit = normalizeNarrativeAudit(o._narrative_audit);
   if (narrativeAudit) out._narrative_audit = narrativeAudit;
 
-  // DM Agent 工具使用标记和状态变更摘要（Phase-10：白名单透传）
-  if (typeof o.dm_agent_tools_used === "boolean") {
-    out.dm_agent_tools_used = o.dm_agent_tools_used;
+  // Mechanics Workflow 标记。旧 dm_agent_* 只读迁移，不再写出。
+  const mechanicsToolsUsed = o.mechanics_tools_used ?? o.dm_agent_tools_used;
+  if (typeof mechanicsToolsUsed === "boolean") {
+    out.mechanics_tools_used = mechanicsToolsUsed;
   }
-  if (o.dm_agent_state_delta && typeof o.dm_agent_state_delta === "object" && !Array.isArray(o.dm_agent_state_delta)) {
-    out.dm_agent_state_delta = o.dm_agent_state_delta;
+  const mechanicsStateDelta = o.mechanics_state_delta ?? o.dm_agent_state_delta;
+  if (mechanicsStateDelta && typeof mechanicsStateDelta === "object" && !Array.isArray(mechanicsStateDelta)) {
+    out.mechanics_state_delta = mechanicsStateDelta;
   }
 
   // Turn-mode pass-through (T4, 2026-08): model can declare the beat shape

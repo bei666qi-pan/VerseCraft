@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -32,7 +33,13 @@
 /blob-report/
 /screenshots/
 /videos/
+/dogfood-output/
+/tmp-promo-video/
+**/.runtime-data/
+**/screenshots/
+**/test-results/
 *.webm
+*.bak
 
 # next.js
 /.next/
@@ -145,6 +152,3 @@ dump.rdb
 /benchmarks/traces/
 # Local dev artifacts (2026-08-31)
 .tmp-vc-test.mjs
-.tmp-vc-test.mjs.bak
-.tmp-vc-test.mjs.bak2
-=

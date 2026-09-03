@@ -16,8 +16,7 @@
  *     --deep-self-improve     Same as -ds
  */
 
-import { parseArgs } from "node:util";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync } from "node:child_process";
@@ -26,7 +25,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const VERSION = "1.0.0";
 
 // Dynamic import to avoid top-level dependency issues
-let sessionStore, dashboard, daemon, watchdog, observer;
+let sessionStore, dashboard, daemon;
 
 async function loadModule(name) {
   const modPath = resolve(__dirname, "self-improve", `${name}.mjs`);
@@ -210,7 +209,7 @@ async function cmdDoctor() {
 
   // Gateway
   try {
-    const gw = execSync(`cd "${repo}" && pnpm probe:ai-gateway -- --role main --prompt-profile small --runs 1 --warmup-runs 0 --timeout-ms 30000 2>&1 | tail -5`, {
+    execSync(`cd "${repo}" && pnpm probe:ai-gateway -- --role main --prompt-profile small --runs 1 --warmup-runs 0 --timeout-ms 30000 2>&1 | tail -5`, {
       encoding: "utf-8", timeout: 60000, stdio: "pipe",
       env: { ...process.env, NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1", NODE_USE_ENV_PROXY: "0" }
     });

@@ -2,7 +2,7 @@ import type { WorldEngineStructuredDelta } from "./contracts";
 import type { DirectorValidationResult } from "./validator";
 
 /** Materialize the only Director plan that persistence and Writer hints may see. */
-export function materializeAcceptedDirectorPlan(args: {
+export function materializeAcceptedChapterPacingPlan(args: {
   plan: WorldEngineStructuredDelta;
   validation: DirectorValidationResult;
   acceptedSocialEventCodes?: readonly string[];

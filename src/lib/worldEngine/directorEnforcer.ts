@@ -1,4 +1,4 @@
-import type { DirectorPhase, DirectorPlan, DirectorAgendaItem, DirectorNpcAction } from "./contracts";
+import type { DirectorPhase, ChapterPacingPlan, DirectorAgendaItem, DirectorNpcAction } from "./contracts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,9 +25,9 @@ export type EnforcerRejection = {
   kind: "agenda_item" | "npc_action" | "phase_transition";
 };
 
-export type EnforcedDirectorPlan = {
+export type EnforcedChapterPacingPlan = {
   /** The plan with invalid items removed (shallow copy with filtered arrays). */
-  plan: DirectorPlan;
+  plan: ChapterPacingPlan;
   /** Every item that was rejected, with a short diagnostic reason. */
   rejections: EnforcerRejection[];
   /** Pacing inconsistencies detected (warnings, not rejections — they don't
@@ -183,7 +183,7 @@ function validatePhaseTransition(
 // ---------------------------------------------------------------------------
 
 function checkPacingConsistency(
-  plan: DirectorPlan
+  plan: ChapterPacingPlan
 ): string[] {
   const warnings: string[] = [];
   const { tension, mystery, fatigue } = plan.pacing_assessment;
@@ -259,7 +259,7 @@ function enforceNpcActionReferences(
 // ---------------------------------------------------------------------------
 
 /**
- * Validate a DirectorPlan against actual game state before it is written to
+ * Validate a ChapterPacingPlan against actual game state before it is written to
  * the agenda queue or injected into the DM prompt.
  *
  * Checks performed:
@@ -271,10 +271,10 @@ function enforceNpcActionReferences(
  * The returned plan is a shallow copy with filtered arrays. Rejections and
  * pacing warnings are reported alongside it so callers can log or surface them.
  */
-export function enforceDirectorPlan(
-  plan: DirectorPlan,
+export function enforceChapterPacingPlan(
+  plan: ChapterPacingPlan,
   gameState: DirectorEnforcerGameState
-): EnforcedDirectorPlan {
+): EnforcedChapterPacingPlan {
   const activeIds = toSet(gameState.activeNpcIds);
   const deadIds = gameState.deadOrInactiveNpcIds
     ? toSet(gameState.deadOrInactiveNpcIds)
@@ -309,7 +309,7 @@ export function enforceDirectorPlan(
   allRejections.push(...npcResult.rejections);
 
   // --- Build the filtered plan ---
-  const filteredPlan: DirectorPlan = {
+  const filteredPlan: ChapterPacingPlan = {
     ...plan,
     target_phase: effectiveTargetPhase,
     world_events_to_schedule: agendaResult.kept,

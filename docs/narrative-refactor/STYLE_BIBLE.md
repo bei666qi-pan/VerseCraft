@@ -1,7 +1,6 @@
 # VerseCraft 叙事风格宪法 v3.0
 
-> 本文件是所有文风改动的**唯一依据**。代码中的机器投影是 `src/lib/narrativeStyle/styleBible.ts`（结构化 profile）与 `src/lib/narrativeStyle/styleValidator.ts`（判据实现），两者必须与本文件同步修订（协议见 §13）。
-> 执行者注意：本文件写"应该是什么"；各 phase 文件写"怎么改过去"。改代码时以 phase 文件为操作指引，以本文件为质量标准。
+> 本文件是叙事文风的长期产品规范。代码中的机器投影是 `src/lib/narrativeStyle/styleBible.ts`（结构化 profile）与 `src/lib/narrativeStyle/styleValidator.ts`（判据实现），三者必须同步修订（协议见 §13）。历史实施阶段报告已删除，当前行为只以代码、测试、OpenSpec 与本文件为准。
 
 ---
 

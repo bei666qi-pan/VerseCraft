@@ -19,6 +19,7 @@ import {
 } from "../observability/ragTracing";
 import { mmrRerank, dynamicTopK, getMmrConfig } from "../retrieval/diversityReranker";
 import { validateRetrievedFacts } from "../retrieval/factValidator";
+import type { RevealTierRank } from "@/lib/registry/revealTierRank";
 
 export interface RuntimeLoreDeps {
   planWorldKnowledgeQuery: typeof planWorldKnowledgeQuery;
@@ -189,7 +190,7 @@ export async function getRuntimeLore(input: RuntimeLoreRequest, deps: RuntimeLor
 
   // ── Stage 5: Reveal Gate ──
   const gateSpan = startRagSpan(RAG_SPAN_NAMES.REVEAL_GATE);
-  const maxRevealRank = plan.maxRevealRank;
+  const maxRevealRank = Math.max(0, Math.min(3, Math.trunc(plan.maxRevealRank))) as RevealTierRank;
   const gateResult = gateCandidatesForLorePacketV1(diverseCandidates, {
     maxRank: maxRevealRank,
     actorNpcId: plan.actorNpcId,

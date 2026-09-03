@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { detectWorldEngineTriggers, parseWorldEngineDeltaJson } from "@/lib/worldEngine/contracts";
-import { validateDirectorPlan } from "@/lib/worldEngine/validator";
+import { validateChapterPacingPlan } from "@/lib/worldEngine/validator";
 import { appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 
 type RiskPatch = Partial<{
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
         errors.push(`expected parser to drop agenda events, got ${parsed.world_events_to_schedule.length}`);
       }
 
-      const validation = validateDirectorPlan(parsed);
+      const validation = validateChapterPacingPlan(parsed);
       if (validation.accepted) accepted += 1;
       else rejected += 1;
       if (typeof testCase.expect.accepted === "boolean" && validation.accepted !== testCase.expect.accepted) {

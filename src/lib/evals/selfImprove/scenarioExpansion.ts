@@ -19,7 +19,7 @@
  * expected invariants, and novelty signature.
  */
 
-import type { SelfImproveScenario, ScenarioCategory } from "./types";
+import type { SelfImproveScenario } from "./types";
 
 // ── Transform registry ────────────────────────────────
 

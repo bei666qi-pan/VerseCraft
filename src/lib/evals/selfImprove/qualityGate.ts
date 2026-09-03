@@ -15,7 +15,7 @@
  */
 
 import { execSync } from "node:child_process";
-import type { QualityGateResult, LiveEvalResult } from "./types";
+import type { QualityGateResult } from "./types";
 
 // ── Test execution ────────────────────────────────────
 

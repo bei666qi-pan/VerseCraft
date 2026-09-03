@@ -27,8 +27,7 @@ export type StoreGovernanceLayers = {
   };
   supportPlane: {
     memorySpine: GameState["memorySpine"];
-    storyDirector: GameState["storyDirector"];
-    incidentQueue: GameState["incidentQueue"];
+    chapterPacing: GameState["chapterPacing"];
     escapeMainline: GameState["escapeMainline"];
     professionState: GameState["professionState"];
     codex: Record<string, CodexEntry>;
@@ -52,8 +51,7 @@ export type StoreGovernanceLayers = {
     | "equippedWeapon"
     | "weaponBag"
     | "memorySpine"
-    | "storyDirector"
-    | "incidentQueue"
+    | "chapterPacing"
     | "escapeMainline"
     | "professionState"
   >;
@@ -98,8 +96,7 @@ export function selectTurnResultState(s: GameState): StoreGovernanceLayers["turn
 export function selectSupportPlaneState(s: GameState): StoreGovernanceLayers["supportPlane"] {
   return {
     memorySpine: s.memorySpine,
-    storyDirector: s.storyDirector,
-    incidentQueue: s.incidentQueue,
+    chapterPacing: s.chapterPacing,
     escapeMainline: s.escapeMainline,
     professionState: s.professionState,
     codex: s.codex,
@@ -125,8 +122,7 @@ export function selectPersistenceCoreState(s: GameState): StoreGovernanceLayers[
     equippedWeapon: s.equippedWeapon,
     weaponBag: s.weaponBag,
     memorySpine: s.memorySpine,
-    storyDirector: s.storyDirector,
-    incidentQueue: s.incidentQueue,
+    chapterPacing: s.chapterPacing,
     escapeMainline: s.escapeMainline,
     professionState: s.professionState,
   };
@@ -165,7 +161,7 @@ export function summarizePlaySurfaceDemand(s: GameState): {
       "activeMenu",
       "conflictTurnFeedback",
     ],
-    supportKeys: ["memorySpine", "storyDirector", "incidentQueue", "escapeMainline", "professionState", "mainThreatByFloor", "codex"],
+    supportKeys: ["memorySpine", "chapterPacing", "escapeMainline", "professionState", "mainThreatByFloor", "codex"],
     runtimeKeys: ["isHydrated", "recentOptions", "intrusionFlashUntil", "pendingClientAction", "professionNarrativeCues", "combatSummariesV1"],
   };
 }

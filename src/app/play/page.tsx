@@ -165,7 +165,6 @@ import {
   getClientOptionsOnlyRegenPathV2Enabled,
   getClientOptionsRegenRepairPassEnabled,
   getClientOptionsRegenSemanticGateEnabled,
-  getClientDeferMainTurnOptionsToClientEnabled,
   getClientHiddenCombatV1Enabled,
   getClientCombatSummaryV1Enabled,
   getClientConflictFeedbackV1Enabled,
@@ -804,10 +803,20 @@ function PlayContent() {
   const legacySseHighEntropyHintRef = useRef(false);
 
   useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.userAgentData?.getHighEntropyValues) return;
+    if (typeof navigator === "undefined") return;
+    const userAgentData = (navigator as Navigator & {
+      userAgentData?: {
+        getHighEntropyValues?: (hints: string[]) => Promise<{
+          brands?: readonly { brand?: string }[];
+          fullVersionList?: readonly { brand?: string }[];
+        }>;
+      };
+    }).userAgentData;
+    const getHighEntropyValues = userAgentData?.getHighEntropyValues?.bind(userAgentData);
+    if (!getHighEntropyValues) return;
     void (async () => {
       try {
-        const h = await navigator.userAgentData.getHighEntropyValues(["fullVersionList", "brands"]);
+        const h = await getHighEntropyValues(["fullVersionList", "brands"]);
         if (needsLegacySseClientTransportFromHighEntropyUserAgentData(h)) {
           legacySseHighEntropyHintRef.current = true;
         }
@@ -2596,7 +2605,7 @@ function PlayContent() {
               kind: "transport_failed",
               status: 0,
               reason: xhrOut.kind === "timeout" ? "xhr_timeout" : xhrOut.kind,
-              retryAfterMs: null,
+              retryAfterMs: parseRetryAfterMs(null),
               localRateLimited: false,
               recoverable: true,
             };
@@ -2709,7 +2718,7 @@ function PlayContent() {
                     kind: "transport_failed",
                     status: 0,
                     reason: xhrOut.kind === "timeout" ? "xhr_timeout_after_fetch_stream_empty" : xhrOut.kind,
-                    retryAfterMs: null,
+                    retryAfterMs: parseRetryAfterMs(null),
                     localRateLimited: false,
                     recoverable: true,
                   };
@@ -2753,7 +2762,7 @@ function PlayContent() {
                   kind: "transport_failed",
                   status: 0,
                   reason: xhrOut.kind === "timeout" ? "xhr_timeout_after_fetch_stream_failure" : xhrOut.kind,
-                  retryAfterMs: null,
+                  retryAfterMs: parseRetryAfterMs(null),
                   localRateLimited: false,
                   recoverable: true,
                 };
@@ -4378,14 +4387,7 @@ function PlayContent() {
       : [];
 
     const merged = [...validOpts];
-    const deliverPlayableOptionsSeparately =
-      getClientDeferMainTurnOptionsToClientEnabled() &&
-      parsed.is_action_legal &&
-      !parsed.is_death &&
-      !isEndingFinaleSystemRound &&
-      !isEndgameSystemRound;
-    const mergedForDelivery = deliverPlayableOptionsSeparately ? [] : merged;
-    const deliveryDecision = decideModelOptionsDelivery({ options: mergedForDelivery });
+    const deliveryDecision = decideModelOptionsDelivery({ options: merged });
 
     if (isEndingFinaleSystemRound) {
       const finale = normalizeEndingFinalePayload((parsed as any).ending_finale, buildCurrentEndingFinaleInput());
@@ -4824,7 +4826,7 @@ function PlayContent() {
 
     // Phase-4: 剧情导演层与突发事件队列推进（必须在真实状态写入完成后）
     if (!isXingni) try {
-      useGameStore.getState().postTurnStoryDirectorUpdate({
+      useGameStore.getState().advanceChapterPacing({
         resolvedTurn: parsed,
         preTurnIndex: (stateBeforeProfessionTurn.logs ?? []).length,
         pre: {
@@ -4835,7 +4837,7 @@ function PlayContent() {
         },
       });
     } catch (e) {
-      console.warn("[play][storyDirector] postTurn update failed", e);
+      console.warn("[play][chapterPacing] postTurn update failed", e);
     }
 
     // Phase-5: 出口主线推进（必须在真实状态写入完成后）

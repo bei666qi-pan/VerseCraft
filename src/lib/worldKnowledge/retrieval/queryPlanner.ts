@@ -8,7 +8,7 @@ import { DEFAULT_RETRIEVAL_BUDGET } from "../constants";
 import type { RetrievalIntentType, RetrievalPlan, RuntimeLoreRequest } from "../types";
 import { inferMaxRevealRank } from "../reveal/revealGate";
 import { expandQuery } from "./queryExpander";
-import { enrichQueryHeuristically, enhancedSegmentCJK, isLlmQueryRewriteEnabled } from "./queryRewriter";
+import { enrichQueryHeuristically, enhancedSegmentCJK } from "./queryRewriter";
 
 function addIfIncludes(target: Set<string>, text: string, tests: string[]): void {
   for (const t of tests) {
@@ -174,8 +174,6 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
 
   // ── Heuristic query enrichment (location-aware) ──
   const enrichedQuery = enrichQueryHeuristically(input.latestUserInput, input.playerLocation);
-  void isLlmQueryRewriteEnabled(); // Feature-gated LLM rewrite — checked but invoked off-critical-path
-
   const retrievalBudget = {
     ...DEFAULT_RETRIEVAL_BUDGET,
     maxFacts: Math.max(6, Math.min(DEFAULT_RETRIEVAL_BUDGET.maxFacts, Math.floor(input.tokenBudget / 35))),

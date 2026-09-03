@@ -13,8 +13,8 @@ export function resolveEvalMode(envVar?: string, fallback: EvalMode = "mock"): E
 /** 各 suite 的默认 JSON 输出路径前缀 */
 export const DEFAULT_OUT_DIR = ".runtime-data/eval";
 
-/** 历史数据目录 */
-export const HISTORY_DIR = "benchmarks/history";
+/** 运行历史属于本地产物，不进入版本库。 */
+export const HISTORY_DIR = ".runtime-data/eval/history";
 
 /** Live judge 调用上限 */
 export const BUDGET = {

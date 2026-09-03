@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import type { EvalMode } from "./config";
 import { resolveEvalMode } from "./config";
-import type { _EvalCaseBase, ReportEntry, EvalSummaryBase } from "./types";
+import type { ReportEntry, EvalSummaryBase } from "./types";
 import { HISTORY_DIR } from "./config";
 
 // ── CLI 参数 ─────────────────────────────────────────────
@@ -96,7 +96,7 @@ export function buildEvalOutput<TResults>(params: {
   };
 }
 
-/** 将聚合行写入 benchmarks/history/<suite>.jsonl */
+/** 将聚合行写入被忽略的本地运行目录。 */
 export function appendHistory(entry: ReportEntry): void {
   const dir = path.resolve(HISTORY_DIR);
   fs.mkdirSync(dir, { recursive: true });
@@ -104,7 +104,7 @@ export function appendHistory(entry: ReportEntry): void {
   fs.appendFileSync(path.join(dir, `${entry.suite}.jsonl`), line, "utf8");
 }
 
-/** 从 benchmarks/history/<suite>.jsonl 读取最后 N 行 */
+/** 从本地运行目录读取最后 N 行。 */
 export function readLastHistory(suite: string, n: number = 1): ReportEntry[] {
   const filePath = path.resolve(HISTORY_DIR, `${suite}.jsonl`);
   if (!fs.existsSync(filePath)) return [];

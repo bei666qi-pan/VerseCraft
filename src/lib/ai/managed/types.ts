@@ -39,10 +39,9 @@ export type ManagedAiSnapshot = Readonly<{
 }>;
 
 const TASK_PURPOSE: Record<TaskType, AiPurpose> = {
-  PLAYER_CHAT: "story", DM_AGENT: "story", COMBAT_NARRATION: "story", GAMEPLAY_LOCALIZATION: "story",
+  PLAYER_CHAT: "story", MECHANICS: "story", COMBAT_NARRATION: "story", GAMEPLAY_LOCALIZATION: "story",
   PLAYER_CONTROL_PREFLIGHT: "rules", INTENT_PARSE: "rules", SAFETY_PREFILTER: "rules", RULE_RESOLUTION: "rules",
-  SCENE_ENHANCEMENT: "polish", NARRATIVE_EXPANSION: "polish", NPC_EMOTION_POLISH: "polish",
-  WORLDBUILD_OFFLINE: "background", STORYLINE_SIMULATION: "background", DIRECTOR_PLAN_CRITIC: "background",
+  WORLDBUILD_OFFLINE: "background", STORYLINE_SIMULATION: "background",
   DEV_ASSIST: "background", MEMORY_COMPRESSION: "background", EVAL_JUDGE: "judge",
 };
 
@@ -58,5 +57,5 @@ export function roleForPurpose(purpose: AiPurpose): AiLogicalRole {
 }
 
 export const AI_PURPOSE_LABELS: Record<AiPurpose, string> = {
-  story: "玩家故事生成", rules: "规则判断", polish: "文字润色", background: "后台推演", embedding: "知识检索",
+  story: "玩家故事生成", rules: "规则判断", polish: "文字润色", background: "后台推演", embedding: "知识检索", judge: "质量评审",
 };

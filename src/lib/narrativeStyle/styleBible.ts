@@ -17,7 +17,7 @@ export type VerseCraftStyleProfile = {
 
 // 2026-07 文风改造 phase-1：从 youth_campus_suspense_v2（电影感+青春+校园悬疑）
 // 升级为 youth_adventure_ensemble_v3（青春悬疑冒险—广受众五档位情绪+人物温度+钩子轮换）。
-// 旧值→新值记录于 docs/narrative-refactor/PROGRESS.md。
+// 规则来源：docs/narrative-refactor/STYLE_BIBLE.md。
 const DEFAULT_PROFILE: VerseCraftStyleProfile = {
   style_profile_id: DEFAULT_VERSECRAFT_STYLE_PROFILE_ID,
   tone: [

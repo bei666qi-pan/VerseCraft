@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const [{ pool }, { resolveWorldDirectorConfig }, { enqueueWorldEngineTick }, { loadCommittedDirectorHintForWriter }, { loadDirectorState }] = await Promise.all([
+  const [{ pool }, { resolveWorldDirectorConfig }, { enqueueWorldEngineTick }, { loadDirectorDirectiveForWriter }, { loadDirectorState }] = await Promise.all([
     import("../src/db/index"),
     import("../src/lib/worldEngine/config"),
     import("../src/lib/worldEngine/queue"),
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     deadNpcIds: [],
     changedTaskIds: [],
     changedClueIds: [],
-    pacingChapterSignals: { phase: "build_up", tension: 0.45, chapterId: null, chapterIndex: 0, progress: 0.2 },
+    pacingChapterSignals: { phase: "rising", tension: 2, chapterId: "probe-chapter", completedBeatIds: [], turnsInChapter: probeTurnIndex },
     worldStateSummary: { day: 1, timeSlot: "day", danger: "medium", stateCodes: ["repeated_investigation"] },
     latestTurnSignals: { actionKinds: ["exploration", "movement"], legal: true, death: false, riskTags: [] },
     npcLocationUpdateCount: 1,
@@ -189,13 +189,13 @@ async function main(): Promise<void> {
   if (!directorState) results.push({ stage: "director_state", status: "fail", detail: "Director state was not persisted." });
   else results.push({ stage: "director_state", status: "pass", detail: `Director phase ${directorState.phase} persisted.` });
   const consumerTurnIndex = probeTurnIndex + 1;
-  const writerHint = await loadCommittedDirectorHintForWriter({
+  const writerDirective = await loadDirectorDirectiveForWriter({
     scope: { ...scope, sessionId },
     turnIndex: consumerTurnIndex,
     timeoutMs: 500,
   });
-  if (!writerHint) results.push({ stage: "consumer", status: "fail", detail: "No committed scoped hint envelope was rendered by the actual next-turn Writer consumer." });
-  else results.push({ stage: "consumer", status: "pass", detail: `Next-turn Writer consumer rendered hint ${writerHint.envelope.hintId}.` });
+  if (!writerDirective) results.push({ stage: "consumer", status: "fail", detail: "No scoped Director directive was projected for the actual next-turn Writer consumer." });
+  else results.push({ stage: "consumer", status: "pass", detail: `Next-turn Writer consumer projected ${writerDirective.directive.directiveId}.` });
   await writeReport(results, {
     requestId,
     scope,
@@ -203,8 +203,8 @@ async function main(): Promise<void> {
     jobId,
     runId,
     worldRevision,
-    hintId: writerHint?.envelope.hintId ?? null,
-    writerHintChars: writerHint?.block.length ?? 0,
+    directiveId: writerDirective?.directive.directiveId ?? null,
+    writerDirectiveChars: writerDirective?.block.length ?? 0,
     workerRuns,
   });
 }

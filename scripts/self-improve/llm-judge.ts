@@ -143,7 +143,6 @@ async function fetchLatestGenerationByTrace(traceId: string): Promise<Generation
 function heuristicJudge(gen: GenerationData): JudgeResult {
   const dims: JudgeDimension[] = [];
   const output = gen.output;
-  const input = gen.input;
 
   // 1. Playability: check for options and narrative length
   const hasOptions = output.includes('"options"') || output.includes('"decision_options"');

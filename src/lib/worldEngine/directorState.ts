@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "@/db/index";
-import type { DirectorPhase, DirectorPlan, WorldRuntimeScope } from "./contracts";
+import type { DirectorPhase, ChapterPacingPlan, WorldRuntimeScope } from "./contracts";
 
 export type WorldDirectorPacingState = {
   tension: number;
@@ -120,7 +120,7 @@ export async function loadDirectorState(scope: WorldRuntimeScope): Promise<World
 
 export function computeNextDirectorState(args: {
   previousState: WorldDirectorState | null;
-  plan: DirectorPlan;
+  plan: ChapterPacingPlan;
   scope: WorldRuntimeScope;
   userId: string | null;
   turnIndex: number;

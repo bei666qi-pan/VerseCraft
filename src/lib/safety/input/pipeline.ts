@@ -108,8 +108,8 @@ export async function moderateInputOnServer(args: {
       whitelist: { worldviewTerms: [], gameplayActions: [], styleToneHints: [], contextConsistent: false },
       fallbackUsed: false,
       reasonCode: pre.reasonCode,
-      contentFingerprint: fingerprintText(pre.ok ? pre.sanitizedText : ""),
-      rawTextSnippet: pre.ok ? pre.sanitizedText.slice(0, 180) : null,
+      contentFingerprint: fingerprintText(""),
+      rawTextSnippet: null,
     });
     return { decision: "reject", traceId, userMessage: pre.userMessage, debug: { precheckFlags: pre.flags } };
   }
@@ -199,4 +199,3 @@ export async function moderateInputOnServer(args: {
   }
   return { decision: "allow", traceId, text: sanitizedText, userMessage: um.message, debug: { precheckFlags: pre.flags, verdict } };
 }
-

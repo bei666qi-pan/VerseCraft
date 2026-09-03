@@ -152,8 +152,8 @@ export const PLAYER_DM_JSON_STRICT_TOOL_PARAMETERS: Record<string, unknown> = {
     dm_change_set: { type: "object", additionalProperties: true },
     world_delta: { type: "object", additionalProperties: true },
     _narrative_audit: { type: "object", additionalProperties: true },
-    dm_agent_tools_used: { type: ["boolean", "null"] },
-    dm_agent_state_delta: { type: ["object", "null"], additionalProperties: true },
+    mechanics_tools_used: { type: ["boolean", "null"] },
+    mechanics_state_delta: { type: ["object", "null"], additionalProperties: true },
   },
 };
 

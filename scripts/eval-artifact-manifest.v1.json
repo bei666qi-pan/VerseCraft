@@ -37,7 +37,6 @@
     "benchmarks/rag-pipeline/report-*.json"
   ],
   "preserve": [
-    "benchmarks/history/**/*",
     "benchmarks/**/cases.json",
     "benchmarks/**/scenarios.json",
     "benchmarks/**/rubrics/**/*",

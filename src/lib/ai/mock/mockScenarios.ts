@@ -113,9 +113,10 @@ const combatNarrative = [
 // itemInteractionNarrative 含「钥匙」「挂锁」「锁孔」「防火门」
 //   → 覆盖 item_interaction 的 mustContainAny: ["钥匙", "挂锁", "锁孔", "防火门"]
 const itemInteractionNarrative = [
-  "我把钥匙插进挂锁的锁孔里轻轻转动，锁芯发出细微的咔嗒声。防火门后面传来一阵冷风，说明这条路确实通着。挂锁已经锈得差不多了，再试一次应该能打开。",
-  "钥匙在锁孔里转了半圈就卡住了，我换了个角度重新试。挂锁内部的弹子排列很规整，不像是被人撬过的痕迹。防火门上的铰链已经生锈，推开的时候会发出很大的声响。",
-  "我蹲下来用手电照锁孔周围，发现防火门边缘有一道新鲜的刮痕。钥匙的齿纹和锁芯不太匹配，但挂锁本身已经松动了，用力拽几下说不定能直接扯下来。",
+  "我捏住生锈的钥匙，把手机灯贴近防火门上的挂锁。钥匙缓慢探进锁孔，转到一小段便受阻；我停住手，没有继续加力。挂锁仍关着，防火门也没有打开，我的脚始终留在楼梯间这一侧。",
+  "我抽回钥匙，借着手机灯分别查看钥匙齿纹、锁孔边缘和门框接缝。光线扫过金属表面时能看见锈色和几处磨痕，但仅凭这些外观无法判断痕迹来自哪次使用，也不能说明门后通向哪里。我只把可见位置记在心里，不把猜测当成新的线索。",
+  "我换了一个较轻的角度再试，钥匙依旧在同一位置受阻。锁体没有脱开，门缝没有扩大，周围也没有出现可供通行的新入口。这次动作只验证了眼前这把钥匙暂时不能让挂锁转动，没有改变门、任务或所在地点的状态。",
+  "我退开半步，让手机灯同时照住挂锁和脚边，重新检查来路。若继续尝试，可以先观察锁孔的形状，或寻找与这扇防火门有关的公开信息；若担心声音引来危险，也可以收起钥匙，沿走过的楼梯返回。无论选哪一步，都要从当前能核对的事实开始。",
 ].join("");
 
 // npcDialogueNarrative 含「声音」「老李」「电梯」「昨晚」
@@ -430,25 +431,11 @@ function controlPreflightJson(): string {
   });
 }
 
-function narrativeExpansionJson(input: MockScenarioInput, scenario?: MockAiScenario): string {
-  if (scenario === "malformed_json") {
-    return JSON.stringify({
-      narrative: "我停在原地侧耳倾听。走廊尽头传来一阵细碎声响，随即又安静下来；在看清来源之前，我没有贸然前进。",
-    });
-  }
-  // 与主 PLAYER_CHAT 同路由：保证 final hook 的 narrative 覆盖与主叙事一致（no-op），
-  // 避免 originium/taskComplete 等专题叙事被默认叙事覆盖。
-  return JSON.stringify({ narrative: chooseNarrative(input, scenario) });
-}
-
 export function buildMockCompletionScenario(input: MockScenarioInput): MockCompletionScenario {
   const scenario = resolveMockScenario(input);
   const usage = { promptTokens: 320, completionTokens: 90, totalTokens: 410, cachedPromptTokens: 120 };
   if (input.task === "PLAYER_CONTROL_PREFLIGHT") {
     return { scenario, content: controlPreflightJson(), usage };
-  }
-  if (input.task === "NARRATIVE_EXPANSION") {
-    return { scenario, content: narrativeExpansionJson(input, scenario), usage };
   }
   if (input.task === "GAMEPLAY_LOCALIZATION") {
     const raw = input.messages.find((message) => message.role === "user")?.content ?? "{}";
@@ -482,12 +469,12 @@ export function buildMockCompletionScenario(input: MockScenarioInput): MockCompl
       usage,
     };
   }
-  if (input.task === "DM_AGENT") {
-    // DM Agent mock: returns a valid narrative response
-    const dmAgentNarrative = "\u6211\u73af\u987e\u56db\u5468\uff0c\u8d70\u5eca\u91cc\u7684\u706f\u5149\u5ffd\u660e\u5ffd\u6697\u3002\u8001\u5218\u4ece\u914d\u7535\u95f4\u63a2\u51fa\u5934\u6765\uff0c\u671d\u6211\u70b9\u4e86\u70b9\u5934\u3002\u201c\u6765\u5f97\u6b63\u597d\uff0c\u953b\u9020\u53f0\u521a\u68c0\u4fee\u5b8c\u3002\u201d\u4ed6\u6307\u4e86\u6307\u5899\u89d2\u90a3\u53f0\u5621\u5621\u4f5c\u54cd\u7684\u8bbe\u5907\u3002\u6211\u8d70\u8fd1\u953b\u9020\u53f0\uff0c\u91d1\u5c5e\u8868\u9762\u5fae\u5fae\u53d1\u70eb\uff0c\u4e0a\u9762\u523b\u7740\u5bc6\u5bc6\u9ebb\u9ebb\u7684\u7b26\u6587\u3002\u201c\u60f3\u6253\u70b9\u4ec0\u4e48\uff1f\u201d\u8001\u5218\u95ee\u3002\u6211\u68c0\u67e5\u4e86\u4e00\u4e0b\u80cc\u5305\u91cc\u7684\u6750\u6599\u2014\u2014\u9668\u94c1\u7684\u788e\u7247\u5728\u706f\u5149\u4e0b\u6cdb\u7740\u5e7d\u84dd\u7684\u5149\uff0c\u72fc\u738b\u7684\u7259\u9f7f\u8fd8\u5e26\u7740\u5fae\u5fae\u7684\u5bd2\u610f\u3002\u201c\u4e00\u628a\u5251\uff0c\u201d\u6211\u8bf4\uff0c\u201c\u5bf9\u4ea1\u7075\u6709\u6548\u7684\u90a3\u79cd\u3002\u201d";
+  if (input.task === "MECHANICS") {
+    // Mechanics Workflow mock: returns a valid narrative response
+    const mechanicsNarrative = "\u6211\u73af\u987e\u56db\u5468\uff0c\u8d70\u5eca\u91cc\u7684\u706f\u5149\u5ffd\u660e\u5ffd\u6697\u3002\u8001\u5218\u4ece\u914d\u7535\u95f4\u63a2\u51fa\u5934\u6765\uff0c\u671d\u6211\u70b9\u4e86\u70b9\u5934\u3002\u201c\u6765\u5f97\u6b63\u597d\uff0c\u953b\u9020\u53f0\u521a\u68c0\u4fee\u5b8c\u3002\u201d\u4ed6\u6307\u4e86\u6307\u5899\u89d2\u90a3\u53f0\u5621\u5621\u4f5c\u54cd\u7684\u8bbe\u5907\u3002\u6211\u8d70\u8fd1\u953b\u9020\u53f0\uff0c\u91d1\u5c5e\u8868\u9762\u5fae\u5fae\u53d1\u70eb\uff0c\u4e0a\u9762\u523b\u7740\u5bc6\u5bc6\u9ebb\u9ebb\u7684\u7b26\u6587\u3002\u201c\u60f3\u6253\u70b9\u4ec0\u4e48\uff1f\u201d\u8001\u5218\u95ee\u3002\u6211\u68c0\u67e5\u4e86\u4e00\u4e0b\u80cc\u5305\u91cc\u7684\u6750\u6599\u2014\u2014\u9668\u94c1\u7684\u788e\u7247\u5728\u706f\u5149\u4e0b\u6cdb\u7740\u5e7d\u84dd\u7684\u5149\uff0c\u72fc\u738b\u7684\u7259\u9f7f\u8fd8\u5e26\u7740\u5fae\u5fae\u7684\u5bd2\u610f\u3002\u201c\u4e00\u628a\u5251\uff0c\u201d\u6211\u8bf4\uff0c\u201c\u5bf9\u4ea1\u7075\u6709\u6548\u7684\u90a3\u79cd\u3002\u201d";
     return {
       scenario: "normal_stream",
-      content: dmAgentNarrative,
+      content: mechanicsNarrative,
       usage: { promptTokens: 500, completionTokens: 200, totalTokens: 700, cachedPromptTokens: 100 },
     };
   }

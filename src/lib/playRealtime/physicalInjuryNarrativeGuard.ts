@@ -22,10 +22,12 @@ export function applyPhysicalInjuryNarrativeGuard(dmRecord: DmRecord): DmRecord 
   const kept = narrative
     .split(/(?<=[。！？\n])/u)
     .filter((sentence) => !NEW_PHYSICAL_INJURY_PATTERN.test(sentence));
-  const next = { ...dmRecord, narrative: kept.join("").trim() };
   const flags = Array.isArray(dmRecord._commit_flags)
     ? dmRecord._commit_flags.filter((flag): flag is string => typeof flag === "string")
     : [];
-  next._commit_flags = [...new Set([...flags, "unsupported_physical_injury_prose_removed_v1"])];
-  return next;
+  return {
+    ...dmRecord,
+    narrative: kept.join("").trim(),
+    _commit_flags: [...new Set([...flags, "unsupported_physical_injury_prose_removed_v1"])],
+  };
 }

@@ -101,7 +101,7 @@ export function markExpired(): { status: ForeshadowStatus } {
  * 将到期条目转换为节奏指令片段（建议式，不强制）。
  */
 export function dueToDirectiveFragment(
-  entries: ForeshadowEntry[],
+  entries: readonly ForeshadowEntry[],
 ): string {
   if (entries.length === 0) return "";
   const summaries = entries

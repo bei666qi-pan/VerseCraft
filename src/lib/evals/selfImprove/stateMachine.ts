@@ -12,7 +12,6 @@ import type {
   SelfImprovePhase,
   SelfImproveState,
   SelfImproveStatus,
-  StopReason,
 } from "./types";
 import { getSelfImproveRuntimeDir } from "./config";
 import type { RunManifest } from "./schemas";

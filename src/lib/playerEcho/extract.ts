@@ -93,7 +93,7 @@ function buildFragment(args: {
     status: "active",
     ...(args.sourceTurnId ? { sourceTurnId: args.sourceTurnId } : {}),
     ...(args.anchors ? { anchors: args.anchors } : {}),
-    ...(args.safetyLevel >= 4 ? { revealTierMin: 4 } : {}),
+    ...(args.safetyLevel >= 4 ? { revealTierMin: 3 as const } : {}),
   };
 }
 

@@ -3,7 +3,7 @@ import { purposeForTask, type AiPurpose, type ManagedAiBinding, type ManagedAiSn
 
 const EMPTY_BY_PURPOSE: Readonly<Record<AiPurpose, readonly ManagedAiBinding[]>> = Object.freeze({
   story: Object.freeze([]), rules: Object.freeze([]), polish: Object.freeze([]),
-  background: Object.freeze([]), embedding: Object.freeze([]),
+  background: Object.freeze([]), embedding: Object.freeze([]), judge: Object.freeze([]),
 });
 let snapshot: ManagedAiSnapshot = Object.freeze({ version: 0, loadedAt: 0, ready: false, health: "not_initialized", byPurpose: EMPTY_BY_PURPOSE });
 

@@ -8,9 +8,8 @@
  *   pnpm self-improve:resume -- --run-id si-20260730-120000
  */
 
-import { resumeFrom, getState, saveState } from "../../src/lib/evals/selfImprove/stateMachine";
+import { resumeFrom } from "../../src/lib/evals/selfImprove/stateMachine";
 import { runSelfImprovement } from "../../src/lib/evals/selfImprove/orchestrator";
-import type { SelfImproveProfile } from "../../src/lib/evals/selfImprove/types";
 
 function parseArgs(): { runId: string } {
   const args = process.argv.slice(2);

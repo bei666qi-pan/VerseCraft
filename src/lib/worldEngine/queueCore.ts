@@ -7,14 +7,13 @@ type RedisCache = {
 };
 
 function buildDedupKey(payload: Omit<WorldEngineTickPayload, "dedupKey" | "enqueuedAt">): string {
-  const bucket = Math.floor(Date.now() / 120000);
+  // A committed turn is the idempotency authority. Trigger order, trigger set,
+  // request retries and wall-clock buckets must never create a second job.
   const base = JSON.stringify({
     sessionId: payload.sessionId,
     worldId: payload.worldId,
     mapId: payload.mapId,
-    triggerSignals: payload.triggerSignals.slice().sort(),
     turnIndex: payload.turnIndex,
-    bucket,
   });
   return `we:${createHash("sha256").update(base).digest("hex").slice(0, 24)}`;
 }

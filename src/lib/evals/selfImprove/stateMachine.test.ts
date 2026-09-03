@@ -23,8 +23,6 @@ import {
   nextPhase,
   saveManifest,
 } from "./stateMachine";
-import type { SelfImprovePhase } from "./types";
-
 // ── Helpers ───────────────────────────────────────────
 
 const TEST_RUN_ID = "test-si-20260730-000000";

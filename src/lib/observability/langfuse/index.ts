@@ -22,7 +22,6 @@ export { noopTracingAdapter } from "./noop";
 
 // Config (always safe to import — reads env, no side effects)
 export { getLangfuseConfig, isLangfuseReady, resetLangfuseConfig } from "./config";
-export type { LangfuseConfig as LangfuseConfigType } from "./config";
 
 // Privacy (always safe to import — pure functions)
 export { hashIdentity, hashContent, isSensitiveKey, sanitizeAttributes } from "./privacy";

@@ -8,8 +8,6 @@
  * ④ 编排 harness — 跑 N 局 × M 个 persona，收集 transcript，聚合失败
  */
 
-import type { _ChatSseProbeMetrics } from "@/lib/perf/chatSseProbe";
-
 // === Persona 定义 ===
 
 /** 模拟玩家的行为类型 */

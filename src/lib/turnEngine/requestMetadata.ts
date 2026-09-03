@@ -29,7 +29,7 @@ export function buildTurnRequestMetadata(args: {
   })();
 
   return {
-    clientIp: getClientIpFromHeaders(args.headers),
+    clientIp: getClientIpFromHeaders(args.headers) ?? "unknown",
     requestId,
     platform: derivePlatformFromUserAgent(args.headers.get("user-agent")),
     requestStartedAt: args.requestStartedAt,
@@ -113,8 +113,8 @@ export function extractRecentEntities(latestUserInput: string): string[] {
 
 function normalizeOptionText(value: string): string {
   return String(value ?? "")
-    .replace(/[銆愩€慭[\]锛堬級()]/g, " ")
-    .replace(/[锛?銆傦紒锛??:锛氾紱;銆佲€溾€?']/g, " ")
+    .replace(/[【】\[\]（）()]/g, " ")
+    .replace(/[，。！？?!,:：；;、“”"']/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -166,14 +166,12 @@ export function inferPlannedTurnMode(args: {
     };
   }
   const raw = String(args.latestUserInput ?? "").trim();
-  if (raw.length <= 16 && /^(杩庢帴缁堢剦|杩涘叆缁撶畻|鏌ョ湅缁撶畻|澶嶆椿|纭澶嶆椿)$/.test(raw)) {
+  if (raw.length <= 16 && /^(迎接终焉|进入结算|查看结算|复活|确认复活)$/.test(raw)) {
     return { mode: "system_transition", reason: "input_transition_command" };
   }
   const beat = typeof clientState?.directorDigest?.beatModeHint === "string" ? clientState.directorDigest.beatModeHint : "";
   const tension = Number(clientState?.directorDigest?.tension ?? NaN);
-  const pendingIncCount = Array.isArray(clientState?.directorDigest?.pendingIncidentCodes)
-    ? clientState.directorDigest.pendingIncidentCodes.length
-    : 0;
+  const pendingIncCount = 0;
   if (beat === "collision" || beat === "countdown" || beat === "peak") {
     return { mode: "decision_required", reason: `directorDigest.beat=${beat}` };
   }

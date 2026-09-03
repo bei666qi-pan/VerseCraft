@@ -720,7 +720,7 @@ export const DM_ONLY_KEYWORDS = [
  */
 export function validateNpcConsistency(
   narrative: string,
-  npcsPresent?: string[]
+  _npcsPresent?: string[]
 ): string[] {
   const errors: string[] = [];
   const lowerNarrative = narrative.toLowerCase();
@@ -747,7 +747,7 @@ export function detectNpcIdentityConfusion(
 
   // 检查每个 NPC 的特征词是否只出现在该 NPC 的对话上下文中
   // 这是一个简化版本 —— 完整版需要 NLP
-  for (const [npcId, patterns] of Object.entries(npcDialoguePatterns)) {
+  for (const patterns of Object.values(npcDialoguePatterns)) {
     for (const pattern of patterns) {
       if (narrative.includes(pattern)) {
         // 标记为潜在混淆（需要上下文判断）

@@ -3,6 +3,7 @@ import { getWeaponById } from "@/lib/registry/weapons";
 import { buildLightForgePreview, executeLightForge } from "./forgeService";
 import { guessPlayerLocationFromContext } from "./b1Safety";
 import type { ClientStructuredContextV1 } from "@/lib/security/chatValidation";
+import type { Weapon } from "@/lib/registry/types";
 
 type DmRecord = Record<string, unknown>;
 
@@ -61,7 +62,7 @@ function computeWeaponizeFinalCost(args: {
   return { finalCost: final, applied: safeDiscount > 0, reasonCodes: codes };
 }
 
-function appendArrayField(record: DmRecord, field: string, values: string[]) {
+function appendArrayField(record: DmRecord, field: string, values: readonly string[]) {
   const prev = Array.isArray(record[field])
     ? (record[field] as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
@@ -231,7 +232,7 @@ function applyLightForgeWeaponAction(args: {
   args.record.consumes_time = true;
   const weaponIdFromText = [...text.matchAll(/\b(WPN-\d{3})\b/g)][0]?.[1] ?? null;
   const weaponId = weaponIdFromText ?? args.equippedWeapon.weaponId;
-  const weapon = (() => {
+  const weapon: Weapon | null = (() => {
     if (!weaponId) return null;
     const base = getWeaponById(weaponId);
     // World-authored weapons are authoritative state objects but are not
@@ -241,7 +242,7 @@ function applyLightForgeWeaponAction(args: {
     // object; never invent a weapon when the slot is empty.
     const supplied = args.equippedWeapon.raw;
     if (!base && !supplied) return null;
-    const fallback = supplied
+    const fallback: Weapon | null = supplied
       ? {
           id: weaponId,
           name: typeof supplied.name === "string" ? supplied.name : weaponId,
@@ -249,9 +250,10 @@ function applyLightForgeWeaponAction(args: {
           counterThreatIds: Array.isArray(supplied.counterThreatIds) ? supplied.counterThreatIds.filter((x): x is string => typeof x === "string") : [],
           counterTags: Array.isArray(supplied.counterTags) ? supplied.counterTags.filter((x): x is string => typeof x === "string") : [],
           stability: args.equippedWeapon.stability ?? 60,
-          modSlots: Array.isArray(supplied.modSlots) ? supplied.modSlots : ["core", "surface"],
-          currentMods: args.equippedWeapon.mods,
-          currentInfusions: args.equippedWeapon.infusions,
+          calibratedThreatId: null,
+          modSlots: (Array.isArray(supplied.modSlots) ? supplied.modSlots : ["core", "surface"]) as Weapon["modSlots"],
+          currentMods: args.equippedWeapon.mods as Weapon["currentMods"],
+          currentInfusions: args.equippedWeapon.infusions as Weapon["currentInfusions"],
           contamination: args.equippedWeapon.contamination,
           repairable: args.equippedWeapon.repairable,
         }

@@ -7,6 +7,7 @@ export function createDefaultDeathState(): SnapshotDeath {
     reviveOffered: false,
     reviveConsumed: false,
     droppedLootLedger: [],
+    droppedLootOwnerLedger: [],
   };
 }
 
@@ -25,6 +26,9 @@ export function normalizeDeathState(input: unknown): SnapshotDeath {
       typeof raw.reviveConsumed === "boolean" ? raw.reviveConsumed : false,
     droppedLootLedger: Array.isArray(raw.droppedLootLedger)
       ? raw.droppedLootLedger.filter((x): x is string => typeof x === "string")
+      : [],
+    droppedLootOwnerLedger: Array.isArray(raw.droppedLootOwnerLedger)
+      ? raw.droppedLootOwnerLedger.filter((x): x is string => typeof x === "string")
       : [],
   };
 }

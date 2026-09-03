@@ -119,23 +119,17 @@ async function fetchPromptRemote(
       baseUrl: cfg.baseUrl,
     });
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const prompt = await Promise.race([
+      client.prompt.get(name, { label, type: "text" }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("langfuse_prompt_timeout")), timeoutMs);
+      }),
+    ]);
 
-    try {
-      const prompt = await client.prompt.get(name, {
-        label,
-        type: "text",
-        signal: controller.signal as AbortSignal,
-      });
-
-      return {
-        text: prompt.prompt as string,
-        version: prompt.version,
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
+    return {
+      text: prompt.prompt as string,
+      version: prompt.version,
+    };
   } catch (err) {
     // Langfuse fetch failure is non-fatal
     console.warn("[langfuse] prompt fetch error", err instanceof Error ? err.message : String(err));

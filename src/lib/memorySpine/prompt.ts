@@ -1,4 +1,4 @@
-import type { MemorySpineEntry, _MemorySpineState } from "./types";
+import type { MemorySpineEntry } from "./types";
 import type { RecalledMemory } from "./selectors";
 
 function clampText(s: string, maxChars: number): string {
@@ -52,4 +52,3 @@ export function pickPromotionTexts(entries: MemorySpineEntry[], opts?: { maxItem
   }
   return out;
 }
-

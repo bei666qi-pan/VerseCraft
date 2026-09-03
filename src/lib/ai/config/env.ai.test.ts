@@ -219,69 +219,6 @@ test("resolveAiEnv does not synthesize legacy role models in real mode", () => {
   );
 });
 
-test("resolveAiEnv enables narrative enhancement by default with a finite budget", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      AI_ENABLE_NARRATIVE_ENHANCEMENT: undefined,
-      AI_NARRATIVE_ENHANCE_BUDGET_MS: undefined,
-    },
-    () => {
-      const env = resolveAiEnv();
-      assert.equal(env.enableNarrativeEnhancement, true);
-      assert.equal(env.narrativeEnhanceBudgetMs, 4_500);
-    }
-  );
-});
-
-test("resolveAiEnv disables narrative enhancement when explicitly set off", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      AI_ENABLE_NARRATIVE_ENHANCEMENT: "0",
-    },
-    () => {
-      assert.equal(resolveAiEnv().enableNarrativeEnhancement, false);
-    }
-  );
-});
-
-test("resolveAiEnv keeps narrative expansion on by default in production", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      APP_ENV: "production",
-      AI_NARRATIVE_EXPANSION_ENABLED: undefined,
-    },
-    () => {
-      assert.equal(resolveAiEnv().enableNarrativeExpansion, true);
-    }
-  );
-});
-
-test("resolveAiEnv allows narrative expansion in staging by default and supports override", () => {
-  withEnv(
-    {
-      ...gatewayBase,
-      APP_ENV: "staging",
-      AI_NARRATIVE_EXPANSION_ENABLED: undefined,
-    },
-    () => {
-      assert.equal(resolveAiEnv().enableNarrativeExpansion, true);
-    }
-  );
-  withEnv(
-    {
-      ...gatewayBase,
-      APP_ENV: "staging",
-      AI_NARRATIVE_EXPANSION_ENABLED: "0",
-    },
-    () => {
-      assert.equal(resolveAiEnv().enableNarrativeExpansion, false);
-    }
-  );
-});
-
 test("resolveAiEnv uses default lore retrieval budget", () => {
   withEnv(
     {

@@ -20,7 +20,7 @@ import { NPCS } from "@/lib/registry/npcs";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { getVerseCraftRolloutFlags, type VerseCraftRolloutFlagsSnapshot } from "@/lib/rollout/versecraftRolloutFlags";
 import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
-import { buildChapterWriterInstruction } from "@/lib/storyDirector/chapterReasoner";
+import { buildChapterWriterInstruction } from "@/lib/chapters/pacing/chapterReasoner";
 import type { LoreFact, LorePacket, RuntimeLoreRequest } from "@/lib/worldKnowledge/types";
 import { writeNarrativeRunBestEffort } from "./narrativeRunRepository";
 import {
@@ -43,7 +43,7 @@ export type BuildDialogueContextInput = NarrativeTurnInput & {
   revealTier?: number | null;
   runSnapshotV2?: RunSnapshotV2 | null;
   chapterState?: ChapterState | null;
-  storyDirector?: unknown | null;
+  chapterPacing?: unknown | null;
   sessionMemory?: SessionMemoryRow | null;
   lorePacket?: LorePacket | null;
   recentlyEncounteredEntities?: string[];
@@ -127,7 +127,7 @@ export async function buildDialogueContext(input: BuildDialogueContextInput): Pr
       snapshot,
       clientState,
       chapterState: input.chapterState,
-      storyDirector: input.storyDirector,
+      chapterPacing: input.chapterPacing,
       sceneId: input.sceneId,
     });
 
@@ -349,13 +349,13 @@ function applyChapterContext(
     snapshot: RunSnapshotV2 | null;
     clientState: Record<string, unknown> | null;
     chapterState?: ChapterState | null;
-    storyDirector?: unknown | null;
+    chapterPacing?: unknown | null;
     sceneId?: string | null;
   }
 ): void {
   const rawState = args.chapterState ?? args.snapshot?.chapterState ?? null;
   const directorChapter = resolveChapterDirectorPackage({
-    explicitDirector: args.storyDirector,
+    explicitDirector: args.chapterPacing,
     snapshot: args.snapshot,
     clientState: args.clientState,
   });
@@ -460,8 +460,8 @@ function resolveChapterDirectorPackage(args: {
   const candidates = [
     asRecord(args.explicitDirector)?.chapter,
     asRecord(args.explicitDirector),
-    asRecord(args.snapshot?.world?.storyDirector)?.chapter,
-    asRecord(args.clientState?.storyDirector)?.chapter,
+    asRecord(args.snapshot?.world?.chapterPacing)?.chapter,
+    asRecord(args.clientState?.chapterPacing ?? args.clientState?.storyDirector)?.chapter,
     asRecord(asRecord(args.clientState?.directorDigest)?.chapter),
   ];
   for (const raw of candidates) {

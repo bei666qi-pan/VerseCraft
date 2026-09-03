@@ -110,7 +110,7 @@ test("normalizeRunSnapshotV2 reattaches separate ending settlement snapshot", ()
   assert.equal(normalized.endingSettlementSnapshot?.settlementId, "settlement:run_ending:doom:8");
 });
 
-test("normalizeRunSnapshotV2 preserves legacy chapter state and backfills director chapter", () => {
+test("normalizeRunSnapshotV2 reads legacy storyDirector and only writes chapterPacing", () => {
   const nowHour = Math.max(0, Math.floor(Date.now() / 3600000));
   const normalized = normalizeRunSnapshotV2({
     schemaVersion: 2,
@@ -174,12 +174,14 @@ test("normalizeRunSnapshotV2 preserves legacy chapter state and backfills direct
       },
     },
   });
-  const director = normalized.world.storyDirector as any;
+  const pacing = normalized.world.chapterPacing as any;
   assert.equal(normalized.chapterState?.activeChapterId, "chapter-2");
-  assert.equal(director.arcId, "legacy_arc");
-  assert.equal(director.chapter.currentChapterId, "chapter-2");
-  assert.equal(director.chapter.chapterOrder, 2);
-  assert.equal(director.chapter.mainQuestion, "Follow the echo behind the door.");
+  assert.equal(pacing.arcId, "legacy_arc");
+  assert.equal(pacing.chapter.currentChapterId, "chapter-2");
+  assert.equal(pacing.chapter.chapterOrder, 2);
+  assert.equal(pacing.chapter.mainQuestion, "Follow the echo behind the door.");
+  assert.equal("storyDirector" in normalized.world, false);
+  assert.equal("incidentQueue" in normalized.world, false);
   const memory = normalized.memory?.spine.entries.find((entry) => entry.id === "legacy_memory_without_chapter");
   assert.ok(memory);
   assert.equal(memory!.chapterId, undefined);

@@ -56,7 +56,7 @@ export interface RetrievalBudget {
   vectorTopN: number;
   /** 最终最大事实条数（用于防止 prompt 体积爆炸） */
   maxFacts: number;
-  /** 向量相似度门槛（与语义缓存实现保持一致的语义：相似度 = 1 - distance） */
+  /** 向量相似度门槛：相似度 = 1 - distance。 */
   minSimilarity: number;
   /** ivfflat probes */
   probes: number;

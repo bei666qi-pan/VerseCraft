@@ -1,8 +1,7 @@
 "use client";
 
 import { pruneMemorySpine } from "@/lib/memorySpine/prune";
-import { normalizeDirectorState } from "@/lib/storyDirector/postTurn";
-import { normalizeIncidentQueue } from "@/lib/storyDirector/queue";
+import { normalizeChapterPacingState } from "@/lib/chapters/pacing/chapterPacingController";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 
@@ -23,9 +22,11 @@ export type ResumeShadowSnapshot = {
   codex: Record<string, unknown>;
   /** Phase-2: hot memory spine snapshot (small & pruned). */
   memorySpine?: unknown;
-  /** Phase-4: story director snapshot (small). */
+  /** Deterministic chapter pacing snapshot (small). */
+  chapterPacing?: unknown;
+  /** @deprecated Read-only migration input. */
   storyDirector?: unknown;
-  /** Phase-4: incident queue snapshot (small). */
+  /** @deprecated Read-only migration input. */
   incidentQueue?: unknown;
   /** Phase-5: escape mainline snapshot (small). */
   escapeMainline?: unknown;
@@ -147,23 +148,11 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
     }
   })();
 
-  const storyDirector = (() => {
-    const raw = toPlainObject((state as any).storyDirector);
+  const chapterPacing = (() => {
+    const raw = toPlainObject((state as any).chapterPacing ?? (state as any).storyDirector);
     if (!raw) return undefined;
     try {
-      return normalizeDirectorState(raw as any, 0);
-    } catch {
-      return undefined;
-    }
-  })();
-  const incidentQueue = (() => {
-    const raw = toPlainObject((state as any).incidentQueue);
-    if (!raw) return undefined;
-    try {
-      const q = normalizeIncidentQueue(raw as any);
-      const json = JSON.stringify(q);
-      if (json.length > 5200) return { v: 1, items: (q as any).items?.slice(0, 6) ?? [] };
-      return q;
+      return normalizeChapterPacingState(raw as any, 0);
     } catch {
       return undefined;
     }
@@ -198,8 +187,7 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
     tasks,
     codex,
     ...(memorySpine ? { memorySpine } : {}),
-    ...(storyDirector ? { storyDirector } : {}),
-    ...(incidentQueue ? { incidentQueue } : {}),
+    ...(chapterPacing ? { chapterPacing } : {}),
     ...(escapeMainline ? { escapeMainline } : {}),
     ...(typeof (state as any).openingNarrativePinned === "boolean"
       ? { openingNarrativePinned: (state as any).openingNarrativePinned }
@@ -259,8 +247,9 @@ export function readResumeShadowSnapshot(): ResumeShadowSnapshot | null {
       tasks: Array.isArray(obj.tasks) ? obj.tasks : [],
       codex: toPlainObject(obj.codex) ?? {},
       ...(obj.memorySpine ? { memorySpine: obj.memorySpine } : {}),
-      ...(obj.storyDirector ? { storyDirector: obj.storyDirector } : {}),
-      ...(obj.incidentQueue ? { incidentQueue: obj.incidentQueue } : {}),
+      ...(obj.chapterPacing || obj.storyDirector
+        ? { chapterPacing: obj.chapterPacing ?? obj.storyDirector }
+        : {}),
       ...(obj.escapeMainline ? { escapeMainline: obj.escapeMainline } : {}),
       ...(obj.openingNarrativePinned !== undefined ? { openingNarrativePinned: obj.openingNarrativePinned } : {}),
       currentOptions: normalizeResumeOptions(obj.currentOptions, 8),

@@ -353,9 +353,9 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   // taskCopyValidator: lint 每条新任务的 title/desc/nextHint，出现问题则标记 flags
   for (const t of normalizedNewTasks) {
     const report = validateGameTask({
-      title: (t as Record<string, unknown>).title as string | undefined,
-      desc: (t as Record<string, unknown>).desc as string | undefined,
-      nextHint: (t as Record<string, unknown>).nextHint as string | undefined,
+      title: t.title,
+      desc: t.desc,
+      nextHint: t.nextHint,
     });
     if (!report.valid) {
       consistency_flags.push("task_copy_issue");
@@ -536,7 +536,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       : {}),
     npc_location_updates: asUnknownArray(input.npc_location_updates),
     main_threat_updates: asUnknownArray(input.main_threat_updates),
-    foreshadow_ops: asUnknownArray((input as { foreshadow_ops?: unknown }).foreshadow_ops),
+    foreshadow_ops: asObjectArray((input as { foreshadow_ops?: unknown }).foreshadow_ops),
     weapon_updates: asObjectArray(input.weapon_updates),
     weapon_bag_updates: asObjectArray((input as { weapon_bag_updates?: unknown }).weapon_bag_updates),
     ...(worldDelta ? { world_delta: worldDelta } : {}),

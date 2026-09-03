@@ -6,8 +6,7 @@ import { flattenTasks } from "./tasks";
 import { normalizeGameTaskDraft } from "@/lib/tasks/taskV2";
 import { createEmptyMemorySpine, type MemorySpineState } from "@/lib/memorySpine/types";
 import { pruneMemorySpine } from "@/lib/memorySpine/prune";
-import { normalizeDirectorState } from "@/lib/storyDirector/postTurn";
-import { normalizeIncidentQueue } from "@/lib/storyDirector/queue";
+import { normalizeChapterPacingState } from "@/lib/chapters/pacing/chapterPacingController";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 import type {
   LegacySaveSurface,
@@ -39,6 +38,16 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : {};
+}
+
+function withoutLegacyClientDirectorFields(value: unknown): Record<string, unknown> {
+  const world = asRecord(value);
+  const {
+    storyDirector: _legacyStoryDirector,
+    incidentQueue: _legacyIncidentQueue,
+    ...current
+  } = world;
+  return current;
 }
 
 function normalizeCodex(v: unknown): Record<string, SnapshotCodexEntry> {
@@ -157,8 +166,8 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     tasks: normalizeTasks(legacy.tasks),
     profession: legacy.professionState ?? createDefaultProfessionState(),
     memorySpine: createEmptyMemorySpine(),
-    storyDirector: normalizeDirectorState(
-      legacy.runSnapshotV2?.world?.storyDirector,
+    chapterPacing: normalizeChapterPacingState(
+      legacy.runSnapshotV2?.world?.chapterPacing ?? legacy.runSnapshotV2?.world?.storyDirector,
       Array.isArray(legacy.logs) ? legacy.logs.length : 0,
       buildChapterDirectorBridgeFromState(chapterState)
     ),
@@ -300,7 +309,7 @@ export function normalizeRunSnapshotV2(
     },
     world: {
       ...fromLegacy.world,
-      ...asRecord(s.world),
+      ...withoutLegacyClientDirectorFields(s.world),
       worldFlags: asRecord(s.world?.worldFlags) as Record<string, boolean>,
       discoveredSecrets: Array.isArray(s.world?.discoveredSecrets)
         ? s.world.discoveredSecrets.filter((x): x is string => typeof x === "string")
@@ -309,8 +318,12 @@ export function normalizeRunSnapshotV2(
       pendingEvents: Array.isArray(s.world?.pendingEvents)
         ? s.world.pendingEvents.filter((x): x is string => typeof x === "string")
         : fromLegacy.world.pendingEvents,
-      storyDirector: normalizeDirectorState((s.world as Record<string, unknown> | undefined)?.storyDirector, 0, chapterDirectorBridge),
-      incidentQueue: normalizeIncidentQueue((s.world as Record<string, unknown> | undefined)?.incidentQueue),
+      chapterPacing: normalizeChapterPacingState(
+        (s.world as unknown as Record<string, unknown> | undefined)?.chapterPacing ??
+          (s.world as unknown as Record<string, unknown> | undefined)?.storyDirector,
+        0,
+        chapterDirectorBridge,
+      ),
       floorThreatTier: asRecord(s.world?.floorThreatTier) as Record<string, number>,
       mainThreatByFloor: (() => {
         const parsed = normalizeMainThreatByFloor(s.world?.mainThreatByFloor);
@@ -318,11 +331,11 @@ export function normalizeRunSnapshotV2(
       })(),
     },
     memory: (() => {
-      const spine = normalizeMemorySpine((s as Record<string, unknown>).memory, nowHour);
+      const spine = normalizeMemorySpine((s as unknown as Record<string, unknown>).memory, nowHour);
       return { spine: spine.entries.length > 0 ? spine : createEmptyMemorySpine() };
     })(),
     escape: (() => {
-      return normalizeEscapeMainline((s as Record<string, unknown>).escape, nowHour);
+      return normalizeEscapeMainline((s as unknown as Record<string, unknown>).escape, nowHour);
     })(),
     journal: normalizeJournalState((s as { journal?: unknown }).journal),
     chapterState: normalizedChapterState,

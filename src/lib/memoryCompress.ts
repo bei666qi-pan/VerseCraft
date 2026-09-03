@@ -634,7 +634,7 @@ export function coerceToEpistemicMemory(row: SessionMemoryRow | null): Epistemic
     hydrateEpistemicFromSessionRow({
       plotSummary: row.plot_summary,
       playerStatus: row.player_status,
-      npc_relationships: row.npc_relationships,
+      npcRelationships: row.npc_relationships,
     }) ?? normalizeOldSummaryToEpistemic(row)
   );
 }

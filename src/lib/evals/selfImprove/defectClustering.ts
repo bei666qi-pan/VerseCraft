@@ -12,7 +12,7 @@
  */
 
 import type { DeterministicCaseResult } from "./traceStore";
-import type { TriagedDefect, DefectSignature } from "./types";
+import type { TriagedDefect } from "./types";
 
 // ── Cluster definition ───────────────────────────────
 

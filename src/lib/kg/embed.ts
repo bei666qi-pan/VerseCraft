@@ -1,6 +1,6 @@
 import { normalizeForHash } from "./normalize";
 
-/** 与 vc_semantic_cache.request_embedding / migrate 中 vector(256) 一致。 */
+/** 与 KG fact/candidate/cluster 的 vector(256) 一致。 */
 export const VC_EMBED_DIM = 256;
 
 function fnv1a32(s: string): number {

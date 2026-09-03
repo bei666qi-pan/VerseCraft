@@ -5,7 +5,6 @@ import { executeChatCompletion } from "@/lib/ai/service";
 import type { AIRequestContext, ChatMessage } from "@/lib/ai/types/core";
 import { buildControlContextDigest, renderControlDigestForPrompt } from "@/lib/playRealtime/controlContextDigest";
 import { runDeterministicControlFastPath } from "@/lib/playRealtime/controlFastPath";
-import { resolveAiEnv } from "@/lib/ai/config/envCore";
 import { parseControlPlaneJson } from "@/lib/playRealtime/controlPlaneParse";
 import { buildControlPreflightSystemPrompt } from "@/lib/playRealtime/controlPreflightPrompt";
 import { applyControlBoundaryGuard } from "@/lib/playRealtime/controlBoundaryGuard";
@@ -47,7 +46,6 @@ export async function runPlayerControlPreflight(args: {
    */
   executionStrategy?: "prefer_fast_path" | "require_model";
 }): Promise<ControlPreflightResult> {
-  const aiEnv = resolveAiEnv();
   const requireModel = args.executionStrategy === "require_model";
   const ruleJson = JSON.stringify(args.ruleSnapshot);
   const digest = buildControlContextDigest({
@@ -118,7 +116,7 @@ export async function runPlayerControlPreflight(args: {
   const userPayload = renderControlDigestForPrompt(digest);
 
   const messages: ChatMessage[] = [
-    { role: "system", content: buildControlPreflightSystemPrompt(aiEnv.enableNarrativeEnhancement) },
+    { role: "system", content: buildControlPreflightSystemPrompt(false) },
     { role: "user", content: userPayload },
   ];
 
@@ -196,11 +194,9 @@ export async function runPlayerControlPreflight(args: {
   }
   const control = applyControlBoundaryGuard({ latestUserInput: args.latestUserInput, control: parsedControl });
 
-  // If enhancement feature is disabled, force enhancement flags off regardless of upstream output.
-  if (!aiEnv.enableNarrativeEnhancement) {
-    control.enhance_scene = false;
-    control.enhance_npc_emotion = false;
-  }
+  // Enhancement model calls no longer exist; preserve the wire fields as false.
+  control.enhance_scene = false;
+  control.enhance_npc_emotion = false;
 
   void writePreflightPlane({
     latestUserInput: args.latestUserInput,

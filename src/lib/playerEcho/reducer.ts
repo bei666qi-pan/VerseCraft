@@ -183,7 +183,9 @@ function normalizeFragment(input: unknown): EchoFragment | null {
     ...(Number.isFinite(sourceLoop) ? { sourceLoop: Math.max(0, Math.trunc(sourceLoop)) } : {}),
     ...(cleanNullableString(input.sourceTurnId, 100) ? { sourceTurnId: cleanString(input.sourceTurnId, 100) } : {}),
     ...(anchors ? { anchors } : {}),
-    ...(Number.isFinite(revealTierMin) ? { revealTierMin: Math.max(0, Math.min(4, Math.trunc(revealTierMin))) } : {}),
+    ...(Number.isFinite(revealTierMin)
+      ? { revealTierMin: Math.max(0, Math.min(3, Math.trunc(revealTierMin))) as 0 | 1 | 2 | 3 }
+      : {}),
     ...(allowedNpcPrivilege.length > 0 ? { allowedNpcPrivilege } : {}),
     ...(typeof input.tone === "string" && input.tone.trim() ? { tone: input.tone.trim().slice(0, 40) as EchoFragment["tone"] } : {}),
   };
@@ -293,8 +295,12 @@ function normalizeCanonFields(input: unknown): PlayerEchoCanon {
     playerKey: cleanNullableString(input.playerKey, 120),
     worldId: cleanNullableString(input.worldId, 120),
     loopCount: Number.isFinite(loopCount) ? Math.max(0, Math.min(9999, Math.trunc(loopCount))) : 0,
-    fragments: Array.isArray(input.fragments) ? input.fragments.map(normalizeFragment).filter(Boolean) : [],
-    npcBonds: Array.isArray(input.npcBonds) ? input.npcBonds.map(normalizeBond).filter(Boolean) : [],
+    fragments: Array.isArray(input.fragments)
+      ? input.fragments.map(normalizeFragment).filter((item): item is EchoFragment => item !== null)
+      : [],
+    npcBonds: Array.isArray(input.npcBonds)
+      ? input.npcBonds.map(normalizeBond).filter((item): item is NpcEchoBond => item !== null)
+      : [],
     strongestChoices: cleanList(input.strongestChoices, 8, 120),
     unresolvedRegrets: cleanList(input.unresolvedRegrets, 8, 120),
     repeatedDeathCauses: cleanList(input.repeatedDeathCauses, 6, 120),

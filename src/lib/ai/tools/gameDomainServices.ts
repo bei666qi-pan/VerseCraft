@@ -7,15 +7,15 @@
  */
 
 import type {
-  DmToolResult,
-  DmToolErrorCode,
+  MechanicsToolResult,
+  MechanicsToolErrorCode,
   PlayerStateSnapshot,
   InventorySnapshot,
   ActiveQuestSnapshot,
   WorldContextSnapshot,
   CombatStateSnapshot,
   ForgeOptionsSnapshot,
-} from "./dmAgentTypes";
+} from "./mechanicsTypes";
 import type { GameState } from "@/store/useGameStore";
 import type { Item } from "@/lib/registry/types";
 import { LIGHT_FORGE_RECIPES, type LightForgeRecipe } from "@/lib/registry/forge";
@@ -40,7 +40,7 @@ import type { StatType } from "@/lib/registry/types";
 // ============================================================
 
 interface IdempotencyEntry {
-  result: DmToolResult;
+  result: MechanicsToolResult;
   timestamp: number;
   requestId: string;
 }
@@ -74,7 +74,7 @@ export function buildIdempotencyKey(requestId: string, toolKey: string): string 
 }
 
 /** 检查幂等键是否已处理（按 requestId 隔离，防止跨请求冲突） */
-export function checkIdempotency(key: string): DmToolResult | null {
+export function checkIdempotency(key: string): MechanicsToolResult | null {
   cleanupExpiredEntries();
   const entry = idempotencyStore.get(key);
   if (entry) {
@@ -87,7 +87,7 @@ export function checkIdempotency(key: string): DmToolResult | null {
 }
 
 /** 记录幂等结果 */
-export function recordIdempotency(key: string, result: DmToolResult, requestId?: string): void {
+export function recordIdempotency(key: string, result: MechanicsToolResult, requestId?: string): void {
   cleanupExpiredEntries();
   // LRU 淘汰
   if (idempotencyStore.size >= MAX_IDEMPOTENCY_ENTRIES) {
@@ -289,10 +289,10 @@ export interface QuestResult {
 /** 创建任务 */
 export function createQuest(
   params: IssueQuestParams
-): DmToolResult<QuestResult> {
+): MechanicsToolResult<QuestResult> {
   // 幂等检查
   const existing = checkIdempotency(params.idempotencyKey);
-  if (existing) return existing as DmToolResult<QuestResult>;
+  if (existing) return existing as MechanicsToolResult<QuestResult>;
 
   // 参数校验
   if (!params.title || params.title.length > 12) {
@@ -315,7 +315,7 @@ export function createQuest(
     nextHint: params.nextHint ?? "",
   };
 
-  const result: DmToolResult<QuestResult & { taskObject: typeof taskObject }> = {
+  const result: MechanicsToolResult<QuestResult & { taskObject: typeof taskObject }> = {
     ok: true,
     data: {
       questId,
@@ -364,10 +364,10 @@ export interface ForgeState {
 export function executeForge(
   params: ForgeWeaponParams,
   state: ForgeState
-): DmToolResult<ForgeResultData> {
+): MechanicsToolResult<ForgeResultData> {
   // 幂等检查
   const existing = checkIdempotency(params.idempotencyKey);
-  if (existing) return existing as DmToolResult<ForgeResultData>;
+  if (existing) return existing as MechanicsToolResult<ForgeResultData>;
 
   // 查找配方
   const recipe = LIGHT_FORGE_RECIPES.find((r: LightForgeRecipe) => r.id === params.recipeId);
@@ -414,7 +414,7 @@ export function executeForge(
 
   // 锻造成功 — 返回可供客户端直接应用的变更数据
   const forgedWeaponId = `WZ-${Date.now().toString(36)}`;
-  const result: DmToolResult<ForgeResultData & {
+  const result: MechanicsToolResult<ForgeResultData & {
     currencyCost: number;
     materialIdsToConsume: string[];
     weaponToAward: { id: string; name: string; tier: string; modKind?: string } | null;
@@ -468,9 +468,9 @@ export interface CombatStartData {
 }
 
 /** 开始战斗 */
-export function initiateCombat(params: StartCombatParams): DmToolResult<CombatStartData> {
+export function initiateCombat(params: StartCombatParams): MechanicsToolResult<CombatStartData> {
   const existing = checkIdempotency(params.idempotencyKey);
-  if (existing) return existing as DmToolResult<CombatStartData>;
+  if (existing) return existing as MechanicsToolResult<CombatStartData>;
 
   if (!params.enemyNpcId || !params.enemyNpcId.startsWith("N-")) {
     return failResult("invalid_target", "无效的敌人 NPC ID", "请提供有效的 NPC ID（如 N-XXX）");
@@ -478,7 +478,7 @@ export function initiateCombat(params: StartCombatParams): DmToolResult<CombatSt
 
   const combatId = `combat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  const result: DmToolResult<CombatStartData> = {
+  const result: MechanicsToolResult<CombatStartData> = {
     ok: true,
     data: {
       combatId,
@@ -500,7 +500,7 @@ export interface ResolveCombatActionParams {
   /** 目标 NPC ID（用于查找战斗画像） */
   targetNpcId?: string;
   /** 服务端游戏状态快照（用于真实规则裁决） */
-  serverState?: import("./dmServerStateAdapter").ServerGameState | null;
+  serverState?: import("./mechanicsServerStateAdapter").ServerGameState | null;
 }
 
 export interface CombatActionResult {
@@ -530,7 +530,7 @@ function mapActionToConflictKind(actionType: string): CombatConflictKind {
 /** 结算战斗动作（T11: 接入真实 combat adjudication 系统） */
 export function resolvePlayerCombatAction(
   params: ResolveCombatActionParams
-): DmToolResult<CombatActionResult> {
+): MechanicsToolResult<CombatActionResult> {
   const validActions = ["attack", "defend", "evade", "tactical", "retreat", "item_use"];
   if (!validActions.includes(params.actionType)) {
     return failResult(
@@ -551,7 +551,7 @@ export function resolvePlayerCombatAction(
       return resolveCombatWithRealRules(params, ss);
     } catch (_e) {
       // 真实裁决失败时回退到简化规则
-      console.warn("[dmAgent] combat adjudication failed, falling back to simplified rules", _e);
+      console.warn("[mechanics] combat adjudication failed, falling back to simplified rules", _e);
     }
   }
 
@@ -567,7 +567,7 @@ export function resolvePlayerCombatAction(
 
   const resolved = outcomes[params.actionType] ?? outcomes.attack;
 
-  const result: DmToolResult<CombatActionResult> = {
+  const result: MechanicsToolResult<CombatActionResult> = {
     ok: true,
     data: {
       actionType: params.actionType,
@@ -587,7 +587,7 @@ export function resolvePlayerCombatAction(
 function resolveCombatWithRealRules(
   params: ResolveCombatActionParams,
   ss: NonNullable<typeof params.serverState>
-): DmToolResult<CombatActionResult> {
+): MechanicsToolResult<CombatActionResult> {
   const cs = ss.clientState;
   if (!cs) {
     return resolvePlayerCombatAction({ ...params, serverState: null });
@@ -719,9 +719,9 @@ export interface WorldEventResult {
 }
 
 /** 应用世界事件 */
-export function applyWorldEvent(params: ApplyWorldEventParams): DmToolResult<WorldEventResult> {
+export function applyWorldEvent(params: ApplyWorldEventParams): MechanicsToolResult<WorldEventResult> {
   const existing = checkIdempotency(params.idempotencyKey);
-  if (existing) return existing as DmToolResult<WorldEventResult>;
+  if (existing) return existing as MechanicsToolResult<WorldEventResult>;
 
   const validTypes = ["npc_move", "location_change", "threat_change", "time_advance", "reveal_unlock"];
   if (!validTypes.includes(params.eventType)) {
@@ -736,7 +736,7 @@ export function applyWorldEvent(params: ApplyWorldEventParams): DmToolResult<Wor
     reveal_unlock: "揭露层级已解锁",
   };
 
-  const result: DmToolResult<WorldEventResult> = {
+  const result: MechanicsToolResult<WorldEventResult> = {
     ok: true,
     data: {
       eventType: params.eventType,
@@ -755,10 +755,10 @@ export function applyWorldEvent(params: ApplyWorldEventParams): DmToolResult<Wor
 // ============================================================
 
 function failResult<T = unknown>(
-  code: DmToolErrorCode,
+  code: MechanicsToolErrorCode,
   error: string,
   recoveryHint?: string
-): DmToolResult<T> {
+): MechanicsToolResult<T> {
   return {
     ok: false,
     error,

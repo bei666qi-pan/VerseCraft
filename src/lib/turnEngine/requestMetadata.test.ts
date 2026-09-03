@@ -9,23 +9,23 @@ import {
 
 test("buildMinimalPlayerContextSnapshot keeps high signal lines", () => {
   const snapshot = buildMinimalPlayerContextSnapshot([
-    "鐢ㄦ埛浣嶇疆[B1_SafeZone]",
-    "鏃犲叧鎻忚堪涓€澶ф",
-    "娓告垙鏃堕棿[Day 2 / 08:00]",
+    "用户位置[B1_SafeZone]",
+    "无关描述一大段",
+    "游戏时间[Day 2 / 08:00]",
   ].join("\n"));
-  assert.match(snapshot, /鐢ㄦ埛浣嶇疆/);
-  assert.match(snapshot, /娓告垙鏃堕棿/);
+  assert.match(snapshot, /用户位置/);
+  assert.match(snapshot, /游戏时间/);
 });
 
 test("dedupeDecisionOptions removes exact duplicates and short fillers", () => {
-  const deduped = dedupeDecisionOptions(["瑙傚療闂ㄧ紳", "瑙傚療闂ㄧ紳", "濂", "杞韩绂诲紑"]);
-  assert.deepEqual(deduped, ["瑙傚療闂ㄧ紳", "杞韩绂诲紑"]);
+  const deduped = dedupeDecisionOptions(["观察门缝", "观察门缝", "观察，门缝", "好", "转身离开"]);
+  assert.deepEqual(deduped, ["观察门缝", "转身离开"]);
 });
 
 test("inferPlannedTurnMode prefers opening constraint and director tension", () => {
   assert.deepEqual(
     inferPlannedTurnMode({
-      latestUserInput: "缁х画",
+      latestUserInput: "继续",
       shouldApplyFirstActionConstraint: true,
       clientState: {},
       pipelineControl: null,
@@ -34,12 +34,22 @@ test("inferPlannedTurnMode prefers opening constraint and director tension", () 
   );
 
   const byTension = inferPlannedTurnMode({
-    latestUserInput: "缁х画鍚戝墠",
+    latestUserInput: "继续向前",
     shouldApplyFirstActionConstraint: false,
     clientState: { directorDigest: { tension: 90 } },
     pipelineControl: null,
   });
   assert.equal(byTension.mode, "decision_required");
+
+  assert.deepEqual(
+    inferPlannedTurnMode({
+      latestUserInput: "进入结算",
+      shouldApplyFirstActionConstraint: false,
+      clientState: {},
+      pipelineControl: null,
+    }),
+    { mode: "system_transition", reason: "input_transition_command" },
+  );
 });
 
 test("parseUpstreamErrorFields extracts json body message and code", () => {

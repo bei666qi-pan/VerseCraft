@@ -11,6 +11,6 @@
 
 ## 3. Verification and release
 
-- [ ] 3.1 Run focused deployment tests, lint, and a production Docker build.
+- [x] 3.1 Run focused deployment tests, lint, and a production Docker build.
 - [ ] 3.2 Validate the OpenSpec change and record observed before/after deployment phase evidence.
 - [ ] 3.3 Ship through the normal PR and deployment workflow, then verify the public health endpoint.

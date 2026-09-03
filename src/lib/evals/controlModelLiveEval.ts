@@ -2,7 +2,6 @@
 // preserving the PLAYER_CONTROL_PREFLIGHT task, prompt, digest, parser and gateway.
 // eslint-disable-next-line no-restricted-imports
 import { executeChatCompletion } from "@/lib/ai/router/execute";
-import { resolveAiEnv } from "@/lib/ai/config/envCore";
 import { buildControlContextDigest, renderControlDigestForPrompt } from "@/lib/playRealtime/controlContextDigest";
 import { parseControlPlaneJson } from "@/lib/playRealtime/controlPlaneParse";
 import { buildControlPreflightSystemPrompt } from "@/lib/playRealtime/controlPreflightPrompt";
@@ -28,7 +27,7 @@ export async function evaluateControlWithLiveModel(args: {
   const response = await executeChatCompletion({
     task: "PLAYER_CONTROL_PREFLIGHT",
     messages: [
-      { role: "system", content: buildControlPreflightSystemPrompt(resolveAiEnv().enableNarrativeEnhancement) },
+      { role: "system", content: buildControlPreflightSystemPrompt(false) },
       { role: "user", content: renderControlDigestForPrompt(digest) },
     ],
     ctx: { requestId: args.requestId, task: "PLAYER_CONTROL_PREFLIGHT", sessionId: args.sessionId, path: "/eval/intent-grounded" },
@@ -49,10 +48,8 @@ export async function evaluateControlWithLiveModel(args: {
   if (!response.content.trim()) return { ok: false, source: "unavailable", error: "empty", latencyMs };
   const control = parseControlPlaneJson(response.content);
   if (!control) return { ok: false, source: "unavailable", error: "parse_failed", latencyMs };
-  if (!resolveAiEnv().enableNarrativeEnhancement) {
-    control.enhance_scene = false;
-    control.enhance_npc_emotion = false;
-  }
+  control.enhance_scene = false;
+  control.enhance_npc_emotion = false;
   return {
     ok: true,
     source: "model",

@@ -9,7 +9,6 @@ import {
   buildPlayerNarrativeTerminalToolChoice,
   shouldUsePlayerNarrativeTerminalTool,
 } from "@/lib/ai/tools/playerNarrativeTerminalTool";
-import { envBoolean } from "@/lib/config/envRaw";
 import type { AiProviderId, ChatMessage } from "@/lib/ai/types/core";
 
 /**

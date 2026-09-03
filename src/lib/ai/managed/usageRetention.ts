@@ -1,4 +1,4 @@
-type RetentionResult = { rowCount?: number };
+type RetentionResult = { rowCount?: number | null };
 
 export async function rollupThenDeleteExpiredUsage(input: {
   rollup: () => Promise<RetentionResult>;

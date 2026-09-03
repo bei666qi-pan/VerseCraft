@@ -17,8 +17,7 @@
  */
 
 import {
-  getActiveSession, getSession, saveSession, appendEvent,
-  readJson, writeJson, ensureDir
+  getActiveSession, saveSession, appendEvent,
 } from "./ds-session-store.mjs";
 import { existsSync, readFileSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";

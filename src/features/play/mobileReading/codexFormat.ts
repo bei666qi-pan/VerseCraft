@@ -449,7 +449,6 @@ export function buildMobileCodexRelationship(entry: CodexEntry): string {
 
   const label = computeRelationshipLabel(entry);
   if (label === "盟友") return "对方已经表现出明确的信任或协作意向。";
-  if (label === "恋人") return "彼此之间已有稳定而亲密的牵连。";
   if (label === "敌人") return "对方目前带有明显敌意或危险距离。";
   return "暂无稳定关系印象。";
 }

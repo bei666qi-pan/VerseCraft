@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   enforceToolCallShape,
   buildAnchorFallbackOptionsForTest,
-  clearOptionsLruCacheForTest,
 } from "@/lib/playRealtime/turnModeToolInterceptor";
 
 const baseRecord = {
@@ -22,7 +21,6 @@ test("enforceToolCallShape: narrative_only with 4 options keeps all 4 and correc
     record: { ...baseRecord, options: ["继续观察", "轻敲门框", "后退一步", "屏息聆听"] },
     narrative: baseRecord.narrative,
     requestId: "req-1",
-    disableLlmRefill: true,
     playerState: { playerLocation: "旧公寓三楼走廊", activeTaskIds: [], aliveNpcIds: [], inventoryItemIds: ["item_phone"] },
   });
   assert.equal(r.record.turn_mode, "decision_required");
@@ -36,7 +34,6 @@ test("enforceToolCallShape: narrative_only with empty options falls back to anch
     record: { ...baseRecord, options: [] },
     narrative: baseRecord.narrative,
     requestId: "req-2",
-    disableLlmRefill: true,
     playerState: { playerLocation: "旧公寓三楼走廊", activeTaskIds: [], aliveNpcIds: [], inventoryItemIds: ["item_phone"] },
   });
   // 用户指令：narrative_only 也要转为可用 json，不影响用户体验
@@ -54,7 +51,6 @@ test("enforceToolCallShape: 1 option gets padded to 4 with narrative-anchored fa
     record: { ...baseRecord, options: ["屏住呼吸"] },
     narrative: baseRecord.narrative,
     requestId: "req-3",
-    disableLlmRefill: true,
     playerState: { playerLocation: "旧公寓三楼走廊", activeTaskIds: [], aliveNpcIds: [], inventoryItemIds: ["item_phone"] },
   });
   assert.equal((r.record.options as string[]).length, 4);
@@ -67,7 +63,6 @@ test("enforceToolCallShape: 6 options get truncated to 4", async () => {
     record: { ...baseRecord, options: ["A", "B", "C", "D", "E", "F"], turn_mode: "decision_required", decision_required: true },
     narrative: baseRecord.narrative,
     requestId: "req-4",
-    disableLlmRefill: true,
     playerState: { playerLocation: "走廊", activeTaskIds: [], aliveNpcIds: [], inventoryItemIds: [] },
   });
   assert.deepEqual(r.record.options, ["A", "B", "C", "D"]);
@@ -84,7 +79,6 @@ test("enforceToolCallShape: decision_options fallback when options empty + turn_
     },
     narrative: baseRecord.narrative,
     requestId: "req-5",
-    disableLlmRefill: true,
     playerState: { playerLocation: "走廊", activeTaskIds: [], aliveNpcIds: [], inventoryItemIds: [] },
   });
   assert.equal((r.record.options as string[]).length, 4);
@@ -96,7 +90,6 @@ test("enforceToolCallShape: writes hitl flags to _commit_flags + internal_meta",
     record: { ...baseRecord, options: ["A", "B", "C", "D"], _commit_flags: ["existing_flag"] },
     narrative: baseRecord.narrative,
     requestId: "req-6",
-    disableLlmRefill: true,
     playerState: { playerLocation: "走廊", activeTaskIds: [], aliveNpcIds: [], inventoryItemIds: [] },
   });
   const flags = r.record._commit_flags as string[];
@@ -139,23 +132,4 @@ test("buildAnchorFallbackOptionsForTest: regression for null playerState + empty
   });
   assert.equal(out.length, 4);
   assert.equal(new Set(out).size, 4);
-});
-
-test("enforceToolCallShape: hits LLM refill path when ctx provided + LLM enabled", async () => {
-  // This test exercises the LLM refill branch by injecting a stub ctx.
-  // The actual LLM call will fail (no real upstream in test), and we expect
-  // a graceful fallback to anchor template. The key is that no exception is
-  // thrown and the record still gets corrected.
-  clearOptionsLruCacheForTest();
-  const r = await enforceToolCallShape({
-    record: { ...baseRecord, options: [] },
-    narrative: baseRecord.narrative,
-    requestId: "req-llm",
-    ctx: { requestId: "req-llm", userId: "u", sessionId: "s" },
-    playerState: { playerLocation: "走廊", activeTaskIds: [], aliveNpcIds: [], inventoryItemIds: [] },
-  });
-  assert.equal((r.record.options as string[]).length, 4);
-  assert.equal(r.record.turn_mode, "decision_required");
-  // Either LLM refill succeeded OR template fallback — both result in 4 options.
-  assert.ok(r.appendedOptionsCount >= 1);
 });

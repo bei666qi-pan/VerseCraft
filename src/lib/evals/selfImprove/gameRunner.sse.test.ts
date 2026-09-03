@@ -15,11 +15,11 @@ describe("GameRunner SSE Reader Lifecycle", () => {
     // Create a stream that never pushes data and never closes
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
+      start(_controller) {
         // Never call controller.close() or controller.enqueue()
         // This simulates a stalled SSE stream
       },
-      cancel(reason) {
+      cancel(_reason) {
         cancelled = true;
       },
     });
@@ -42,7 +42,7 @@ describe("GameRunner SSE Reader Lifecycle", () => {
           setTimeout(() => {
             cancelReader(r);
             reject(new DOMException("SSE stream stalled (no bytes)", "TimeoutError"));
-          }, deadlineMs).unref()
+          }, deadlineMs)
         ),
       ]);
       return result;
@@ -56,6 +56,7 @@ describe("GameRunner SSE Reader Lifecycle", () => {
       assert.ok(err instanceof Error);
       // In Node 26, DOMException timeout may not preserve the exact message
       assert.ok(readerCancelled, "reader should be marked cancelled after deadline");
+      assert.ok(cancelled, "underlying stream should be cancelled after deadline");
     }
   });
 
@@ -86,7 +87,7 @@ describe("GameRunner SSE Reader Lifecycle", () => {
           setTimeout(() => {
             cancelReader(r);
             reject(new DOMException("SSE stream stalled (no bytes)", "TimeoutError"));
-          }, deadlineMs).unref()
+          }, deadlineMs)
         ),
       ]);
       return result;
@@ -95,15 +96,12 @@ describe("GameRunner SSE Reader Lifecycle", () => {
     try {
       let done = false;
       while (!done) {
-        const { done: d, value } = await readWithDeadline(reader, 1000);
+        const { done: d } = await readWithDeadline(reader, 1000);
         done = d;
       }
     } finally {
       cancelReader(reader);
     }
-
-    // Should have completed without stall error
-    assert.ok(true, "stream completed normally");
   });
 
   it("cancelReader is idempotent", () => {

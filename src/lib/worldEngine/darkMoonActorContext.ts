@@ -1,11 +1,11 @@
 import { NPCS } from "@/lib/registry/npcs";
 import { createEmptyNpcAgentState } from "@/lib/socialWorld/state";
 import type { NpcAgentState, NpcRelationEdge } from "@/lib/socialWorld/types";
-import type { ActorSimulationContext } from "./actorSimulation/integration";
-import type { ActorRelationEdge, EpistemicFactSummary } from "./actorSimulation/types";
+import type { ActorRelationEdge, EpistemicFactSummary } from "./actorContextTypes";
+import type { ActorScopedContext } from "./actorContextProjector";
 
 type DarkMoonActorContext = Pick<
-  ActorSimulationContext,
+  ActorScopedContext,
   | "npcStates"
   | "sceneNpcIds"
   | "playerMentionedNpcIds"
@@ -67,7 +67,7 @@ function registryFacts(npcId: string): EpistemicFactSummary[] {
 }
 
 /** Build a Dark Moon-only Actor context without exposing another actor's private facts. */
-export function buildDarkMoonActorSimulationContext(args: {
+export function buildDarkMoonActorContext(args: {
   npcStates: readonly NpcAgentState[];
   relationEdges: readonly NpcRelationEdge[];
   presentNpcIds: readonly string[];
