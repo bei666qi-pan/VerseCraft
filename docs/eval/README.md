@@ -50,7 +50,7 @@ PR 层（每个 PR 自动运行，目标 <20min）
 
 | 命令 | 用途 | 耗时 |
 |---|---|---|
-| `pnpm eval:chat-quality:mock` | 叙事质量（mock） | ~5s |
+| `pnpm eval:chat-quality:mock` | 当前回合契约与叙事锚点（10 个确定性 mock） | ~5s |
 | `pnpm eval:narrative-safety:mock` | 安全合规（mock） | ~30s |
 | `pnpm eval:npc-consistency:mock` | NPC 一致性（mock） | ~5s |
 | `pnpm eval:narrative-style:mock` | 叙事风格（mock，硬门） | ~2s |
@@ -86,7 +86,8 @@ PR 层（每个 PR 自动运行，目标 <20min）
 
 | 路径 | 用途 | 数量 |
 |---|---|---|
-| `benchmarks/llm-evals/cases.json` | 叙事质量场景 | 121 |
+| `benchmarks/chat-turns/*.json` | 当前回合 mock 契约 | 10 |
+| `benchmarks/llm-evals/cases.json` | 真实模型广场景叙事质量 | 121 |
 | `benchmarks/narrative-safety/cases.json` | 安全合规场景 | 1380 行 |
 | `benchmarks/narrative-style/cases.json` | 叙事风格场景 | 86 |
 | `benchmarks/task-eval/scenarios.json` | 任务系统场景 | 30 |

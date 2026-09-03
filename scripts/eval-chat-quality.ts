@@ -6,7 +6,6 @@
  */
 
 import path from "node:path";
-import { readFileSync } from "node:fs";
 import { probeChatSse } from "../src/lib/perf/chatSseProbe";
 import {
   evaluateChatQualityCase,
@@ -15,6 +14,7 @@ import {
   type ChatEvalCaseResult,
 } from "../src/lib/evals/chatQualityRubric";
 import { parseEvalCli, evalLog, writeJson, appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
+import { loadChatQualityCases } from "../src/lib/evals/chatQualityCaseLoader";
 
 type EvalMode = "mock" | "live";
 
@@ -26,7 +26,6 @@ type CliOptions = {
 };
 
 const root = path.resolve(__dirname, "..");
-const defaultCasesPath = path.join(root, "benchmarks", "llm-evals", "cases.json");
 
 function parseCli(): CliOptions {
   const args = process.argv.slice(2);
@@ -41,10 +40,6 @@ function parseCli(): CliOptions {
     jsonOut: base.jsonOut,
     jsonOnly: base.jsonOnly,
   };
-}
-
-function loadCases(path: string): ChatEvalCase[] {
-  return JSON.parse(readFileSync(path, "utf8")) as ChatEvalCase[];
 }
 
 async function runCase(baseUrl: string, mode: EvalMode, testCase: ChatEvalCase, index: number): Promise<ChatEvalCaseResult> {
@@ -65,6 +60,7 @@ async function runCase(baseUrl: string, mode: EvalMode, testCase: ChatEvalCase, 
       messages: [{ role: "user", content }],
       playerContext: testCase.playerContext,
       sessionId: requestId,
+      clientState: testCase.clientState,
     },
   });
   return evaluateChatQualityCase(testCase, metrics);
@@ -79,7 +75,7 @@ async function main(): Promise<void> {
   }
 
   const baseUrl = process.env.BENCHMARK_BASE_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
-  const cases = loadCases(defaultCasesPath);
+  const cases = loadChatQualityCases({ root, mode: options.mode });
   const results: ChatEvalCaseResult[] = [];
 
   evalLog(options, `Running chat quality eval: mode=${options.mode} cases=${cases.length} baseUrl=${baseUrl}`);
