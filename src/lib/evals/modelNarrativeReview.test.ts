@@ -158,6 +158,24 @@ test("low-confidence live result is inconclusive", async () => {
   }));
 });
 
+test("live judge requests bounded JSON with provider thinking disabled", async () => {
+  await withEnv("VERSECRAFT_ENABLE_MODEL_NARRATIVE_REVIEW_EVALS", "1", async () => withEnv("VERSECRAFT_EVAL_DISABLE_CACHE", "1", async () => {
+    let request: Parameters<NonNullable<Parameters<typeof reviewModelNarrative>[1]["callJudge"]>>[0] | undefined;
+    const response: AIResponse = { ok: true, providerId: "oneapi", logicalRole: "reasoner", content: validVerdict(), usage: null, latencyMs: 1 };
+    const result = await reviewModelNarrative(target, {
+      liveRequested: true,
+      consumeBudget: () => true,
+      callJudge: async (value) => {
+        request = value;
+        return response;
+      },
+    });
+    assert.equal(result.provenance, "live_model");
+    assert.equal(request?.requestTimeoutMs, 90_000);
+    assert.deepEqual(request?.extraBody, { enable_thinking: false, thinking: { type: "disabled" } });
+  }));
+});
+
 test("strict summary fails on a supported critical issue and incomplete coverage", () => {
   const reviewed = {
     caseId: target.caseId,

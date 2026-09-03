@@ -55,6 +55,7 @@ export type UnsupportedFactDetectorReport = {
 
 export type DetectUnsupportedFactsArgs = {
   narrative: string;
+  playerInput?: string;
   usedFactIds: readonly string[];
   candidateNewFacts?: readonly NarrativeAuditCandidateNewFact[];
   allowedFactIds: readonly string[];
@@ -74,6 +75,8 @@ export type DetectUnsupportedFactsArgs = {
 const ROOT_CAUSE_RE =
   /(公寓|暗月|循环|校源).{0,10}(根因|真正原因|源头|真相)|根因|真正的源头|七锚闭环.{0,8}(根因|真相|源头)|纠错员/;
 const RELATION_RE = /\b(N-\d{3,6})\b.{0,18}(认识|旧识|欠(?:了)?.{0,6}命|一直保护|保护|害怕|仇|交易|躲着).{0,18}\b(N-\d{3,6})\b/;
+const RELATIONSHIP_ASSERTION_RE = /(亲兄|亲弟|亲姐|亲妹|兄妹|姐弟|姐妹|兄弟|同父同母|父女|父子|母女|母子|夫妻|恋人|旧识|早就认识|多年交情|一直保护)/;
+const NPC_ID_RE = /\bN-\d{3,6}\b/g;
 const LOCATION_RE = /(来到|抵达|进入|已经在|身处).{0,10}(B2|7F|七层|七楼|地下二层|负二)/;
 const EVENT_STAGE_RE = /(进入|已经进入|开始|完成|结束).{0,10}(第二阶段|最终阶段|爆发阶段|吞噬阶段|事件阶段)/;
 const ITEM_ACQUISITION_RE = /(捡起|拾起|获得|拿到|得到|收下|装进口袋|放进口袋|收入背包|放入背包).{0,18}(钥匙|徽章|卡|纸条|药|道具|物品|武器|刀|枪|箱|证件|硬币)/;
@@ -279,16 +282,22 @@ export function detectUnsupportedFacts(args: DetectUnsupportedFactsArgs): Unsupp
   }
 
   const relationMatch = narrative.match(RELATION_RE);
-  if (relationMatch) {
-    const a = relationMatch[1];
-    const b = relationMatch[3];
+  const contextualRelationIds = uniq([
+    ...(narrative.match(NPC_ID_RE) ?? []),
+    ...(String(args.playerInput ?? "").match(NPC_ID_RE) ?? []),
+    ...(args.npcKnowledgePacket?.speakerNpcId ? [args.npcKnowledgePacket.speakerNpcId] : []),
+  ]);
+  const contextualRelationshipClaim = RELATIONSHIP_ASSERTION_RE.test(narrative) && contextualRelationIds.length >= 2;
+  if (relationMatch || contextualRelationshipClaim) {
+    const a = relationMatch?.[1] ?? contextualRelationIds[0];
+    const b = relationMatch?.[3] ?? contextualRelationIds.find((id) => id !== a);
     if (a && b && a !== b) {
       const supportedByFact = hasRelationFact(allowedFacts, a, b);
       const supportedByEdge = relationAllowed(args.npcKnowledgePacket, a, b);
       if (!supportedByFact && !supportedByEdge) {
         pushCandidate(candidates, {
           code: "unsupported_relationship_claim",
-          text: relationMatch[0],
+          text: relationMatch?.[0] ?? "contextual_relationship_claim_without_fact",
           category: "relationship",
           severity: "medium",
         });

@@ -219,6 +219,7 @@ export async function reviewModelNarrative(target: ModelNarrativeReviewTarget, o
       messages: [{ role: "system", content: prompt.system }, { role: "user", content: prompt.user }],
       ctx: { requestId: `model-narrative-review-${hash.slice(0, 12)}`, task: "EVAL_JUDGE", tags: { rubric: MODEL_NARRATIVE_REVIEW_RUBRIC_VERSION } },
       requestTimeoutMs: options.timeoutMs ?? 90_000,
+      extraBody: { enable_thinking: false, thinking: { type: "disabled" } },
       skipCache: false,
     });
     if (!response.ok) {
