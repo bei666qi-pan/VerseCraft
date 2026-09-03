@@ -5,6 +5,7 @@
 
 import { findRegisteredItemById } from "@/lib/registry/itemLookup";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
+import { normalizePlayerDmJson } from "@/lib/playRealtime/normalizePlayerDmJson";
 import type { ChatMessage } from "@/lib/ai/types/core";
 import {
   buildMechanicsSystemPromptBlock,
@@ -66,6 +67,31 @@ export function buildMechanicsCandidate(turnResult: MechanicsTurnResultLite): Re
     }
   }
   return candidate;
+}
+
+/**
+ * Mechanics owns the turn once routed. This seam guarantees a finalizer-ready
+ * candidate, so a malformed workflow result can never fall through to Writer.
+ */
+export function buildNormalizedMechanicsCandidate(
+  turnResult: MechanicsTurnResultLite,
+): NonNullable<ReturnType<typeof normalizePlayerDmJson>> {
+  const normalized = normalizePlayerDmJson(buildMechanicsCandidate(turnResult));
+  if (normalized) return normalized;
+
+  // Defense in depth: keep the player on the single Mechanics -> Finalizer
+  // path even if candidate normalization regresses in a future change.
+  const failure = normalizePlayerDmJson({
+    is_action_legal: false,
+    illegal_reason: "规则处理暂时不可用，请稍后重试。",
+    sanity_damage: 0,
+    narrative: "这次操作暂时无法完成，请检查当前资源和条件后重试。",
+    is_death: false,
+    consumes_time: false,
+    options: [],
+  });
+  if (!failure) throw new Error("mechanics_failure_candidate_normalization_failed");
+  return failure;
 }
 
 // ============================================================
