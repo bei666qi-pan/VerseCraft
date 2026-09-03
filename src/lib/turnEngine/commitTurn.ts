@@ -226,6 +226,13 @@ function isDegenerateNarrative(value: unknown): boolean {
   return meaningful.length < 6;
 }
 
+function wasAcquisitionDowngraded(record: Record<string, unknown>): boolean {
+  const securityMeta = record.security_meta;
+  if (!securityMeta || typeof securityMeta !== "object" || Array.isArray(securityMeta)) return false;
+  return String((securityMeta as Record<string, unknown>).consistency_warning ?? "")
+    .startsWith("acquire_without_awards");
+}
+
 function getIntentAwareSafetyNarrative(args: {
   language: GameLanguage;
   worldId?: WorldId;
@@ -690,7 +697,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   } else if (
     delta.isActionLegal === false &&
     ITEM_ACTION_RE.test(String(args.latestUserInput ?? "")) &&
-    isDegenerateNarrative(committed.narrative)
+    (isDegenerateNarrative(committed.narrative) || wasAcquisitionDowngraded(committed))
   ) {
     committed = {
       ...committed,
