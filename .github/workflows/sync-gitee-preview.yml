@@ -21,7 +21,9 @@ permissions:
 
 concurrency:
   group: gitee-sync-${{ github.event.workflow_run.head_branch || inputs.branch }}
-  cancel-in-progress: true
+  # Never interrupt a Coolify deployment halfway through. Later revisions wait
+  # for the active release, then deploy and attest the newest SHA in order.
+  cancel-in-progress: false
 
 jobs:
   sync-gitee:
@@ -385,3 +387,10 @@ jobs:
           COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
           COOLIFY_APP_UUID: ${{ env.TARGET_BRANCH == 'main' && secrets.COOLIFY_APP_UUID || secrets.COOLIFY_PREVIEW_APP_UUID }}
         run: node scripts/autoops/verify-deployed-site.mjs --attempts 18 --delayMs 10000
+
+      - name: Verify production admin authentication and dashboard
+        if: env.TARGET_BRANCH == 'main' && steps.deploy.outputs.deployed == 'true'
+        env:
+          SITE_URL: https://versecraft.cn
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: node scripts/autoops/verify-production-admin.mjs
