@@ -2,9 +2,10 @@
 
 性能 benchmark 只能证明“够快”，不能证明“叙事和选项仍可用”。`pnpm eval:chat-quality` 是独立质量回归门禁，用固定数据集验证 narrative、options、泄露、SSE contract 和延迟预算。
 
-数据集：
+数据集按证据能力分开：
 
-- `benchmarks/llm-evals/cases.json`
+- mock 使用 `benchmarks/chat-turns/*.json` 的 10 个当前回合契约，验证候选经过路由、校验、提交和 SSE 后仍保持预期语义；
+- live 使用 `benchmarks/llm-evals/cases.json` 的广场景集，验证真实模型的叙事语义；
 - 每个 case 声明 `minNarrativeChars`、`maxNarrativeChars`、`optionsCount`、`mustContainAny`、`mustNotContain`。
 - 新增场景时必须先写 eval case，再改 prompt 或生成链路。
 - 普通探索 case 禁止凭空出现未建立的人名；需要 NPC 时必须在输入或 `playerContext` 中明确声明。
@@ -31,7 +32,7 @@ E2E_AI_LIVE=1 pnpm eval:chat-quality -- --mode live --assert --json-out .runtime
 
 1. 从 `chat_request_finished` / `chatGenerationMetrics` 找到失败形态：叙事过短、options 质量失败、long gap、final parse 失败、fallback 触发。
 2. 去除原始用户输入和完整 narrative，只保留匿名化复现上下文。
-3. 加入 `benchmarks/llm-evals/cases.json`。
-4. 跑 mock eval 保证 contract，再在有 secrets 的 nightly/live eval 对真实 gateway 验证。
+3. 回归管线契约时加入 `benchmarks/chat-turns/`；回归真实模型语义时加入 `benchmarks/llm-evals/cases.json`。
+4. 跑 mock eval 保证管线 contract，再在有 secrets 的 nightly/live eval 对真实 gateway 验证。mock 结果不得冒充真实模型质量证据。
 
 禁止把 P0/P1 质量失败包装成“后续建议”。如果 eval gate 失败，必须修 prompt、repair、parser、quality gate 或预算配置。

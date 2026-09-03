@@ -15,6 +15,7 @@ export interface ChatEvalCase {
   scenario: string;
   latestUserInput: string;
   playerContext: string;
+  clientState?: Record<string, unknown>;
   mockScenario?: string;
   expect: ChatEvalExpect;
 }

@@ -91,6 +91,7 @@ import {
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
 import { buildVisibleOptionsSceneAnchors } from "@/lib/play/optionsSceneAnchors";
 import { isPlayableRegeneratedOptions } from "@/lib/play/optionsRegenPlayability";
+import { projectLocalPlayableOptions } from "@/features/play/options/localOptionsProjection";
 import { NPCS } from "@/lib/registry/npcs";
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
@@ -2398,6 +2399,21 @@ function PlayContent() {
         .find((l) => l?.role === "user")?.content ?? "";
 
       const modelSeedOptions = filterNarrativeActionOptions(seedOptions, 4).slice(0, 3);
+      const language = useGameStore.getState().language;
+      const localOptions = projectLocalPlayableOptions({
+        narrative: String(lastAssistant ?? ""),
+        seedOptions: modelSeedOptions,
+        language,
+      });
+      if (isPlayableRegeneratedOptions(localOptions)) {
+        setOptionsRegenStage("complete");
+        setOptionsRegenProgress(100);
+        setOptionsRegenFailureMessage(null);
+        setCurrentOptions(localOptions);
+        setFirstTimeHint(null);
+        regenSucceeded = true;
+        return;
+      }
       const reason =
         trigger === "opening_fallback"
           ? "冷开场首轮未返回 options"
@@ -2412,7 +2428,6 @@ function PlayContent() {
       const regenRecentOptions = Array.isArray(recentOptions) ? recentOptions : [];
       const playerContext = useGameStore.getState().getPromptContext();
       const clientState = useGameStore.getState().getStructuredClientStateForServer();
-      const language = useGameStore.getState().language;
       const inventoryHints = (Array.isArray(inventory) ? inventory : [])
         .map((item) => {
           if (!item || typeof item !== "object") return "";
@@ -5325,7 +5340,7 @@ function PlayContent() {
                   <>
                     {/*
                       选项区：MobileOptionsDropdown 渲染四条槽位（zustand currentOptions）；
-                      冷开场首轮 options 来自主笔；缺失时 requestFreshOptions("opening_fallback"|"manual_button") 走 options_regen_only。
+                      主笔选项缺失时先由已提交叙事做本地确定性投影，不等待网络或额外模型调用。
                     */}
                     <PlayStoryScroll
                       scrollRef={scrollRef}
