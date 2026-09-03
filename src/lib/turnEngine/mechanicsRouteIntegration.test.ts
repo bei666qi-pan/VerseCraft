@@ -8,11 +8,29 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
+import { extractNarrative } from "@/features/play/stream/dmParse";
+import { accumulateDmFromSseEvent } from "@/features/play/stream/sseFrame";
 import {
+  buildMechanicsNarrativePrelude,
+  buildMechanicsNarrativePreludeFrame,
   buildMechanicsCandidate,
   buildNormalizedMechanicsCandidate,
   runMechanicsRoute,
 } from "./mechanicsRouteIntegration";
+
+test("mechanics emits a concrete non-authoritative prelude before its final candidate", () => {
+  const prelude = buildMechanicsNarrativePrelude("装备武器；没有就明确失败", "dark_moon_prologue");
+  assert.match(prelude, /装备|随身|武器/);
+
+  const frame = buildMechanicsNarrativePreludeFrame(prelude);
+  const streamed = accumulateDmFromSseEvent(`data: ${frame}`, "");
+  assert.equal(extractNarrative(streamed.raw), prelude);
+
+  const final = '{"narrative":"最终规则结果","is_action_legal":false}';
+  const committed = accumulateDmFromSseEvent(`data: __VERSECRAFT_FINAL__:${final}`, streamed.raw);
+  assert.equal(committed.raw, final);
+  assert.equal(extractNarrative(committed.raw), "最终规则结果");
+});
 
 test("buildMechanicsCandidate prunes unregistered granted items", () => {
   const out = buildMechanicsCandidate({
