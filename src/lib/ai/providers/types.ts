@@ -6,7 +6,7 @@ export interface NormalizedCompletionRequest {
   modelApiName: string;
   messages: ChatMessage[];
   stream: boolean;
-  /** Legacy advisory only. The OpenAI-compatible transport omits max_tokens. */
+  /** Output budget; provider adapters enforce it when the upstream contract is known. */
   maxTokens?: number;
   temperature?: number;
   responseFormatJsonObject?: boolean;
