@@ -20,12 +20,21 @@ const GATEWAY_BODY_RESERVED = new Set([
   "messages",
   "stream",
   "max_tokens",
+  "max_completion_tokens",
   "temperature",
   "response_format",
   "stream_options",
   "tools",
   "tool_choice",
 ]);
+
+const MINIMAX_MAX_COMPLETION_TOKENS = 2048;
+
+function minimaxCompletionTokenLimit(modelApiName: string, maxTokens: number | undefined): number | null {
+  if (!/^minimax-/i.test(modelApiName)) return null;
+  if (typeof maxTokens !== "number" || !Number.isFinite(maxTokens) || maxTokens <= 0) return null;
+  return Math.min(Math.trunc(maxTokens), MINIMAX_MAX_COMPLETION_TOKENS);
+}
 
 /** Map internal ChatMessage (camelCase tool linkage) to the OpenAI wire shape (snake_case). */
 function toWireMessage(m: ChatMessage): Record<string, unknown> {
@@ -47,9 +56,14 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
       messages: body.messages.map(toWireMessage),
       stream: body.stream,
     };
-    // Deliberately omit max_tokens. The codex-ds DeepSeek models must be
-    // allowed to finish their reasoning and complete JSON naturally. Keep
-    // max_tokens reserved so extraBody cannot silently introduce a cap.
+    // MiniMax's OpenAI-compatible endpoint uses max_completion_tokens and
+    // currently caps it at 2048. Enforce the internal budget on that known
+    // transport while retaining the established uncapped behavior for other
+    // compatible providers (notably reasoning-heavy codex-ds routes).
+    const minimaxTokenLimit = minimaxCompletionTokenLimit(body.modelApiName, body.maxTokens);
+    if (minimaxTokenLimit !== null) {
+      payload.max_completion_tokens = minimaxTokenLimit;
+    }
     if (body.temperature !== undefined) {
       payload.temperature = body.temperature;
     }

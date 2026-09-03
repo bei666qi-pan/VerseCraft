@@ -60,6 +60,31 @@ test("openaiCompatibleGateway sets Authorization and json_object when requested"
   assert.equal("max_tokens" in body, false);
 });
 
+test("openaiCompatibleGateway enforces MiniMax output budget with the official completion field", () => {
+  const init = openaiCompatibleGateway.buildInit("k", {
+    modelApiName: "MiniMax-M3",
+    messages: [{ role: "user", content: "hi" }],
+    stream: true,
+    maxTokens: 2304,
+    extraBody: { max_completion_tokens: 9999 },
+  });
+  const body = JSON.parse(String(init.body)) as {
+    max_tokens?: number;
+    max_completion_tokens?: number;
+  };
+  assert.equal(body.max_tokens, undefined);
+  assert.equal(body.max_completion_tokens, 2048);
+
+  const shortInit = openaiCompatibleGateway.buildInit("k", {
+    modelApiName: "minimax-m3",
+    messages: [{ role: "user", content: "classify" }],
+    stream: false,
+    maxTokens: 192,
+  });
+  const shortBody = JSON.parse(String(shortInit.body)) as { max_completion_tokens?: number };
+  assert.equal(shortBody.max_completion_tokens, 192);
+});
+
 test("openaiCompatibleGateway enables stream_options when streaming", () => {
   const init = openaiCompatibleGateway.buildInit("k", {
     modelApiName: "m",
