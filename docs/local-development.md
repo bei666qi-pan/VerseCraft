@@ -40,7 +40,7 @@ pnpm test:unit
 - `AUTH_SECRET`: NextAuth 签名密钥
 - `ADMIN_PASSWORD`: 管理员影子入口密码
 - `ALTCHA_HMAC_KEY`: Altcha HMAC 密钥（不填则使用 `AUTH_SECRET`）
-- **大模型**：设置 32 字节 `AI_CONFIG_ENCRYPTION_KEY`，启动应用后登录 `/saiduhsa` 的“AI 管理”录入 OpenAI 兼容服务。开发环境允许测试 localhost；生产必须使用公开 HTTPS。详见 [`docs/ai-gateway.md`](ai-gateway.md)。
+- **大模型**：设置 32 字节 `AI_CONFIG_ENCRYPTION_KEY`，启动应用后登录 `/admin` 的“AI 管理”录入 OpenAI 兼容服务。开发环境允许测试 localhost；生产必须使用公开 HTTPS。详见 [`docs/ai-gateway.md`](ai-gateway.md)。
 
 ## 可选变量
 

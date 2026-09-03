@@ -14,7 +14,7 @@ export function AdminShadowGate() {
   useEffect(() => {
     if (state.ok && !hasRefreshedRef.current) {
       hasRefreshedRef.current = true;
-      router.replace("/saiduhsa");
+      router.replace("/admin");
     }
     if (!state.ok) {
       hasRefreshedRef.current = false;

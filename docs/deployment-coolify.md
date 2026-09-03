@@ -52,7 +52,7 @@
 - `ADMIN_PASSWORD`
 - `ALTCHA_HMAC_KEY`
 - **AI 配置加密主密钥**：`AI_CONFIG_ENCRYPTION_KEY`（32 字节 hex 或 base64，部署后保持稳定）
-- **真实 AI 服务**：迁移完成后在 `/saiduhsa` → “AI 管理”录入、测试并配置主备，不再使用 NewAPI 环境变量
+- **真实 AI 服务**：迁移完成后在 `/admin` → “AI 管理”录入、测试并配置主备，不再使用 NewAPI 环境变量
 - `AI_PLAYER_ROLE_CHAIN`（可选，如 `main,control`）；遗留 `AI_PLAYER_MODEL_CHAIN` 仍可映射为角色
 - `AI_OPERATION_MODE`：`full` \| `safe` \| `emergency`（紧急模式玩家链仅 `main` 角色）
 - 详见 [`docs/ai-gateway.md`](ai-gateway.md)

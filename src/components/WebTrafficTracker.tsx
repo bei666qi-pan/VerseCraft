@@ -26,7 +26,7 @@ export default function WebTrafficTracker() {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!pathname || pathname.startsWith("/saiduhsa") || pathname.startsWith("/preview")) return;
+    if (!pathname || pathname.startsWith("/admin") || pathname.startsWith("/preview")) return;
     const visitorId = getVisitorId();
     if (!visitorId) return;
     const eventId = randomId();

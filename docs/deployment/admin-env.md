@@ -4,7 +4,7 @@
 
 | 变量 | 用途 | 暴露范围 |
 | --- | --- | --- |
-| `ADMIN_PASSWORD` | 管理员登录 `/saiduhsa`，生成 shadow session | 仅服务端 |
+| `ADMIN_PASSWORD` | 管理员登录 `/admin`，生成 shadow session | 仅服务端 |
 | `ADMIN_CRON_SECRET` | `/api/admin/cron/*` 调度调用鉴权 | 仅服务端/调度器 |
 | `DATABASE_URL` | 后台指标、审计日志、聚合数据 | 仅服务端 |
 

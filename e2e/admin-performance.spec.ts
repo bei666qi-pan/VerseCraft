@@ -33,7 +33,7 @@ test.describe("Admin dashboard performance baseline", () => {
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
 
-    await page.goto("/saiduhsa", { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.goto("/admin", { waitUntil: "domcontentloaded", timeout: 45_000 });
     await expect(page.locator("body")).toBeVisible({ timeout: 15_000 });
 
     // 这里的目标是“页面能稳定完成首屏渲染”，而不是在本地降级环境里做 FPS/longtask。

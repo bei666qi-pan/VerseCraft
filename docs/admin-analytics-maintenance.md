@@ -2,7 +2,7 @@
 
 ## 后台入口
 
-- 页面入口：`/saiduhsa`
+- 页面入口：`/admin`
 - 认证入口：`AdminShadowGate` 调用 `submitAdminShadowLogin`
 - 后台 API：`/api/admin/*`
 - Cron API：`/api/admin/cron/*`

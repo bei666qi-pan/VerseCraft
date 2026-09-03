@@ -1,12 +1,12 @@
 # VerseCraft AI 服务管理
 
-VerseCraft 的真实 AI 服务由 PostgreSQL 和后台 `/saiduhsa` 统一管理，不再依赖 NewAPI、one-api 或部署环境中的 URL、Key、模型名。生产环境只需提供 `AI_CONFIG_ENCRYPTION_KEY`，然后由管理员在“AI 管理”中添加服务、模型和用途候选顺序。
+VerseCraft 的真实 AI 服务由 PostgreSQL 和后台 `/admin` 统一管理，不再依赖 NewAPI、one-api 或部署环境中的 URL、Key、模型名。生产环境只需提供 `AI_CONFIG_ENCRYPTION_KEY`，然后由管理员在“AI 管理”中添加服务、模型和用途候选顺序。
 
 ## 上线配置
 
 1. 应用 `drizzle/0019_admin_ai_management.sql`。
 2. 生成 32 字节随机部署主密钥，以 64 位 hex 或 base64 填入 `AI_CONFIG_ENCRYPTION_KEY`。该密钥不能更换或丢失，否则已保存的 API Key 将无法解密。
-3. 登录 `/saiduhsa`，打开“AI 管理”，添加 OpenAI 兼容服务或火山多模态向量服务。
+3. 登录 `/admin`，打开“AI 管理”，添加 OpenAI 兼容服务或火山多模态向量服务。
 4. 填写模型后台名称、真实模型名、能力、向量维度和人民币单价。保存时系统会执行最小真实请求；全部通过才切换配置。
 5. 在“用途与备用顺序”配置玩家故事生成、规则判断、文字润色、后台推演和知识检索。第一项是主用，后续是备用。
 
