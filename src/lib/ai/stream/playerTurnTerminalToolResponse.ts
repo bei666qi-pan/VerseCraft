@@ -1,7 +1,4 @@
-import {
-  isPlayerTurnTerminalToolName,
-  resolvePlayerChatFunctionCallingMode,
-} from "@/lib/ai/tools/playerTurnTerminalTool";
+import { isPlayerNarrativeTerminalToolName } from "@/lib/ai/tools/playerNarrativeTerminalTool";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -35,64 +32,8 @@ function readNamedToolChoice(payload: JsonRecord | null): string | null {
 }
 
 export function isPlayerTurnTerminalToolRequest(init: RequestInit): boolean {
-  return isPlayerTurnTerminalToolName(readNamedToolChoice(parseRequestPayload(init)));
-}
-
-/**
- * Returns true when the request body uses the Responses API wire shape
- * (`tool_choice: { type: "function", name }`, no `messages`, has `input`).
- * Used to decide which JSON-mode fallback field to write.
- */
-export function isResponsesApiPayload(payload: JsonRecord | null): boolean {
-  if (!payload) return false;
-  const toolChoice = asRecord(payload.tool_choice);
-  if (!toolChoice) return false;
-  const hasFlatName = typeof toolChoice.name === "string" && toolChoice.name.length > 0;
-  const hasNestedFunction = asRecord(toolChoice.function) !== null;
-  // Responses flattens `tool_choice`; Chat Completions nests under `function`.
-  return hasFlatName && !hasNestedFunction;
-}
-
-/** Remove the terminal tool envelope and restore the legacy JSON mode request. */
-export function buildPlayerTurnJsonFallbackInit(init: RequestInit): RequestInit {
-  const payload = parseRequestPayload(init);
-  if (!payload || !isPlayerTurnTerminalToolName(readNamedToolChoice(payload))) return init;
-  const next = { ...payload };
-  delete next.tools;
-  delete next.tool_choice;
-  delete next.parallel_tool_calls;
-  if (isResponsesApiPayload(payload)) {
-    // Responses API wire: tell the endpoint to fall back to json_object mode.
-    // `openaiResponsesGateway` (openaiResponses.ts:120-152) already downgrades
-    // a `body.responseFormatJsonObject: true` to a minimal json_schema when
-    // the upstream endpoint (minimax-m3) ignores the json_object constraint
-    // under long structured prompts, so the wire body is left untouched here.
-    next.text = { format: { type: "json_object" } };
-  } else {
-    // Chat Completions wire.
-    next.response_format = { type: "json_object" };
-  }
-  return { ...init, body: JSON.stringify(next) };
-}
-
-const TOOL_COMPATIBILITY_STATUSES = new Set([400, 404, 422, 501]);
-const TOOL_COMPATIBILITY_RE =
-  /tool_choice|tool calls?|function calls?|function_call|unknown (?:field|parameter)|unsupported|not support|does not support/i;
-
-/** Whether prefer-mode should retry the same request once without Function Calling. */
-export async function shouldFallbackPlayerTurnTerminalTool(
-  response: Response,
-  init: RequestInit
-): Promise<boolean> {
-  if (resolvePlayerChatFunctionCallingMode() !== "prefer") return false;
-  if (!isPlayerTurnTerminalToolRequest(init)) return false;
-  if (!TOOL_COMPATIBILITY_STATUSES.has(response.status)) return false;
-  try {
-    const text = await response.clone().text();
-    return TOOL_COMPATIBILITY_RE.test(text.slice(0, 8_000));
-  } catch {
-    return false;
-  }
+  const name = readNamedToolChoice(parseRequestPayload(init));
+  return isPlayerNarrativeTerminalToolName(name);
 }
 
 type ToolStreamState = {
@@ -123,7 +64,7 @@ function extractToolArgumentFragment(holder: JsonRecord, state: ToolStreamState)
     }
   }
 
-  // Compatibility with older OpenAI-style `function_call` deltas.
+  // Normalize OpenAI-style `function_call` deltas used by some compatible providers.
   const legacy = asRecord(holder.function_call ?? holder.functionCall);
   if (legacy) {
     const declaredName = typeof legacy.name === "string" ? legacy.name.trim() : "";
@@ -224,8 +165,8 @@ function cloneResponse(response: Response, body: BodyInit | null): Response {
 }
 
 /**
- * Project terminal tool argument chunks back onto `content`. The rest of the app
- * therefore receives exactly the same DM JSON transport it handled before this upgrade.
+ * Project narrow Writer tool arguments back onto `content` for the existing
+ * incremental JSON parser. No state-bearing model envelope is accepted.
  */
 export async function normalizePlayerTurnTerminalToolResponse(
   response: Response,
@@ -242,32 +183,6 @@ export async function normalizePlayerTurnTerminalToolResponse(
     return cloneResponse(response, rewriteSseBody(response.body, expectedToolName));
   }
 
-  try {
-    const parsed: unknown = await response.clone().json();
-    const state: ToolStreamState = { expectedToolName, nameByIndex: new Map() };
-    return cloneResponse(response, JSON.stringify(rewriteCompletionObject(parsed, state)));
-  } catch {
-    return response;
-  }
-}
-
-/**
- * Phase 5.B：通用 terminal-tool response 投影。submit_player_turn (Phase 1)
- * 和 submit_narrative (Phase 5.B) 共用同一投影逻辑，仅 `expectedToolName`
- * 不同。
- */
-export async function projectTerminalToolResponse(
-  response: Response,
-  init: RequestInit,
-  expectedToolName: string
-): Promise<Response> {
-  if (!response.ok) return response;
-  const payload = parseRequestPayload(init);
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-  const streamRequested = payload?.stream === true;
-  if ((streamRequested || contentType.includes("text/event-stream")) && response.body) {
-    return cloneResponse(response, rewriteSseBody(response.body, expectedToolName));
-  }
   try {
     const parsed: unknown = await response.clone().json();
     const state: ToolStreamState = { expectedToolName, nameByIndex: new Map() };

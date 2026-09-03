@@ -22,9 +22,12 @@
 
 - `TurnLaneRouter` 先用确定性规则；只有歧义输入才允许使用带缓存、300ms 截止的 embedding 分类。
 - 普通 narrative lane 最多一次生成模型调用。
+- Writer 只通过唯一 `submit_narrative` 协议输出 `narrative/options/turn_mode/decision_required`；完整 DM JSON、状态字段和兼容性二次调用均不属于模型职责。
 - Mechanics lane 最多两次生成调用、一个写工具、20 秒总预算；首轮无工具时直接使用其候选。
 - Agent 或网关失败后不得启动第三次 Writer 调用。
 - `AiInvocationBudget` 是调用次数、截止时间、输出 token 和可选人民币成本的统一权限边界。
+- 首个具体叙事字符 p95 目标不超过 5 秒，单回合硬上限 8 秒；协议 JSON 字节不计作具体叙事。
+- 选项维护由确定性投影完成，不启动模型补写，客户端和服务端硬上限均为 5 秒。
 
 ## SSE 契约
 

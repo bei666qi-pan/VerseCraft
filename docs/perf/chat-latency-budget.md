@@ -13,6 +13,7 @@
 | `firstStatusShownP95Ms` | 800ms | p95 首个 `__VERSECRAFT_STATUS__` 到达时间。 |
 | `firstVisibleTextP50Ms` | 2500ms | 正常 AI gateway 可用时，p50 首个可见正文 / first token。 |
 | `firstVisibleTextP95Ms` | 5000ms | 正常 AI gateway 可用时，p95 首个可见正文 / first token。 |
+| `firstConcreteNarrativeHardMaxMs` | 8000ms | 每个正常回合出现首个具体叙事字符的硬上限；JSON/tool 协议碎片不计。 |
 | `normalTurnFinalP50Ms` | 12000ms | 普通回合 p50 收到 `__VERSECRAFT_FINAL__`。 |
 | `normalTurnFinalP95Ms` | 20000ms | 普通回合 p95 收到 `__VERSECRAFT_FINAL__`。 |
 | `maxNoFeedbackGapMs` | 5000ms | 玩家不能经历 5 秒以上完全无反馈等待。 |
@@ -36,7 +37,7 @@
 - fast lane 不得等待 slow lane 逻辑。
 - session memory / lore / KG cache miss 不得阻塞首字。
 - DB 写入、ledger、analytics、world tick 必须 best-effort 或后台化。
-- options-only / decision-only repair 必须有 per-attempt timeout 和 wall-clock budget。
+- options-only 只做确定性投影，不得启动模型修复；客户端和服务端均在 5 秒内结束。
 - PLAYER_CHAT 不得引入 `reasoner`，不得靠扩大 role chain 掩盖失败。
 
 ## 不能为了速度牺牲的内容
@@ -110,7 +111,7 @@ AI_CONTROL_PREFLIGHT_BUDGET_MS=0
 
 ## Stream Reconnect Wall Budget
 
-主 `PLAYER_CHAT` 流如果在正文前中断，或只返回空白 / 过短内容，允许进入一次保守补救；但补救不能把首个可见正文拖到预算外。默认墙钟是 `3500ms`，超时后直接返回可解析的安全兜底 `__VERSECRAFT_FINAL__`，不再启动第二个 role stream。
+主 `PLAYER_CHAT` 流如果在正文前中断，或只返回空白 / 过短内容，只允许代码生成可解析的安全兜底 `__VERSECRAFT_FINAL__`，不得启动第二个 Writer 或兼容性模型调用。
 
 回滚 / 调整开关：
 
@@ -118,13 +119,7 @@ AI_CONTROL_PREFLIGHT_BUDGET_MS=0
 AI_PLAYER_CHAT_STREAM_RECONNECT_WALL_MS=22000
 ```
 
-如果需要临时恢复更宽的 legacy 行为，也可以关闭 v2 超时族：
-
-```bash
-AI_PLAYER_CHAT_TIMEOUTS_V2=0
-```
-
-该预算只约束上游空流 / 断流补救，不缩短正常主模型叙事，不改变 `PLAYER_CHAT` role chain 定义，不让 `reasoner` 进入在线主链路。
+该预算只约束上游空流 / 断流后的确定性降级，不缩短正常主模型叙事，不改变 `PLAYER_CHAT` role chain 定义，不让 `reasoner` 进入在线主链路。
 
 ## 生成质量与稳定护栏
 

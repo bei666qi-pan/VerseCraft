@@ -29,6 +29,8 @@ export interface ChatSseProbeMetrics {
   firstStatusMs: number | null;
   firstVisibleTextMs: number | null;
   firstTokenMs: number | null;
+  /** First actual narrative character, excluding JSON/tool protocol bytes. */
+  firstNarrativeContentMs?: number | null;
   finalMs: number | null;
   statusFrameCount: number;
   finalFrameReceived: boolean;
@@ -103,6 +105,26 @@ function isVisibleData(data: string): boolean {
   return true;
 }
 
+export function hasConcreteNarrativeContent(streamText: string): boolean {
+  const marker = /"narrative"\s*:\s*"/.exec(streamText);
+  if (!marker) {
+    return !streamText.trimStart().startsWith("{") && streamText.trim().length > 0;
+  }
+  const tail = streamText.slice(marker.index + marker[0].length);
+  for (let index = 0; index < tail.length; index += 1) {
+    const char = tail[index];
+    if (char === '"') return false;
+    if (char === "\\") {
+      const escaped = tail[index + 1];
+      if (!escaped) return false;
+      if (escaped === "u" && tail.length < index + 6) return false;
+      return true;
+    }
+    if (char && !/\s/.test(char)) return true;
+  }
+  return false;
+}
+
 export async function probeChatSse(request: ChatSseProbeRequest): Promise<ChatSseProbeMetrics> {
   const startedAt = Date.now();
   const timeoutMs = Math.max(1_000, Math.trunc(request.timeoutMs ?? 70_000));
@@ -115,6 +137,7 @@ export async function probeChatSse(request: ChatSseProbeRequest): Promise<ChatSs
   let firstSseMs: number | null = null;
   let firstStatusMs: number | null = null;
   let firstVisibleTextMs: number | null = null;
+  let firstNarrativeContentMs: number | null = null;
   let finalMs: number | null = null;
   let statusFrameCount = 0;
   let finalJson: unknown = null;
@@ -125,6 +148,7 @@ export async function probeChatSse(request: ChatSseProbeRequest): Promise<ChatSs
   let lastVisibleAt: number | null = null;
   let buffer = "";
   let error: string | null = null;
+  let visibleContentBuffer = "";
 
   try {
     response = await fetch(`${request.baseUrl.replace(/\/+$/, "")}/api/chat`, {
@@ -167,6 +191,13 @@ export async function probeChatSse(request: ChatSseProbeRequest): Promise<ChatSs
         }
         if (isVisibleData(data)) {
           if (firstVisibleTextMs === null) firstVisibleTextMs = elapsed;
+          visibleContentBuffer += data;
+          if (
+            firstNarrativeContentMs === null &&
+            hasConcreteNarrativeContent(visibleContentBuffer)
+          ) {
+            firstNarrativeContentMs = elapsed;
+          }
           if (lastVisibleAt !== null) {
             const gap = Math.max(0, now - lastVisibleAt);
             maxInterChunkGapMs = Math.max(maxInterChunkGapMs, gap);
@@ -205,6 +236,7 @@ export async function probeChatSse(request: ChatSseProbeRequest): Promise<ChatSs
     firstStatusMs,
     firstVisibleTextMs,
     firstTokenMs: firstVisibleTextMs,
+    firstNarrativeContentMs,
     finalMs,
     statusFrameCount,
     finalFrameReceived,

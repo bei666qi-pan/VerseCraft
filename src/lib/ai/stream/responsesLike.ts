@@ -362,7 +362,7 @@ export function responsesToChatCompletionsTransform(
  * concatenated text content.
  *
  * When the request forced a function tool via `tool_choice` (the player-chat
- * path uses `submit_player_dm`), the model emits a `function_call` item
+ * path uses `submit_narrative`), the model emits a `function_call` item
  * whose `arguments` field is a structured JSON string. We surface those
  * arguments as the chat-route's `content` so the downstream DM JSON parser
  * can pick up the structured payload verbatim, and we expose the matching

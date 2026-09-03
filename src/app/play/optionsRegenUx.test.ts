@@ -8,14 +8,13 @@ import {
 } from "@/app/play/optionsRegenUx";
 import { OPTIONS_REGEN_LATENCY_BUDGET } from "@/lib/perf/waitingConfig";
 
-test("options regen UX: short-link client deadlines stay within P99 targets", () => {
+test("options regen UX: every options-maintenance path has a five-second hard ceiling", () => {
   assert.equal(getOptionsOnlyDeadlineMs("manual_button") <= OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs, true);
   assert.equal(getOptionsOnlyDeadlineMs("auto_missing_main") <= OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs, true);
   assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") <= OPTIONS_REGEN_LATENCY_BUDGET.openingClientDeadlineMs, true);
-  assert.equal(getOptionsOnlyDeadlineMs("manual_button") <= 9_000, true);
-  assert.equal(getOptionsOnlyDeadlineMs("auto_missing_main") <= 9_000, true);
-  assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") <= 11_000, true);
-  assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") >= getOptionsOnlyDeadlineMs("manual_button"), true);
+  assert.equal(getOptionsOnlyDeadlineMs("manual_button"), 5_000);
+  assert.equal(getOptionsOnlyDeadlineMs("auto_missing_main"), 5_000);
+  assert.equal(getOptionsOnlyDeadlineMs("opening_fallback"), 5_000);
 });
 
 test("options regen UX: NEXT_PUBLIC_VC_TIGHT_TIMEOUTS=0 cannot widen options-only deadlines", async () => {
@@ -24,9 +23,9 @@ test("options regen UX: NEXT_PUBLIC_VC_TIGHT_TIMEOUTS=0 cannot widen options-onl
   try {
     const moduleUrl = `${pathToFileURL(path.resolve("src/lib/perf/waitingConfig.ts")).href}?tight0=${Date.now()}`;
     const fresh = (await import(moduleUrl)) as typeof import("@/lib/perf/waitingConfig");
-    assert.equal(fresh.VC_WAITING.playOptionsOnlyClientDeadlineMs, 9_000);
-    assert.equal(fresh.VC_WAITING.playOpeningOptionsOnlyClientDeadlineMs, 11_000);
-    assert.equal(fresh.VC_WAITING.optionsOnlyServerBudgetMs, 8_500);
+    assert.equal(fresh.VC_WAITING.playOptionsOnlyClientDeadlineMs, 5_000);
+    assert.equal(fresh.VC_WAITING.playOpeningOptionsOnlyClientDeadlineMs, 5_000);
+    assert.equal(fresh.VC_WAITING.optionsOnlyServerBudgetMs, 5_000);
   } finally {
     if (previous === undefined) delete process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS;
     else process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS = previous;

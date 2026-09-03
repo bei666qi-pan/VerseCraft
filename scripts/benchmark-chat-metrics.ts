@@ -229,6 +229,12 @@ function assessBudget(mode: BenchmarkMode, metrics: ChatSseProbeMetrics): string
   if (metrics.firstTokenMs == null || metrics.firstTokenMs > CHAT_LATENCY_BUDGET.firstVisibleTextP95Ms) {
     failures.push(`firstTokenMs>${CHAT_LATENCY_BUDGET.firstVisibleTextP95Ms}`);
   }
+  if (
+    metrics.firstNarrativeContentMs == null ||
+    metrics.firstNarrativeContentMs > CHAT_LATENCY_BUDGET.firstConcreteNarrativeHardMaxMs
+  ) {
+    failures.push(`firstNarrativeContentMs>${CHAT_LATENCY_BUDGET.firstConcreteNarrativeHardMaxMs}`);
+  }
   if (metrics.finalMs == null || metrics.finalMs > CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms) {
     failures.push(`finalMs>${CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms}`);
   }

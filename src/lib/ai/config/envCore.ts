@@ -89,15 +89,6 @@ export interface ResolvedAiEnv {
    */
   playerChatFastLaneRelaxResponseFormat: boolean;
   /**
-   * T2（技术改良，2026-07）：当为 true 时，PLAYER_CHAT 请求改用
-   * `responseFormatJsonSchema`（见 src/lib/ai/schemas/playerDmJsonSchema.ts）
-   * 而不是纯 `response_format:{type:"json_object"}`。默认 false——
-   * 并非所有 OpenAI 兼容网关背后的模型都支持 `json_schema` response_format，
-   * 开启前请先在目标环境用 pnpm test:e2e:chat 确认网关/模型返回 200 而非 4xx。
-   * 当前 schema 是 strict:false（结构提示，非硬约束解码），见该文件顶部注释。
-   */
-  aiGatewayJsonSchemaEnabled: boolean;
-  /**
    * PLAYER_CHAT: cap candidate role count (after forbidden + configured-model filter).
    * 0 = no cap (legacy).
    */
@@ -291,7 +282,6 @@ export function resolveAiEnv(): ResolvedAiEnv {
     splitPlayerChatDualSystem: envBoolean("AI_PLAYER_CHAT_SPLIT_SYSTEM", false),
     playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", false),
     playerChatFastLaneRelaxResponseFormat: envBoolean("AI_PLAYER_CHAT_FASTLANE_RELAX_RESPONSE_FORMAT", false),
-    aiGatewayJsonSchemaEnabled: envBoolean("AI_PLAYER_CHAT_JSON_SCHEMA_ENABLED", false),
     playerChatMaxRoleCandidates: Math.max(0, Math.min(6, envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2))),
     playerChatMaxRetries: (() => {
       const override = envNumber("AI_PLAYER_CHAT_MAX_RETRIES", NaN);

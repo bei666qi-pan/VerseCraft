@@ -25,7 +25,7 @@ for (const file of testFiles) {
   (vitestImport.test(source) ? vitestFiles : nodeFiles).push(file);
 }
 
-function run(label, args, files = []) {
+function run(label, args) {
   if (args.length === 0) return 0;
   process.stdout.write(`\n[unit] ${label}\n`);
   const result = spawnSync("pnpm", ["exec", ...args], {
@@ -38,10 +38,26 @@ function run(label, args, files = []) {
     console.error(`[unit] ${label} could not start:`, result.error);
     return 1;
   }
-  if ((result.status ?? 1) !== 0 && files.length > 0) {
-    console.error(`[unit] ${label} failed files:\n${files.map((file) => `  - ${file}`).join("\n")}`);
-  }
   return result.status ?? 1;
+}
+
+function runQuiet(args) {
+  const result = spawnSync("pnpm", ["exec", ...args], {
+    cwd: root,
+    env: process.env,
+    stdio: "ignore",
+  });
+  return result.status ?? 1;
+}
+
+function diagnoseFailedFiles(buildArgs, files) {
+  if (files.length === 1) {
+    return runQuiet([...buildArgs, files[0]]) === 0 ? [] : files;
+  }
+  const middle = Math.ceil(files.length / 2);
+  const groups = [files.slice(0, middle), files.slice(middle)].filter((group) => group.length > 0);
+  const failedGroups = groups.filter((group) => runQuiet([...buildArgs, ...group]) !== 0);
+  return failedGroups.flatMap((group) => diagnoseFailedFiles(buildArgs, group));
 }
 
 function chunk(files, size) {
@@ -55,7 +71,15 @@ function runShards(label, files, buildArgs, shardSize) {
   let failed = false;
   shards.forEach((shard, index) => {
     const shardLabel = `${label} shard ${index + 1}/${shards.length} (${shard.length} files)`;
-    if (run(shardLabel, [...buildArgs, ...shard], shard) !== 0) failed = true;
+    if (run(shardLabel, [...buildArgs, ...shard]) !== 0) {
+      failed = true;
+      const failedFiles = diagnoseFailedFiles(buildArgs, shard);
+      if (failedFiles.length > 0) {
+        console.error(`[unit] ${shardLabel} exact failed files:\n${failedFiles.map((file) => `  - ${file}`).join("\n")}`);
+      } else {
+        console.error(`[unit] ${shardLabel} passed in smaller groups; failure is concurrency-sensitive or flaky.`);
+      }
+    }
   });
   return failed ? 1 : 0;
 }

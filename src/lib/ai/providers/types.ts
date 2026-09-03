@@ -14,8 +14,7 @@ export interface NormalizedCompletionRequest {
    * Provider-level strict JSON Schema constraint (OpenAI Structured Outputs
    * `response_format: {type:"json_schema", json_schema:{name, strict, schema}}`
    * or equivalent). When set, takes priority over `responseFormatJsonObject`
-   * in provider adapters that support it. Opt-in only — see
-   * `src/lib/ai/config/envCore.ts` `aiGatewayJsonSchemaEnabled` — because not
+   * in provider adapters that support it. Callers must opt in because not
    * every provider behind an OpenAI-compatible gateway implements this mode;
    * sending it to an unsupported provider can cause hard 4xx failures instead
    * of graceful degradation.

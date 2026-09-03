@@ -15,8 +15,10 @@ import { getProviderFactory } from "@/lib/ai/providers";
 import type { NormalizedCompletionRequest } from "@/lib/ai/providers/types";
 import { responsesToChatCompletionsTransform } from "@/lib/ai/stream/responsesLike";
 import { completionEndpoint } from "@/lib/ai/managed/urlSafety";
-import { envBoolean } from "@/lib/config/envRaw";
-import { buildPlayerNarrativeJsonToolRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
+import {
+  buildPlayerNarrativeTerminalTool,
+  buildPlayerNarrativeTerminalToolChoice,
+} from "@/lib/ai/tools/playerNarrativeTerminalTool";
 import { resilientFetch, forceHttp1ForGateway } from "@/lib/ai/resilience/fetchWithRetry";
 import { extractNonStreamContent } from "@/lib/ai/stream/openaiLike";
 import { extractResponsesNonStreamContent, nonStreamResponsesToChatCompletionsStream } from "@/lib/ai/stream/responsesLike";
@@ -50,10 +52,16 @@ import type {
 import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString, repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
-import { buildPlayerDmJsonSchemaRequest, buildPlayerDmJsonToolRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
 import type { AiCostRecord } from "@/lib/ai/telemetry/log";
 import { getManagedAiSnapshot, getManagedBindingsForTask } from "@/lib/ai/managed/state";
 import type { ManagedAiBinding } from "@/lib/ai/managed/types";
+
+export function resolvePlayerChatNativeStream(
+  _transport: ManagedAiBinding["transport"],
+  configured: boolean,
+): boolean {
+  return configured;
+}
 import { buildManagedUsageRecord, enqueueManagedUsage } from "@/lib/ai/managed/usage";
 
 async function ensureManagedAiSnapshot(): Promise<void> {
@@ -430,12 +438,6 @@ export async function executePlayerChatStream(params: {
     // reasoning fields (for example reasoning_effort=max) into the realtime
     // Writer request merely because both routes share a managed service.
     const playerChatExtraBody = env.playerChatExtraBody ?? env.gatewayExtraBody;
-    // 仅在非 fast-lane 且显式开启 AI_PLAYER_CHAT_JSON_SCHEMA_ENABLED 时
-    // 附带 responseFormatJsonSchema。fast lane 保持原有轻量 json_object/relax 行为，
-    // 避免给延迟敏感路径新增 schema 预处理开销（见 openai 文档：新 schema 首次请求
-    // 有预处理延迟）。
-    const useJsonSchemaForThisTurn =
-      env.aiGatewayJsonSchemaEnabled && !(isFastLane && env.playerChatFastLaneRelaxResponseFormat);
     // The current Responses-API endpoints (Volcengine Ark agent-plan
     // deepseek-v4-flash) emit non-DM-JSON narrative deltas under
     // `streaming + thinking:disabled + json_object format`. Force
@@ -443,34 +445,21 @@ export async function executePlayerChatStream(params: {
     // payload; the streaming chat route then consumes the virtual stream
     // synthesised by `nonStreamResponsesToChatCompletionsStream`.
     //
-    // We also force the full DM JSON schema whenever the transport is
-    // Responses-API: that endpoint does not support the Chat Completions
-    // `response_format: {type:"json_object"}` flag and silently ignores
-    // the equivalent `text.format: {type:"json_object"}` for long structured
-    // prompts. The downstream `openaiResponses` factory will downgrade to
-    // a minimal schema if `buildPlayerDmJsonSchemaRequest()` is undefined,
-    // but the full DM JSON schema gives the provider-level constraint
-    // decoder enough surface area to keep the model on the contract.
     const isResponsesTransport = managedBinding.transport === "openai_responses";
-    const forceJsonSchemaForResponses = isResponsesTransport;
-    const effectiveUseJsonSchema = useJsonSchemaForThisTurn || forceJsonSchemaForResponses;
-    const effectiveEnableStream = isResponsesTransport ? false : env.enableStream;
+    const effectiveEnableStream = resolvePlayerChatNativeStream(
+      managedBinding.transport,
+      env.enableStream,
+    );
     // The Responses-API endpoint on the Volcengine Ark agent-plan
     // (deepseek-v4-flash) does not honour `text.format: {type:
     // "json_schema", ...}` for the long player-chat prompt. The only
-    // reliable way to force a parseable DM JSON payload is to wrap the
-    // same schema in a single function tool with `tool_choice` pinning
-    // that tool — see `buildPlayerDmJsonToolRequest`.
-    //
-    // Phase 5.B：flag 开启时优先用 `submit_narrative`（4 字段 subset，state
-    // 物理隔离）。否则 fallback 到 `submit_player_turn` envelope path。
-    // Provider-level strict tool_choice（A only — server-side 投影降级不放
-    // 在这里，冗余）。
-    const useNarrativeTool = envBoolean("VERSECRAFT_ENABLE_EXECUTABLE_TOOLS_PLAYER_CHAT", false);
+    // reliable contract is the four-field `submit_narrative` tool. Writer
+    // state is projected by code and committed by the TurnFinalizer.
     const toolRequest = isResponsesTransport
-      ? useNarrativeTool
-        ? buildPlayerNarrativeJsonToolRequest()
-        : buildPlayerDmJsonToolRequest()
+      ? {
+          tools: [buildPlayerNarrativeTerminalTool()],
+          toolChoice: buildPlayerNarrativeTerminalToolChoice(),
+        }
       : null;
     const body = buildPlayerStreamBody(
       gatewayModel,
@@ -478,23 +467,9 @@ export async function executePlayerChatStream(params: {
       taskBinding,
       effectiveEnableStream,
       env.playerChatStreamIncludeUsage,
-      // When the transport is Responses-API we want a single, explicit
-      // json_schema request; passing `responseFormatJsonObject=true` here
-      // would make the factory fall back to its minimal schema instead of
-      // the full DM JSON schema.
-      effectiveUseJsonSchema
-        ? false
-        : !(isFastLane && env.playerChatFastLaneRelaxResponseFormat) && taskBinding.responseFormatJsonObject,
+      !(isFastLane && env.playerChatFastLaneRelaxResponseFormat) && taskBinding.responseFormatJsonObject,
       playerChatExtraBody,
-      // Function-call mode and json_schema mode are mutually exclusive on
-      // the Responses-API transport — the provider only engages one
-      // constraint decoder at a time. Prefer function-call because it is
-      // empirically the only reliable way to extract DM JSON.
-      toolRequest
-        ? undefined
-        : effectiveUseJsonSchema
-          ? buildPlayerDmJsonSchemaRequest()
-          : undefined,
+      undefined,
       toolRequest?.tools,
       toolRequest?.toolChoice
     );
@@ -577,33 +552,34 @@ export async function executePlayerChatStream(params: {
       // translate the upstream response into the Chat Completions streaming
       // format the rest of the pipeline expects.
       //
-      // Some endpoints (notably the current Volcengine Ark agent-plan
-      // deepseek-v4-flash) emit non-DM-JSON narrative deltas under
-      // `streaming + thinking:disabled + json_object format` and only produce
-      // a usable DM JSON payload in non-stream mode. The openaiResponses
-      // factory therefore always sends `stream: false`; here we read the JSON
-      // body and synthesise a virtual Chat Completions stream so the rest of
-      // the player-chat pipeline (TTFT, validator, commit, options regen) is
-      // unchanged.
+      // The narrow submit_narrative tool makes native Responses streaming safe:
+      // translate its function-argument deltas immediately so concrete prose can
+      // reach the player inside the TTFT budget. A deliberately disabled stream
+      // still receives the bounded non-stream compatibility wrapper.
       if (
         res.ok &&
         managedBinding.transport === "openai_responses"
       ) {
-        try {
-          const raw = (await res.clone().json()) as unknown;
-          const id =
-            raw && typeof raw === "object" && typeof (raw as { id?: unknown }).id === "string"
-              ? String((raw as { id?: unknown }).id)
-              : undefined;
+        if (effectiveEnableStream && res.body) {
           res = new Response(
-            nonStreamResponsesToChatCompletionsStream(raw, {
-              model: gatewayModel,
-              streamId: id,
-            }),
+            responsesToChatCompletionsTransform(res.body, { model: gatewayModel }),
             res,
           );
-        } catch {
-          if (!res.body) {
+        } else {
+          try {
+            const raw = (await res.clone().json()) as unknown;
+            const id =
+              raw && typeof raw === "object" && typeof (raw as { id?: unknown }).id === "string"
+                ? String((raw as { id?: unknown }).id)
+                : undefined;
+            res = new Response(
+              nonStreamResponsesToChatCompletionsStream(raw, {
+                model: gatewayModel,
+                streamId: id,
+              }),
+              res,
+            );
+          } catch {
             res = new Response(
               responsesToChatCompletionsTransform(
                 new ReadableStream<Uint8Array>({ start(c) { c.close(); } }),

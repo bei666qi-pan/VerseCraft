@@ -4,9 +4,7 @@ import { Readable } from "node:stream";
 import { envBoolean } from "@/lib/config/envRaw";
 import { resolveManagedServiceUrlSafe } from "@/lib/ai/managed/urlSafety";
 import {
-  buildPlayerTurnJsonFallbackInit,
   normalizePlayerTurnTerminalToolResponse,
-  shouldFallbackPlayerTurnTerminalTool,
 } from "@/lib/ai/stream/playerTurnTerminalToolResponse";
 
 function sleep(ms: number): Promise<void> {
@@ -148,11 +146,6 @@ export async function resilientFetch(
           ? await http1Fetch(url, init, combined, safeTarget?.addresses[0])
           : await fetch(url, { ...init, signal: combined });
       clearTimeout(timeoutId);
-
-      if (await shouldFallbackPlayerTurnTerminalTool(lastResponse, init)) {
-        options.onRetry?.({ attempt, waitMs: 0, cause: "http", status: lastResponse.status });
-        return resilientFetch(url, buildPlayerTurnJsonFallbackInit(init), options);
-      }
 
       if (!isRetryable(lastResponse, null)) {
         return normalizePlayerTurnTerminalToolResponse(lastResponse, init);

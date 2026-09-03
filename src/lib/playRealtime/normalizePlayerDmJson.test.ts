@@ -19,6 +19,33 @@ test("normalizePlayerDmJson returns null when required keys missing", () => {
   );
 });
 
+test("normalizePlayerDmJson projects a narrow Writer candidate with code-owned state defaults", () => {
+  const normalized = normalizePlayerDmJson({
+    narrative: "门后的脚步声停了下来。",
+    options: ["贴门倾听", "退回楼梯", "询问同伴", "检查门锁"],
+    turn_mode: "decision_required",
+    decision_required: true,
+  });
+  assert.ok(normalized);
+  assert.equal(normalized.is_action_legal, true);
+  assert.equal(normalized.sanity_damage, 0);
+  assert.equal(normalized.is_death, false);
+  assert.equal(normalized.consumes_time, true);
+  assert.equal(normalized.currency_change, 0);
+  assert.deepEqual(normalized.awarded_items, []);
+  assert.deepEqual(normalized.options, ["贴门倾听", "退回楼梯", "询问同伴", "检查门锁"]);
+});
+
+test("normalizePlayerDmJson does not treat an arbitrary incomplete object as a Writer candidate", () => {
+  assert.equal(
+    normalizePlayerDmJson({
+      narrative: "缺少受约束的候选协议。",
+      options: ["一", "二", "三", "四"],
+    }),
+    null,
+  );
+});
+
 test("normalizePlayerDmJson fills array defaults and consumes_time true", () => {
   const n = normalizePlayerDmJson({
     is_action_legal: true,

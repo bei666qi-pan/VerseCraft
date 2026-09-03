@@ -88,12 +88,10 @@ import {
   getPlayTurnFailureMessage,
   shouldShowFailureAsNarrative,
 } from "@/features/play/turnFailurePolicy";
-import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
 import { buildVisibleOptionsSceneAnchors } from "@/lib/play/optionsSceneAnchors";
 import { isPlayableRegeneratedOptions } from "@/lib/play/optionsRegenPlayability";
 import { NPCS } from "@/lib/registry/npcs";
-import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
   accumulateDmFromSseEvent,
@@ -162,8 +160,6 @@ import { applyNarrativeFeatureEvent } from "@/features/play/narrativeFeatureTrig
 import { NarrativeSystemsDebugPanel } from "@/features/play/components/NarrativeSystemsDebugPanel";
 import {
   getClientOptionsAutoRegenOnEmptyEnabled,
-  getClientOptionsOnlyRegenPathV2Enabled,
-  getClientOptionsRegenRepairPassEnabled,
   getClientOptionsRegenSemanticGateEnabled,
   getClientHiddenCombatV1Enabled,
   getClientCombatSummaryV1Enabled,
@@ -442,20 +438,6 @@ function guessSemanticWaitingKind(action: string): PlaySemanticWaitingKind {
   if (/^(我)?(去|前往|走向|进入|回到|返回)/.test(s) || /^(探索|移动到)/.test(s)) return "explore";
   return "unknown";
 }
-
-const DARK_MOON_OPTIONS_REGEN_SYSTEM_PROMPT =
-  "你是互动叙事平台的行动选项主笔助手。你必须只输出一个 JSON 对象，且只包含 options 键：" +
-  '{"options":["...","...","...","..."]}。' +
-  "强制：options 恰好 4 条、使用请求指定的玩家语言、第一人称、互不重复且差异明显；" +
-  "必须承接正文之后的当前剧情，生成下一步可执行行动；" +
-  "必须避免复用当前与最近选项（含换说法的近似动作），至少 2 条直接锚定最近叙事中的实体或场景；" +
-  "禁止灵感手记/背包/任务/仓库/成就/武器栏/游戏指南/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
-  "禁止解释、禁止 markdown、禁止额外字段、禁止推进剧情结论、禁止修改世界状态。";
-
-const XINGNI_OPTIONS_REGEN_SYSTEM_PROMPT =
-  "你是星逆·太初互动叙事的行动选项主笔助手。请严格以 JSON 格式输出，且只包含 options 键：" +
-  '{"options":["...","...","...","..."]}。' +
-  "options 恰好四条，使用第三人称贴身但省略主语的中文可执行动作，互不重复；必须锚定当前青石县登记地点、相邻地点、固定 NPC 或服务，不得使用第一人称，不得编造地图、出口、人物、功法、物品或战果；禁止解释、markdown、额外字段及状态修改。";
 
 function collectNamedLines(raw: unknown, fallbackPrefix: string): string[] {
   if (!Array.isArray(raw)) return [];
@@ -2451,21 +2433,8 @@ function PlayContent() {
         inventoryHints,
         latestNarrative: String(lastAssistant ?? ""),
       });
-      const optionsRegenContext = buildClientOptionsRegenContext({
-        latestPlayerAction: String(lastUser ?? ""),
-        latestNarrativeExcerpt: String(lastAssistant ?? ""),
-        currentOptions: regenCurrentOptions,
-        recentOptions: regenRecentOptions,
-        inventoryHints,
-        tasks: tasks
-          .filter((t) => t?.status === "active" || t?.status === "available")
-          .map((t) => ({ title: t?.title, status: t?.status })),
-        repairNeedCount: modelSeedOptions.length > 0 ? 4 - modelSeedOptions.length : undefined,
-        repairLockedOptions: modelSeedOptions,
-      });
       const reasonCodes = new Set<OptionsRegenReasonCode>();
       const semanticGateEnabled = getClientOptionsRegenSemanticGateEnabled();
-      const repairPassEnabled = getClientOptionsRegenRepairPassEnabled();
       const runSemanticQualityGate = (
         candidateOptions: string[],
         extraBlocked: string[] = []
@@ -2477,7 +2446,7 @@ function PlayContent() {
           options: candidateOptions,
           currentOptions: [...regenCurrentOptions, ...extraBlocked],
           recentOptions: regenRecentOptions,
-          latestNarrative: optionsRegenContext.latestNarrativeExcerpt,
+          latestNarrative: String(lastAssistant ?? ""),
           playerLocation: clientState?.playerLocation,
           sceneAnchors: visibleSceneAnchors,
         });
@@ -2490,7 +2459,6 @@ function PlayContent() {
         };
       };
 
-      const useOptionsOnlyPath = getClientOptionsOnlyRegenPathV2Enabled();
       const assistantContextMessages: ChatMessage[] = lastAssistant
         ? [{ role: "assistant", content: lastAssistant }]
         : [];
@@ -2549,25 +2517,12 @@ function PlayContent() {
       };
       const runOptionsOnlyAttempt = async (
         attemptReason: string,
-        attemptContext = optionsRegenContext,
         extraBlocked: string[] = []
       ): Promise<OptionsOnlyAttemptOutcome> => {
-        const attemptMessages: ChatMessage[] = useOptionsOnlyPath
-          ? [
-              ...assistantContextMessages,
-              ...userContextMessages,
-            ]
-          : [
-              { role: "system", content: isXingni ? XINGNI_OPTIONS_REGEN_SYSTEM_PROMPT : DARK_MOON_OPTIONS_REGEN_SYSTEM_PROMPT },
-              {
-                role: "user",
-                content: [
-                  `【为何需要整理选项】${attemptReason}`,
-                  `【最近玩家动作】${String(lastUser ?? "").slice(0, 260)}`,
-                  `【最近叙事片段】${String(lastAssistant ?? "").slice(0, 900)}`,
-                ].join("\n"),
-              },
-            ];
+        const attemptMessages: ChatMessage[] = [
+          ...assistantContextMessages,
+          ...userContextMessages,
+        ];
         const optionsRegenHeaders: Record<string, string> = {
           "Content-Type": "application/json",
           "x-versecraft-output-language": language,
@@ -2584,7 +2539,6 @@ function PlayContent() {
           openingOptionsOnlyRound: false,
           clientPurpose: "options_regen_only",
           clientReason: `【为何需要整理选项】${attemptReason}`,
-          optionsRegenContext: attemptContext,
           clientTurnModeHint: "decision_required",
         });
         const useLegacyOptionsTransport =
@@ -2839,7 +2793,7 @@ function PlayContent() {
           options_regen_client_deadline_ms: optionsOnlyDeadlineMs,
         });
       };
-      let firstAttempt = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+      let firstAttempt = await runOptionsOnlyAttempt(reason, []);
       if (firstAttempt.kind === "transport_failed" && firstAttempt.recoverable && !optionsRegenTimedOut) {
         const slept = await sleepWithinOptionsDeadline({
           startedAt: optionsRegenStartedAt,
@@ -2847,7 +2801,7 @@ function PlayContent() {
           requestedDelayMs: firstAttempt.retryAfterMs,
         });
         if (slept && !optionsRegenTimedOut) {
-          firstAttempt = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+          firstAttempt = await runOptionsOnlyAttempt(reason, []);
         }
       }
       if (tid !== undefined) window.clearTimeout(tid);
@@ -2869,48 +2823,9 @@ function PlayContent() {
       for (const code of firstPass.rejectCodes) reasonCodes.add(code);
       const mergeModelOptions = (...groups: string[][]): string[] =>
         normalizeRegeneratedOptions(groups.flat(), regenRecentOptions, regenCurrentOptions);
-      let finalOptions = mergeModelOptions(modelSeedOptions, firstPass.options);
+      const finalOptions = mergeModelOptions(modelSeedOptions, firstPass.options);
 
-      // Options regen is a strict short-link path: one first pass, then at most
-      // one repair pass that fills missing slots from already accepted model options.
-      let repairUsed = false;
-      if (
-        repairPassEnabled &&
-        shouldTriggerOptionsRepairPass({ acceptedOptions: finalOptions, targetCount: 4 })
-      ) {
-        repairUsed = true;
-        if (repairPassEnabled) reasonCodes.add("repair_pass_used");
-        const missingCount = getRepairMissingCount({ acceptedOptions: finalOptions, targetCount: 4 });
-        const repairReason = buildOptionsRepairReason({
-          baseReason: reason,
-          acceptedOptions: finalOptions,
-          missingCount,
-        });
-        const repairContext = buildClientOptionsRegenContext({
-          latestPlayerAction: optionsRegenContext.latestPlayerAction,
-          latestNarrativeExcerpt: optionsRegenContext.latestNarrativeExcerpt,
-          currentOptions: optionsRegenContext.currentOptions,
-          recentOptions: optionsRegenContext.recentOptions,
-          inventoryHints,
-          tasks: tasks
-            .filter((t) => t?.status === "active" || t?.status === "available")
-            .map((t) => ({ title: t?.title, status: t?.status })),
-          repairNeedCount: missingCount,
-          repairLockedOptions: finalOptions,
-        });
-        const repairedAttempt = await runOptionsOnlyAttempt(repairReason, repairContext, finalOptions);
-        const repaired = repairedAttempt.kind === "parsed" ? repairedAttempt.parsed : null;
-        if (repaired) {
-          if (repaired.parseFailed) reasonCodes.add("parse_failed");
-          for (const code of repaired.rejectCodes) reasonCodes.add(code);
-        }
-        if (repaired && Array.isArray(repaired.options) && repaired.options.length > 0) {
-          const merged = mergeModelOptions(finalOptions, repaired.options);
-          if (merged.length > finalOptions.length) {
-            finalOptions = merged;
-          }
-        }
-      }
+      const repairUsed = false;
 
       if (!isPlayableRegeneratedOptions(finalOptions)) {
         setOptionsRegenStage("finalizing");
@@ -2919,7 +2834,7 @@ function PlayContent() {
         setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
         logOptionsRegenTelemetry({
           success: false,
-          failureReason: firstPass.failure?.reason ?? "insufficient_options_after_repair",
+          failureReason: firstPass.failure?.reason ?? "insufficient_deterministic_options",
           repairUsed,
           finalOptionsCount: finalOptions.length,
         });
