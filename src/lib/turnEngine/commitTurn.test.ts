@@ -106,6 +106,52 @@ test("commitTurn passes through when validator reports ok", () => {
   assert.equal((candidate as any).security_meta, undefined);
 });
 
+test("commitTurn atomically strips state changes from an illegal candidate", () => {
+  const result = commitTurn({
+    requestId: "req_illegal_atomic",
+    sessionId: "s_illegal_atomic",
+    turnIndex: 0,
+    candidateDmRecord: {
+      is_action_legal: false,
+      narrative: "你没有找到那名虚构角色。",
+      options: [],
+      codex_updates: [{ id: "N-001", name: "陈婆婆" }],
+      npc_location_updates: [{ id: "N-001", to_location: "一楼柜台" }],
+      relationship_updates: [{ npc_id: "N-001", delta: 1 }],
+      awarded_items: [{ id: "unknown-item" }],
+      task_changes: { new_tasks: [{ id: "T-unknown" }] },
+      world_state_changes: { npc_location_updates: [{ id: "N-001" }] },
+      sanity_damage: 3,
+      consumes_time: true,
+      currency_change: 2,
+    },
+    delta: {
+      ...emptyStateDelta(),
+      isActionLegal: false,
+      illegalReasons: ["unsupported_action"],
+      sanityDamage: 3,
+      consumesTime: true,
+    },
+    validatorReport: okReport(),
+  });
+
+  for (const field of [
+    "codex_updates",
+    "npc_location_updates",
+    "relationship_updates",
+    "awarded_items",
+    "task_changes",
+    "world_state_changes",
+  ]) {
+    assert.equal(result.committedDmRecord[field], undefined, field);
+  }
+  assert.equal(result.committedDmRecord.sanity_damage, 0);
+  assert.equal(result.committedDmRecord.consumes_time, false);
+  assert.equal(result.committedDmRecord.currency_change, 0);
+  assert.ok(result.summary.commitFlags.includes("action_illegal"));
+  assert.ok(result.summary.commitFlags.includes("structured_updates_stripped"));
+});
+
 test("commitTurn applies options override", () => {
   const candidate = {
     narrative: "...",

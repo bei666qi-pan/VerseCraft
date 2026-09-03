@@ -554,6 +554,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   const hardBlockFromSafety = safetyEnforcement.shouldBlockCommit;
   const hardBlockFromPacing = safetyEnforcement.pacingHardGateTriggered;
   const hardBlockCommit =
+    delta.isActionLegal === false ||
     hardBlockFromSafety ||
     hardBlockFromPacing ||
     args.factCommitGateResult?.shouldBlockCommit === true;
