@@ -745,6 +745,25 @@ test("high-confidence use of an absent laser sword is rejected without special d
   assert.ok((out._commit_flags as string[]).includes("unowned_explicit_item_use_blocked_v2"));
 });
 
+test("a pruned phantom award cannot survive as a consumed item", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      narrative: "我捡起龙骨圣剑，把它加入背包并装备。",
+      awarded_items: [{ id: "dragon-bone-sword", name: "龙骨圣剑" }],
+      consumed_items: ["龙骨圣剑"],
+      options: ["挥剑"],
+    },
+    latestUserInput: "我捡起龙骨圣剑，把它加入背包并装备。",
+    clientState: { playerLocation: "3F_Hallway", inventoryItemIds: [] },
+  });
+
+  assert.deepEqual(out.awarded_items, []);
+  assert.deepEqual(out.consumed_items, []);
+  assert.match(String(out.narrative), /并不在登记中.*物品状态没有变化/);
+  assert.ok((out._commit_flags as string[]).includes("unregistered_consumed_item_pruned_v1"));
+});
+
 test("natural trial-use wording resolves an owned registered key without a phantom-item false positive", () => {
   const out = applyRegisteredMechanicsGuard({
     dmRecord: {
