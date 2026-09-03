@@ -500,6 +500,34 @@ test("commitTurn removes an uncommitted combat claim when hard safety blocks its
   assert.ok(result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
 });
 
+test("commitTurn never leaves an unsupported relationship claim visible after a hard block", () => {
+  const result = commitTurn({
+    requestId: "req_blocked_relationship_claim",
+    sessionId: "s_1",
+    turnIndex: 3,
+    candidateDmRecord: {
+      narrative: "老板承认N-010是他的亲妹妹。",
+      options: ["继续追问"],
+      relationship_updates: [],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([
+      {
+        code: "unsupported_relationship_claim",
+        invariant: "unsupported_relationship_claim",
+        severity: "medium",
+        source: "unsupportedFactDetector",
+        detail: "relationship_claim_without_fact",
+      },
+    ], "block_commit"),
+  });
+
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /亲妹妹|N-010/);
+  assert.deepEqual(result.committedDmRecord.options, []);
+  assert.ok(result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
+});
+
 test("commitTurn keeps described-person candidate untouched in shadow mode", () => {
   const candidate = {
     narrative: "格子衫男人从门缝里探出半个身子，眼眶发红地盯着你。",
@@ -565,7 +593,7 @@ test("commitTurn preserves a valid narrative when only a generated option invent
   assert.equal(result.summary.optionsRewriteApplied, true);
 });
 
-test("commitTurn strips state but keeps narrative on high root cause leak", () => {
+test("commitTurn strips state and replaces a high root cause leak in hard mode", () => {
   const result = commitTurn({
     requestId: "req_root_cause",
     sessionId: "s_1",
@@ -597,15 +625,15 @@ test("commitTurn strips state but keeps narrative on high root cause leak", () =
     ),
   });
 
-  assert.equal(result.committedDmRecord.narrative, "公寓根因就是七锚闭环。");
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /根因|七锚闭环/);
   assert.equal(result.committedDmRecord.new_tasks, undefined);
   assert.equal(result.committedDmRecord.player_location, undefined);
   assert.equal(result.summary.deltaSummary.newTasks, 0);
   assert.equal(result.summary.playerLocation, null);
-  assert.equal(result.summary.fallbackApplied, false);
+  assert.equal(result.summary.fallbackApplied, true);
 });
 
-test("commitTurn strips npc updates but keeps narrative on offscreen direct speech", () => {
+test("commitTurn strips npc updates and replaces offscreen direct speech in hard mode", () => {
   const result = commitTurn({
     requestId: "req_offscreen_speech",
     sessionId: "s_1",
@@ -635,8 +663,8 @@ test("commitTurn strips npc updates but keeps narrative on offscreen direct spee
 
   assert.equal(result.committedDmRecord.npc_location_updates, undefined);
   assert.equal(result.summary.deltaSummary.npcLocationUpdates, 0);
-  assert.equal(result.summary.safeNarrativeFallbackApplied, false);
-  assert.equal(result.committedDmRecord.narrative, "N-002说：我就在门外。");
+  assert.equal(result.summary.safeNarrativeFallbackApplied, true);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /N-002|就在门外/);
 });
 
 test("commitTurn records low style drift without blocking commit", () => {

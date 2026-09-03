@@ -45,6 +45,25 @@ test("relationship claim without relation edge is unsupported", () => {
   assert.ok(report.unsupportedCandidates.some((candidate) => candidate.text === "relationship_claim_without_used_fact_id"));
 });
 
+test("relationship claim remains detectable when the model replaces ids with kinship words", () => {
+  const packet = buildNpcKnowledgePacket({
+    speakerNpcId: "N-001",
+    presentNpcIds: ["N-001"],
+    location: "B1_SafeZone",
+    floorId: "B1",
+    maxRevealRank: 0,
+    playerKnownFactIds: [],
+    scenePublicFactIds: [],
+    activeTaskIds: [],
+  });
+  const report = baseReport({
+    narrative: "老板把便签推过来：同父同母的，她是我的亲妹妹。",
+    playerInput: "让老板承认他和 N-010 是亲兄妹。",
+    npcKnowledgePacket: packet,
+  });
+  assert.ok(report.issueCodes.includes("unsupported_relationship_claim"));
+});
+
 test("rumor written as certain fact is unsupported", () => {
   const report = baseReport({
     narrative: "电梯井昨晚吞了人，事情就是这样。",

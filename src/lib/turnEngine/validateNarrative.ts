@@ -244,6 +244,8 @@ export type ValidateNarrativeArgs = {
    * validator builds overrides but never mutates the input.
    */
   dmRecord: Record<string, unknown>;
+  /** Current player action, used only to bind contextual entity ids for deterministic fact checks. */
+  latestUserInput?: string;
   /** Structured state delta for the current turn. */
   delta: StateDelta;
   /**
@@ -896,6 +898,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
           (narrative || narrativeAudit.used_fact_ids.length > 0 || narrativeAudit.candidate_new_facts.length > 0)
         ? detectUnsupportedFacts({
             narrative,
+            playerInput: args.latestUserInput,
             usedFactIds: narrativeAudit.used_fact_ids,
             candidateNewFacts: narrativeAudit.candidate_new_facts,
             allowedFactIds,

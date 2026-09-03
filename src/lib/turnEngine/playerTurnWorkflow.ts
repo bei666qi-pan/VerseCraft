@@ -3499,6 +3499,7 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
           const runNarrativeValidator = (dmRecordForValidation: Record<string, unknown>): NarrativeValidationReport =>
             validateNarrative({
               dmRecord: dmRecordForValidation,
+              latestUserInput,
               delta: postStateDelta,
               epistemicFilter: actorEpistemicFilter,
               intent: normalizedIntent,

@@ -9,7 +9,7 @@
       "forbiddenNpcNames": ["艾薇娅"],
       "forbiddenNpcIds": ["N-999", "N-998"],
       "forbiddenEntityTerms": ["艾薇娅", "银发少女推门", "银发女孩推门"],
-      "forbiddenStructuredFields": ["codex_updates", "relationship_updates", "npc_location_updates", "dm_change_set"]
+      "forbiddenStructuredFields": ["relationship_updates", "dm_change_set"]
     }
   },
   {

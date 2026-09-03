@@ -604,6 +604,16 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
       options: [],
     };
     flags.add("safe_narrative_fallback_applied");
+  } else if (hardBlockFromSafety && safetyEnforcement.mode === "hard") {
+    // A hard safety decision is authoritative for both state and player-visible
+    // prose. Leaving the rejected claim in the narrative while stripping only
+    // its delta creates a split-brain turn.
+    committed = {
+      ...committed,
+      narrative: getSafeNarrativeVariant(gameLanguage, args.turnIndex, args.worldId),
+      options: [],
+    };
+    flags.add("safe_narrative_fallback_applied");
   } else if (validatorReport.optionsOverride) {
     committed = { ...committed, options: [...validatorReport.optionsOverride] };
     flags.add("options_rewrite_applied");
