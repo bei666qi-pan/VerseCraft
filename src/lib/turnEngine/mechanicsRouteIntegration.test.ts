@@ -8,7 +8,11 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildMechanicsCandidate, runMechanicsRoute } from "./mechanicsRouteIntegration";
+import {
+  buildMechanicsCandidate,
+  buildNormalizedMechanicsCandidate,
+  runMechanicsRoute,
+} from "./mechanicsRouteIntegration";
 
 test("buildMechanicsCandidate prunes unregistered granted items", () => {
   const out = buildMechanicsCandidate({
@@ -50,6 +54,19 @@ test("buildMechanicsCandidate keeps only registered entries of a mixed grant", (
   });
   assert.deepEqual(out.awarded_items, [{ id: "W-B101", name: "W-B101" }]);
   assert.ok((out._commit_flags as string[]).includes("unregistered_item_pruned_v1"));
+});
+
+test("owned mechanics always yields a normalized finalizer candidate", () => {
+  const out = buildNormalizedMechanicsCandidate({
+    narrative: undefined,
+    toolsUsed: false,
+    stateDelta: null,
+  });
+
+  assert.equal(out.narrative, "规则处理已完成。");
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.consumes_time, true);
+  assert.deepEqual(out.options, []);
 });
 
 test("an owned mechanics failure becomes a deterministic candidate instead of falling back to Writer", async () => {

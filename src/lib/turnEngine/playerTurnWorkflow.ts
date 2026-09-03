@@ -2155,7 +2155,7 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
     // Mechanics lane 一旦取得本回合所有权，失败也只产生失败候选，不转入 Writer。
     const turnLane = await routeGenerationLane({ userInput: latestUserInput, worldId: clientState?.worldId });
     if (turnLane.lane === "mechanics") {
-      const { runMechanicsRoute, buildMechanicsCandidate } = await import(
+      const { runMechanicsRoute, buildNormalizedMechanicsCandidate } = await import(
         "@/lib/turnEngine/mechanicsRouteIntegration"
       );
       await writeStatusFrame("generating", "DM 正在思考…");
@@ -2179,8 +2179,7 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
         },
       } as any;
       const mechanicsRoute = await runMechanicsRoute(_dmInput);
-      if (mechanicsRoute.result) {
-        const _turnResult = mechanicsRoute.result;
+      const _turnResult = mechanicsRoute.result;
         // 工具执行状态反馈
         if (_turnResult.toolsUsed) {
           const _toolLabelMap: Record<string, string> = {
@@ -2199,9 +2198,8 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
         }
         // 构建 DM JSON → normalize → resolveDmTurn → 完整 final chain（Phase 1 修复：不再绕过 NPC consistency / validator / commit / world tick）
         // awarded_items 统一经 buildMechanicsDmJson 的注册表门禁（与主链路 guard 同一事实源）
-        const _dmJson: Record<string, unknown> = buildMechanicsCandidate(_turnResult);
-        const _dmNorm = normalizePlayerDmJson(_dmJson);
-        if (_dmNorm) {
+        const _dmNorm = buildNormalizedMechanicsCandidate(_turnResult);
+        {
           // Phase 6: NPC consistency（Mechanics Workflow 路径提取在场 NPC ID 以启用量 tier-1 检查）
           const _mechanicsPresentNpcIds: string[] = [
             ...new Set([
@@ -2320,8 +2318,6 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
           try { await writer.close(); } catch { /* already closed */ }
           return;
         }
-      }
-      await writeStatusFrame("routing", "规则判定暂时不可用");
     }
 
     const aiRuntimeEnvForTurn = resolveAiEnv();
