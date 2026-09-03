@@ -2155,11 +2155,18 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
     // Mechanics lane 一旦取得本回合所有权，失败也只产生失败候选，不转入 Writer。
     const turnLane = await routeGenerationLane({ userInput: latestUserInput, worldId: clientState?.worldId });
     if (turnLane.lane === "mechanics") {
-      const { runMechanicsRoute, buildNormalizedMechanicsCandidate } = await import(
+      const {
+        runMechanicsRoute,
+        buildNormalizedMechanicsCandidate,
+        buildMechanicsNarrativePrelude,
+        buildMechanicsNarrativePreludeFrame,
+      } = await import(
         "@/lib/turnEngine/mechanicsRouteIntegration"
       );
       await writeStatusFrame("generating", "DM 正在思考…");
       const _dmWorldId = clientState?.worldId ?? (isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID);
+      const _mechanicsPrelude = buildMechanicsNarrativePrelude(latestUserInput, _dmWorldId);
+      await writeToStream(buildMechanicsNarrativePreludeFrame(_mechanicsPrelude));
       const _dmPlayerLocation =
         clientState?.playerLocation ?? (isXingniTurn ? QINGSHI_MAP_ID : DARK_MOON_MAP_ID);
       const _dmInput = {

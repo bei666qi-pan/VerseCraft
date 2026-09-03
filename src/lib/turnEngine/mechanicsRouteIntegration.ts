@@ -35,6 +35,41 @@ export interface MechanicsTurnResultLite {
 }
 
 /**
+ * Immediate player-visible prose for the bounded Mechanics lane. It describes
+ * only the attempted action and never claims a state change or successful
+ * outcome; the authoritative result still comes exclusively from Finalizer.
+ */
+export function buildMechanicsNarrativePrelude(userInput: string, worldId: string): string {
+  const input = userInput.trim();
+  if (/装备|武器|飞剑|法宝/u.test(input)) {
+    return worldId === "xingni_taichu"
+      ? "你查看随身器物，先确认此刻是否真有可以装备的飞剑或法宝。"
+      : "你查看随身装备，先确认此刻是否真有可以使用的武器。";
+  }
+  if (/背包|储物袋|物品|材料|灵石/u.test(input)) {
+    return worldId === "xingni_taichu"
+      ? "你打开储物袋，逐项核对眼下真实持有的物品与灵石。"
+      : "你低头检查随身物品，逐项核对眼下真实持有的东西。";
+  }
+  if (/任务|委托|悬赏/u.test(input)) {
+    return "你先确认现场是否确有可承接的事务，再决定要不要登记下来。";
+  }
+  if (/修炼|调息|运转灵力|炼丹|炼器/u.test(input)) {
+    return "你收敛呼吸，先确认当前环境与自身条件是否允许这次尝试。";
+  }
+  if (/攻击|应战|迎战|御敌|出手|战斗/u.test(input)) {
+    return "你没有贸然出手，而是先确认对手、距离与眼前可用的手段。";
+  }
+  return "你开始核对这个行动所需的条件，眼前的一切仍以真实状态为准。";
+}
+
+/** Partial JSON lets the existing client preview prose without creating a second protocol. */
+export function buildMechanicsNarrativePreludeFrame(prelude: string): string {
+  const encoded = JSON.stringify(prelude);
+  return `{"narrative":${encoded.slice(0, -1)}`;
+}
+
+/**
  * Mechanics stateDelta → TurnCandidate 的统一映射。
  *
  * 与主链路 registeredMechanicsGuard 使用同一注册表事实源：任何进入最终
