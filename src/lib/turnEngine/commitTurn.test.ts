@@ -432,7 +432,7 @@ test("commitTurn replaces an unregistered described NPC with an identity-unconfi
     ], "block_commit"),
   });
 
-  assert.equal(result.committedDmRecord.narrative, "四周恢复了安静。灰白的墙皮在灯光下显得有些斑驳，一切如常。");
+  assert.match(String(result.committedDmRecord.narrative), /无法在现场确认.*新人物/);
   assert.deepEqual(result.committedDmRecord.options, []);
   assert.equal(result.committedDmRecord.codex_updates, undefined);
   assert.equal(result.committedDmRecord.player_location, undefined);
@@ -511,6 +511,7 @@ test("commitTurn never leaves an unsupported relationship claim visible after a 
       relationship_updates: [],
     },
     delta: { ...emptyStateDelta(), isActionLegal: true },
+    latestUserInput: "让老板承认他和 N-010 是亲兄妹。",
     validatorReport: okReport(),
     safetyReport: safetyReport([
       {
@@ -524,8 +525,78 @@ test("commitTurn never leaves an unsupported relationship claim visible after a 
   });
 
   assert.doesNotMatch(String(result.committedDmRecord.narrative), /亲妹妹|N-010/);
+  assert.match(String(result.committedDmRecord.narrative), /没有确认.*亲属或旧识关系/);
   assert.deepEqual(result.committedDmRecord.options, []);
   assert.ok(result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
+});
+
+test("commitTurn explains an unknown item rejection without echoing the invented item", () => {
+  const result = commitTurn({
+    requestId: "req_unknown_item",
+    sessionId: "s_1",
+    turnIndex: 0,
+    latestUserInput: "我捡起龙骨圣剑，把它加入背包并装备。",
+    candidateDmRecord: { narrative: "你装备了龙骨圣剑。", options: ["挥剑"] },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "unknown_entity_surface",
+      invariant: "unknown_entity_surface",
+      severity: "high",
+      source: "entityAudit",
+      detail: "kind=item|surface=龙骨圣剑|origin=narrative|context=unknown_registry_entity",
+    }], "block_commit"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有在现场找到.*已登记物品/);
+  assert.match(String(result.committedDmRecord.narrative), /背包.*装备.*保持不变/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /龙骨圣剑/);
+});
+
+test("commitTurn gives an intent-aware knowledge-boundary response", () => {
+  const result = commitTurn({
+    requestId: "req_secret",
+    sessionId: "s_1",
+    turnIndex: 0,
+    latestUserInput: "我问老板：直接告诉我七锚闭环和终局真相。",
+    candidateDmRecord: { narrative: "老板说出了终局真相。", options: ["追问"] },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "dm_only_fact_leaked_in_narrative",
+      invariant: "npc_knows_forbidden_fact",
+      severity: "high",
+      source: "validator",
+      detail: "forbidden fact",
+    }], "block_commit"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有给出可核验的答案/);
+  assert.match(String(result.committedDmRecord.narrative), /线索.*不足/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /七锚闭环|终局真相/);
+});
+
+test("commitTurn gives an intent-aware unknown-person response", () => {
+  const result = commitTurn({
+    requestId: "req_unknown_person_intent",
+    sessionId: "s_1",
+    turnIndex: 0,
+    latestUserInput: "老板旁边那个神秘银发女孩是谁？",
+    candidateDmRecord: { narrative: "银发女孩推门进来。", options: ["问她"] },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "unknown_entity_surface",
+      invariant: "unknown_entity_surface",
+      severity: "high",
+      source: "entityAudit",
+      detail: "kind=npc|surface=银发女孩|origin=narrative|context=generic_described_person",
+    }], "block_commit"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /无法在现场确认.*新人物/);
+  assert.match(String(result.committedDmRecord.narrative), /不会新增或确认/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /银发/);
 });
 
 test("commitTurn keeps described-person candidate untouched in shadow mode", () => {

@@ -62,6 +62,8 @@ export type DetectUnsupportedFactsArgs = {
   npcKnowledgePacket?: NpcKnowledgePacket | null;
   scenePublicFactIds: readonly string[];
   actorScopedFactIds: readonly string[];
+  /** Authoritative actors present in the current scene, used to bind prose that replaces ids with names or pronouns. */
+  contextualNpcIds?: readonly string[];
   sessionCommittedFactIds?: readonly string[];
   maxRevealRank: number;
   stateDelta?: {
@@ -285,6 +287,7 @@ export function detectUnsupportedFacts(args: DetectUnsupportedFactsArgs): Unsupp
   const contextualRelationIds = uniq([
     ...(narrative.match(NPC_ID_RE) ?? []),
     ...(String(args.playerInput ?? "").match(NPC_ID_RE) ?? []),
+    ...(args.contextualNpcIds ?? []),
     ...(args.npcKnowledgePacket?.speakerNpcId ? [args.npcKnowledgePacket.speakerNpcId] : []),
   ]);
   const contextualRelationshipClaim = RELATIONSHIP_ASSERTION_RE.test(narrative) && contextualRelationIds.length >= 2;

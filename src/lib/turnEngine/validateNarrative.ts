@@ -905,6 +905,10 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
             npcKnowledgePacket: args.npcKnowledgePacket ?? null,
             scenePublicFactIds: args.scenePublicFactIds ?? [],
             actorScopedFactIds: args.actorScopedFactIds ?? [],
+            contextualNpcIds: [
+              ...(args.sceneNpcIds ?? []),
+              ...(args.speakerNpcId ? [args.speakerNpcId] : []),
+            ],
             sessionCommittedFactIds: args.sessionCommittedFactIds ?? [],
             maxRevealRank: maxRevealRankForFacts,
             stateDelta: args.delta,

@@ -158,6 +158,62 @@ function getSafeNarrativeVariant(language: GameLanguage, turnIndex: number, worl
   return variants[turnIndex % variants.length] ?? getUnknownEntitySafeNarrative(language, worldId);
 }
 
+const ITEM_ACTION_RE = /(捡起|拾起|获得|拿到|收入背包|加入背包|装备|pick up|obtain|add to inventory|equip)/i;
+
+function getIntentAwareSafetyNarrative(args: {
+  language: GameLanguage;
+  worldId?: WorldId;
+  latestUserInput?: string;
+  report?: NarrativeSafetyReport | null;
+  turnIndex: number;
+}): string {
+  const issueCodes = new Set((args.report?.issues ?? []).map((issue) => issue.code));
+  const issueDetails = (args.report?.issues ?? []).map((issue) => String(issue.detail ?? ""));
+  const input = String(args.latestUserInput ?? "");
+
+  if (issueCodes.has("unsupported_relationship_claim")) {
+    return languageText(
+      args.language,
+      "对方没有确认你提出的亲属或旧识关系；没有可核验线索前，这种关系不能成为事实。",
+      "They do not confirm the family or prior-acquaintance claim. Without verifiable evidence, that relationship cannot become fact."
+    );
+  }
+  if (
+    issueCodes.has("dm_only_fact_leaked_in_narrative") ||
+    issueCodes.has("npc_knows_forbidden_fact") ||
+    issueCodes.has("unsupported_root_cause_claim")
+  ) {
+    return languageText(
+      args.language,
+      "对方没有给出可核验的答案；你目前掌握的线索还不足以确认这类隐秘信息。",
+      "They give no verifiable answer; the evidence you hold is not enough to confirm this kind of root cause or end-state information."
+    );
+  }
+  if (
+    ITEM_ACTION_RE.test(input) &&
+    issueDetails.some((detail) => detail.includes("kind=item") || detail.includes("item_acquisition_without_fact_or_award"))
+  ) {
+    return languageText(
+      args.language,
+      "你没有在现场找到与描述相符的已登记物品，因此没有把任何新物品收入背包或装备；背包与装备状态保持不变。",
+      "No registered item matching that description is present, so nothing new enters your inventory or equipment; both remain unchanged."
+    );
+  }
+  if (
+    issueCodes.has("unknown_entity_surface") &&
+    (args.report?.issues ?? []).some((issue) => String(issue.detail ?? "").includes("kind=npc"))
+  ) {
+    return languageText(
+      args.language,
+      args.worldId === "xingni_taichu"
+        ? "你无法在青石县眼前确认与描述相符的新人物；对方身份没有被核实，因此不会新增或确认角色。"
+        : "你无法在现场确认与描述相符的新人物；对方身份没有被核实，因此不会新增或确认角色。",
+      "No new person matching that description can be confirmed here. Their identity is unverified, so no character is added or confirmed."
+    );
+  }
+  return getSafeNarrativeVariant(args.language, args.turnIndex, args.worldId);
+}
+
 function getBlockedConflictSafeNarrative(language: GameLanguage, worldId?: WorldId): string {
   return worldId === "xingni_taichu"
     ? languageText(language, XINGNI_BLOCKED_CONFLICT_SAFE_NARRATIVE_ZH, XINGNI_BLOCKED_CONFLICT_SAFE_NARRATIVE_EN)
@@ -256,6 +312,8 @@ export type CommitTurnArgs = {
   requestId: string;
   sessionId: string | null;
   turnIndex: number;
+  /** Current player action, used only to select a bounded, non-leaking safety response. */
+  latestUserInput?: string;
   /** Candidate DM record (already resolved + rendered). Treated as read-only. */
   candidateDmRecord: Record<string, unknown>;
   /** Structured delta for the turn. */
@@ -581,7 +639,13 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     // place merely because no asynchronous repair model answered. This stays
     // deterministic and final-hook-only, so it adds no first-token latency.
     // Use turn-index-based variant to avoid repetitive identical fallback text.
-    const safeNarrative = getSafeNarrativeVariant(gameLanguage, args.turnIndex, args.worldId);
+    const safeNarrative = getIntentAwareSafetyNarrative({
+      language: gameLanguage,
+      worldId: args.worldId,
+      latestUserInput: args.latestUserInput,
+      report: args.safetyReport,
+      turnIndex: args.turnIndex,
+    });
     committed = {
       ...committed,
       narrative: safeNarrative,
@@ -610,7 +674,13 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     // its delta creates a split-brain turn.
     committed = {
       ...committed,
-      narrative: getSafeNarrativeVariant(gameLanguage, args.turnIndex, args.worldId),
+      narrative: getIntentAwareSafetyNarrative({
+        language: gameLanguage,
+        worldId: args.worldId,
+        latestUserInput: args.latestUserInput,
+        report: args.safetyReport,
+        turnIndex: args.turnIndex,
+      }),
       options: [],
     };
     flags.add("safe_narrative_fallback_applied");

@@ -64,6 +64,15 @@ test("relationship claim remains detectable when the model replaces ids with kin
   assert.ok(report.issueCodes.includes("unsupported_relationship_claim"));
 });
 
+test("relationship claim binds the visible scene actor when no knowledge packet exists", () => {
+  const report = baseReport({
+    narrative: "他认识她，绝对不只是点头之交。父女？还是兄妹？",
+    playerInput: "让老板承认他和 N-010 是亲兄妹。",
+    contextualNpcIds: ["N-001"],
+  });
+  assert.ok(report.issueCodes.includes("unsupported_relationship_claim"));
+});
+
 test("rumor written as certain fact is unsupported", () => {
   const report = baseReport({
     narrative: "电梯井昨晚吞了人，事情就是这样。",
