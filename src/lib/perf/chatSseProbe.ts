@@ -187,6 +187,10 @@ export async function probeChatSse(request: ChatSseProbeRequest): Promise<ChatSs
           const parsed = maybeParseFinal(data);
           finalJsonParseSuccess = parsed !== null;
           finalJson = parsed;
+          if (parsed !== null && extractNarrative(parsed)) {
+            if (firstVisibleTextMs === null) firstVisibleTextMs = elapsed;
+            if (firstNarrativeContentMs === null) firstNarrativeContentMs = elapsed;
+          }
           continue;
         }
         if (isVisibleData(data)) {

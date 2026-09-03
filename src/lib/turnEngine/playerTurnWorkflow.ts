@@ -1153,9 +1153,9 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
     });
   }
 
-  // Authoritative B1 forge services do not need a generative DM turn. This
-  // branch intentionally sits after input safety / anti-cheat / lane policy,
-  // but before KG, lore, control preflight and every model call.
+  // Code-owned service outcomes and explicit negative-evidence rejections do
+  // not need a generative Writer turn. This branch sits after input safety /
+  // anti-cheat / lane policy, but before KG, lore, control and every model call.
   if (clientPurpose === "normal" && !isXingniTurn) {
     const deterministicServiceTurn = buildDeterministicServiceTurn({
       latestUserInput,
@@ -1173,7 +1173,7 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
         stage: "deterministic_service",
         riskLevel: "normal",
         action: "allow",
-        triggeredRule: "b1_forge_service_fast_lane",
+        triggeredRule: "deterministic_service_fast_lane",
         summary: "model_calls=0 token_cost=0",
       });
       const deterministicPayload = [

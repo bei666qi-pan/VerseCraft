@@ -9,8 +9,12 @@ A player's submitted action together with the authoritative outcome committed fo
 _Avoid_: chat message, DM response
 
 **Writer**:
-The sole author of player-visible narrative. It emits only narrative, four candidate options and bounded turn-shape fields; state is code-owned. Writer output is always a candidate until the Turn Engine commits it.
+The sole author of generative player-visible narrative. It emits only narrative, four candidate options and bounded turn-shape fields; state is code-owned. Writer output is always a candidate until the Turn Engine commits it. Bounded deterministic service and rejection copy is authored by code, not by another model.
 _Avoid_: main model, narrator agent, DM Agent
+
+**Evidence Boundary Adjudicator**:
+A narrow Turn Engine preflight that rejects an action only when the submitted structured snapshot explicitly proves it impossible or unknowable. It makes no model call and no state change; ambiguous cases continue to Writer or Mechanics.
+_Avoid_: rules agent, safety Writer, model critic
 
 **Mechanics Workflow**:
 A bounded tool-assisted path for actions that require registered game rules. It produces a candidate and receipts but never commits state.
