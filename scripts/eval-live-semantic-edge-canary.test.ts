@@ -4,6 +4,7 @@ import {
   buildCombinedSemanticReviewTarget,
   collectStructuredStrings,
   detectSecondNpcAffirmation,
+  detectSutInfrastructureFailure,
   findLongestNonOverlappingNpcReferences,
   findStructuredForbiddenHits,
 } from "./eval-live-semantic-edge-canary";
@@ -42,6 +43,52 @@ const passingDeterministic = (id: string): NarrativeSafetyCaseResult => ({
 });
 
 const metrics = {} as ChatSseProbeMetrics;
+
+test("site-unavailable finals are infrastructure evidence and cannot reach the semantic judge", () => {
+  assert.deepEqual(
+    detectSutInfrastructureFailure({
+      finalJson: {
+        narrative: "网站暂时无法完成本次生成，请稍后再试。",
+        internal_meta: {
+          action: "site_service_msg",
+          reason: "server_internal_generation_failed",
+          kind: "site_unavailable",
+        },
+      },
+      metrics: {
+        httpStatus: 200,
+        finalJsonParseSuccess: true,
+      } as ChatSseProbeMetrics,
+    }),
+    "site_unavailable:server_internal_generation_failed",
+  );
+});
+
+test("a real protocol-complete final remains eligible for semantic review", () => {
+  assert.equal(
+    detectSutInfrastructureFailure({
+      finalJson: { narrative: "老板摇头，说这里没有第二个人。", options: ["继续观察"] },
+      metrics: {
+        httpStatus: 200,
+        finalJsonParseSuccess: true,
+      } as ChatSseProbeMetrics,
+    }),
+    null,
+  );
+});
+
+test("malformed partial salvage is not treated as live model quality evidence", () => {
+  assert.match(
+    detectSutInfrastructureFailure({
+      finalJson: {
+        narrative: "我停下来观察。",
+        internal_meta: { action: "validated_partial_narrative_after_malformed_dm" },
+      },
+      metrics: { httpStatus: 200, finalJsonParseSuccess: true } as ChatSseProbeMetrics,
+    }) ?? "",
+    /^malformed_dm_salvage:/,
+  );
+});
 
 function evidence(id: string, narrative: string, finalJson: Record<string, unknown>) {
   const testCase: NarrativeSafetyEvalCase = {
