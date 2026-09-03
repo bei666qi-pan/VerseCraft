@@ -16,6 +16,84 @@ const FORGE_DISCUSSION_PATTERN = /(?:询问|问问|打听|能否|是否|可否|�
 const STATUS_AUDIT_PATTERN = /(核对|检查|查看|确认|只核对)/;
 const STATUS_AUDIT_FIELDS = /(职业|试炼|能力|武器袋|武器|生命|理智|稳定|污染|前置条件|结构化状态|任务|位置|图鉴|线索)/g;
 
+type BoundaryContext = {
+  presentNpcIds?: string[];
+  presentNpcNames?: string[];
+  scenePublicFacts?: string[];
+  activeNpc?: string;
+  npcKnowledge?: Record<string, { must_not_know?: string[] }>;
+  knownRelationFacts?: unknown[];
+  registeredItems?: string[];
+};
+
+function parseBoundaryContext(playerContext: string): BoundaryContext | null {
+  const text = playerContext.trim();
+  if (!text.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as BoundaryContext
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)
+    : [];
+}
+
+function findAbsentNpcReference(input: string, context: BoundaryContext | null): string | null {
+  const facts = readStringList(context?.scenePublicFacts);
+  const explicitlyClosedCast = facts.some((fact) =>
+    /(?:只有|仅有|只见).{0,24}(?:没有|并无|不存在)(?:第二个|其他|别的|另一)/.test(fact) ||
+    /(?:没有|并无|不存在)(?:第二个|其他|别的|另一).{0,12}(?:NPC|人物|人)/i.test(fact)
+  );
+  if (!explicitlyClosedCast) return null;
+  const match = /(?:那个|那位)([^，。！？,.!?]{1,18}?)(?:是谁|是什么人|叫什么|的身份)/.exec(input);
+  if (!match) return null;
+  const requested = match[1].replace(/^(?:角落里|柜台旁|门边|走廊里|眼前)/, "").trim();
+  if (!requested) return null;
+  const presentNames = readStringList(context?.presentNpcNames);
+  return presentNames.some((name) => requested.includes(name) || name.includes(requested)) ? null : requested;
+}
+
+function requestsForbiddenNpcKnowledge(input: string, context: BoundaryContext | null): boolean {
+  const activeNpc = typeof context?.activeNpc === "string" ? context.activeNpc.trim() : "";
+  if (!activeNpc || !input.includes(activeNpc) || !context?.npcKnowledge || typeof context.npcKnowledge !== "object") return false;
+  const presentIds = readStringList(context.presentNpcIds);
+  const presentNames = readStringList(context.presentNpcNames);
+  const namedIndex = presentNames.indexOf(activeNpc);
+  const activeNpcId = namedIndex >= 0 && presentNames.length === presentIds.length
+    ? presentIds[namedIndex]
+    : presentIds.length === 1 ? presentIds[0] : null;
+  if (!activeNpcId) return false;
+  const forbidden = readStringList(context.npcKnowledge[activeNpcId]?.must_not_know);
+  return forbidden.some((fact) => {
+    const normalized = fact.toLowerCase();
+    if (normalized.includes("root_cause")) return /根因|根本原因|真正原因|缘由/.test(input);
+    if (normalized.includes("final_truth")) return /最终真相|全部真相|真正真相|真相/.test(input);
+    return false;
+  });
+}
+
+function forcesUnsupportedRelationship(input: string, context: BoundaryContext | null): boolean {
+  if (!Array.isArray(context?.knownRelationFacts) || context.knownRelationFacts.length > 0) return false;
+  return /(?:亲兄妹|亲姐弟|亲哥|亲弟|哥哥|弟弟|姐姐|妹妹|父亲|母亲|兄弟|姐妹|夫妻|恋人|亲人|早就认识|长期交情)/.test(input) &&
+    /(?:让|要求|必须|逼).{0,16}(?:承认|确认|认出|接受)|(?:就是|本来是|其实是|确定是).{0,24}(?:关系|亲属|亲人)/.test(input);
+}
+
+function findUnregisteredAcquiredItem(input: string, context: BoundaryContext | null): string | null {
+  if (!Array.isArray(context?.registeredItems)) return null;
+  const match = /(?:捡起|拾起|拾取|拿起|获得|取得)[\s“”「」『』]*([^，。！？,.!?]{1,20}?)(?=把它|将它|收入|放进|装进|并|然后|，|。|！|,|\.|!|$)/.exec(input);
+  const requested = match?.[1]?.replace(/^(?:一把|一件|一个|那把|那件|那个)/, "").trim() ?? "";
+  if (!requested) return null;
+  const registeredItems = readStringList(context.registeredItems);
+  return registeredItems.some((item) => requested.includes(item) || item.includes(requested)) ? null : requested;
+}
+
 export function isDeterministicStructuredStatusAudit(latestUserInput: string): boolean {
   const text = latestUserInput.trim();
   if (!STATUS_AUDIT_PATTERN.test(text)) return false;
@@ -79,6 +157,11 @@ export function buildDeterministicServiceTurn(args: {
   clientState: ClientStructuredContextV1 | null;
   requestId: string;
 }): ResolvedDmTurn | null {
+  const boundaryContext = parseBoundaryContext(args.playerContext);
+  const absentNpcReference = findAbsentNpcReference(args.latestUserInput, boundaryContext);
+  const isForbiddenNpcKnowledge = requestsForbiddenNpcKnowledge(args.latestUserInput, boundaryContext);
+  const isUnsupportedRelationship = forcesUnsupportedRelationship(args.latestUserInput, boundaryContext);
+  const unregisteredAcquiredItem = findUnregisteredAcquiredItem(args.latestUserInput, boundaryContext);
   const isForge = isDeterministicForgeServiceAction(args);
   const isUnregisteredForgeAttempt =
     GENERIC_UNREGISTERED_FORGE_PATTERN.test(args.latestUserInput.trim()) &&
@@ -104,7 +187,7 @@ export function buildDeterministicServiceTurn(args: {
   const isInvalidTraversal = /(?:直接.{0,8}(?:B2|地下二层)|跳过中间楼层|不管距离.{0,8}瞬移|直接瞬移|从窗户跳下去)/i.test(args.latestUserInput);
   const isPrematureEndingClaim = /(?:true_escape|真结局|真正出口|ending_finale|生成结算)/i.test(args.latestUserInput) &&
     /(?:没有|忽略|普通门|前置不足|直接宣布|立即触发|必须为无)/.test(args.latestUserInput);
-  if (!isForge && !isUnregisteredForgeAttempt && !isEquipment && !isThreatRecon && !isStatusAudit && !isTrialDelivery && !isLegacyLetterDelivery && !isFloorProbeObservation && !isFloorProbeDialogue && !isFloorProbeDelivery && !isAuthoredOneFloorMove && !isInvalidTraversal && !isPrematureEndingClaim) return null;
+  if (!absentNpcReference && !isForbiddenNpcKnowledge && !isUnsupportedRelationship && !unregisteredAcquiredItem && !isForge && !isUnregisteredForgeAttempt && !isEquipment && !isThreatRecon && !isStatusAudit && !isTrialDelivery && !isLegacyLetterDelivery && !isFloorProbeObservation && !isFloorProbeDialogue && !isFloorProbeDelivery && !isAuthoredOneFloorMove && !isInvalidTraversal && !isPrematureEndingClaim) return null;
 
   const seed: Record<string, unknown> = {
       is_action_legal: true,
@@ -125,7 +208,31 @@ export function buildDeterministicServiceTurn(args: {
       weapon_bag_updates: [],
       turn_mode: "narrative_only",
     };
-  const guarded = isForge
+  const guarded = absentNpcReference ? (() => {
+        seed.is_action_legal = false;
+        seed.narrative = "现场记录明确没有第二个在场人物，因此我无法确认与描述相符的角色，也不会据此新增人物。";
+        seed.options = ["观察现场已有的人和物", "核对当前位置的公开记录", "询问在场人物已知的事情"];
+        return seed;
+      })()
+    : isForbiddenNpcKnowledge ? (() => {
+        seed.is_action_legal = false;
+        seed.narrative = `${boundaryContext?.activeNpc ?? "对方"}没有掌握这个问题的根因或最终真相，无法给出可靠答案；本回合不会把被隔离的事实写进其认知。`;
+        seed.options = ["询问对方亲眼见过的事情", "检查现场公开线索", "暂时结束追问"];
+        return seed;
+      })()
+    : isUnsupportedRelationship ? (() => {
+        seed.is_action_legal = false;
+        seed.narrative = "当前记录中没有支持这段亲属或亲密关系的事实，对方无法仅凭玩家宣称确认关系；人物关系保持不变。";
+        seed.options = ["询问对方已经确认的经历", "寻找能证明关系的线索", "停止要求对方承认"];
+        return seed;
+      })()
+    : unregisteredAcquiredItem ? (() => {
+        seed.is_action_legal = false;
+        seed.narrative = "当前场景与物品表中没有登记与描述相符的物品，这次行动不会写入库存；背包保持不变。";
+        seed.options = ["查看现场可触碰的物品", "询问在场人物这里留下了什么", "沿走廊继续搜索"];
+        return seed;
+      })()
+    : isForge
     ? applyB1ServiceExecutionGuard({
         dmRecord: seed,
         latestUserInput: args.latestUserInput,
@@ -232,7 +339,7 @@ export function buildDeterministicServiceTurn(args: {
       ? resolved.security_meta as Record<string, unknown>
       : {}),
     deterministic_service_fast_lane: true,
-    deterministic_action_kind: isForge ? "forge_service" : isUnregisteredForgeAttempt ? "unregistered_forge_attempt" : isEquipment ? "equipment" : isThreatRecon ? "threat_recon" : isPrematureEndingClaim ? "premature_ending_claim" : isInvalidTraversal ? "invalid_world_traversal" : isFloorProbeDialogue ? "floor_probe_dialogue" : isAuthoredOneFloorMove ? "authored_location_move" : isFloorProbeObservation ? "floor_probe_observation" : isFloorProbeDelivery ? "floor_probe_delivery" : isLegacyLetterDelivery ? "legacy_letter_delivery" : isTrialDelivery ? "profession_trial_delivery" : "structured_status_audit",
+    deterministic_action_kind: absentNpcReference ? "absent_npc_reference" : isForbiddenNpcKnowledge ? "forbidden_npc_knowledge" : isUnsupportedRelationship ? "unsupported_relationship" : unregisteredAcquiredItem ? "unregistered_item_acquisition" : isForge ? "forge_service" : isUnregisteredForgeAttempt ? "unregistered_forge_attempt" : isEquipment ? "equipment" : isThreatRecon ? "threat_recon" : isPrematureEndingClaim ? "premature_ending_claim" : isInvalidTraversal ? "invalid_world_traversal" : isFloorProbeDialogue ? "floor_probe_dialogue" : isAuthoredOneFloorMove ? "authored_location_move" : isFloorProbeObservation ? "floor_probe_observation" : isFloorProbeDelivery ? "floor_probe_delivery" : isLegacyLetterDelivery ? "legacy_letter_delivery" : isTrialDelivery ? "profession_trial_delivery" : "structured_status_audit",
     request_id: args.requestId,
   };
   resolved._eval_metrics = {

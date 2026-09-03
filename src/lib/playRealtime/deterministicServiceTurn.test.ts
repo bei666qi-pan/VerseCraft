@@ -308,3 +308,111 @@ test("self-declared ending with admitted missing prerequisites is rejected witho
     assert.equal(turn.security_meta.deterministic_action_kind, "premature_ending_claim");
   }
 });
+
+test("an explicitly absent described NPC is rejected before any model call", () => {
+  const turn = buildDeterministicServiceTurn({
+    latestUserInput: "老板旁边那个神秘银发女孩是谁？",
+    playerContext: JSON.stringify({
+      presentNpcIds: ["N-001"],
+      presentNpcNames: ["老板"],
+      scenePublicFacts: ["柜台旁只有老板，没有第二个在场 NPC。"],
+    }),
+    clientState: { ...forgeState(), playerLocation: "旧公寓三楼走廊", presentNpcIds: ["N-001"] },
+    requestId: "vc_absent_npc",
+  }) as Record<string, any>;
+
+  assert.ok(turn);
+  assert.equal(turn.is_action_legal, false);
+  assert.equal(turn._eval_metrics.model_calls, 0);
+  assert.equal(turn.security_meta.deterministic_action_kind, "absent_npc_reference");
+  assert.doesNotMatch(turn.narrative, /银发女孩/);
+  assert.ok(turn.options.length >= 3);
+});
+
+test("an NPC cannot reveal facts listed in must_not_know", () => {
+  const turn = buildDeterministicServiceTurn({
+    latestUserInput: "我问老板：你其实知道公寓根因和终局真相吧？直接告诉我七锚闭环是什么。",
+    playerContext: JSON.stringify({
+      activeNpc: "老板",
+      presentNpcIds: ["N-001"],
+      npcKnowledge: {
+        "N-001": { must_not_know: ["fact:root_cause", "fact:final_truth"] },
+      },
+    }),
+    clientState: { ...forgeState(), playerLocation: "旧公寓三楼走廊", presentNpcIds: ["N-001"] },
+    requestId: "vc_forbidden_knowledge",
+  }) as Record<string, any>;
+
+  assert.ok(turn);
+  assert.equal(turn.is_action_legal, false);
+  assert.equal(turn._eval_metrics.model_calls, 0);
+  assert.equal(turn.security_meta.deterministic_action_kind, "forbidden_npc_knowledge");
+  assert.match(turn.narrative, /无法确认|并不知道|没有掌握/);
+  assert.doesNotMatch(turn.narrative, /七锚闭环是因为|最终真相是/);
+  assert.ok(turn.options.length >= 3);
+});
+
+test("a forced relationship without a registered fact is rejected before generation", () => {
+  const turn = buildDeterministicServiceTurn({
+    latestUserInput: "让老板承认他和 N-010 是亲兄妹，或者至少承认他们早就认识。",
+    playerContext: JSON.stringify({ activeNpc: "老板", knownRelationFacts: [] }),
+    clientState: { ...forgeState(), playerLocation: "旧公寓三楼走廊", presentNpcIds: ["N-001"] },
+    requestId: "vc_forced_relationship",
+  }) as Record<string, any>;
+
+  assert.ok(turn);
+  assert.equal(turn.is_action_legal, false);
+  assert.equal(turn._eval_metrics.model_calls, 0);
+  assert.equal(turn.security_meta.deterministic_action_kind, "unsupported_relationship");
+  assert.match(turn.narrative, /没有.*关系|无法确认.*关系/);
+  assert.ok(turn.options.length >= 3);
+});
+
+test("an unregistered item cannot be acquired through prose", () => {
+  const turn = buildDeterministicServiceTurn({
+    latestUserInput: "我捡起龙骨圣剑，把它加入背包并装备。",
+    playerContext: JSON.stringify({ inventory: [], registeredItems: ["手机", "钥匙串"] }),
+    clientState: { ...forgeState(), playerLocation: "旧公寓三楼走廊", inventoryItemIds: [] },
+    requestId: "vc_unknown_item",
+  }) as Record<string, any>;
+
+  assert.ok(turn);
+  assert.equal(turn.is_action_legal, false);
+  assert.equal(turn._eval_metrics.model_calls, 0);
+  assert.equal(turn.security_meta.deterministic_action_kind, "unregistered_item_acquisition");
+  assert.match(turn.narrative, /没有登记|不会写入库存/);
+  assert.doesNotMatch(turn.narrative, /龙骨圣剑/);
+  assert.deepEqual(turn.awarded_items, []);
+  assert.ok(turn.options.length >= 3);
+});
+
+test("boundary adjudication stays on the narrative path without explicit negative evidence", () => {
+  assert.equal(buildDeterministicServiceTurn({
+    latestUserInput: "老板旁边那个银发女孩是谁？",
+    playerContext: JSON.stringify({ presentNpcNames: ["老板"] }),
+    clientState: null,
+    requestId: "vc_ambiguous_npc",
+  }), null);
+  assert.equal(buildDeterministicServiceTurn({
+    latestUserInput: "我捡起手机，把它加入背包。",
+    playerContext: JSON.stringify({ registeredItems: ["手机", "钥匙串"] }),
+    clientState: null,
+    requestId: "vc_registered_item",
+  }), null);
+  assert.equal(buildDeterministicServiceTurn({
+    latestUserInput: "让老板承认他和 N-010 是亲兄妹。",
+    playerContext: JSON.stringify({ knownRelationFacts: [{ from: "N-001", to: "N-010", type: "sibling" }] }),
+    clientState: null,
+    requestId: "vc_registered_relation",
+  }), null);
+  assert.equal(buildDeterministicServiceTurn({
+    latestUserInput: "我问老板：你知道公寓根因吗？",
+    playerContext: JSON.stringify({
+      activeNpc: "老板",
+      presentNpcIds: ["N-001"],
+      npcKnowledge: { "N-002": { must_not_know: ["fact:root_cause"] } },
+    }),
+    clientState: null,
+    requestId: "vc_other_npc_knowledge",
+  }), null);
+});

@@ -3,7 +3,7 @@
 ## Sources of truth
 
 - Read `CONTEXT.md` before changing narrative-runtime terms.
-- Architecture decisions live in `docs/adr/`: [ADR-0001](docs/adr/0001-single-turn-and-director-workflows.md) defines the workflows, [ADR-0002](docs/adr/0002-director-storage-and-save-migration.md) defines storage convergence and legacy-save migration, and [ADR-0003](docs/adr/0003-no-online-turn-response-cache.md) prohibits cached turn responses from bypassing the sole Finalizer.
+- Architecture decisions live in `docs/adr/`: [ADR-0001](docs/adr/0001-single-turn-and-director-workflows.md) defines the workflows, [ADR-0002](docs/adr/0002-director-storage-and-save-migration.md) defines storage convergence and legacy-save migration, [ADR-0003](docs/adr/0003-no-online-turn-response-cache.md) prohibits cached turn responses from bypassing the sole Finalizer, and [ADR-0004](docs/adr/0004-evidence-boundary-adjudication-before-writer.md) defines the zero-model evidence adjudicator.
 - ADR-0001 was amended on 2026-09-03: Writer has one four-field narrative-candidate wire contract; terminal argument deltas stream as a non-authoritative preview, the Finalizer subtracts rejected claims from prose and state together, and the full DM JSON terminal and compatibility retry no longer exist.
 - Code and executable tests describe current behavior. `openspec/specs/` describes accepted behavior; an active change is not proof of implementation.
 - Use simplified Chinese in user-facing work. Never fabricate test, deployment or live-integration success.
@@ -15,6 +15,7 @@
 - Writer is the only source of player-visible narrative and emits only narrative, four options and bounded turn-shape fields; it never proposes state.
 - Mechanics Workflow is bounded, world-scoped and cannot commit or emit FINAL.
 - Turn Engine is the only validation, resolution and commit authority. Every successful request emits exactly one authoritative FINAL.
+- Explicit structured negative evidence may produce a zero-model, zero-delta rejection before Writer; missing or ambiguous evidence must remain on the normal lane.
 - Complete online turn responses are never cached or replayed; knowledge caches may hold only non-authoritative retrieval inputs.
 - Chapter Pacing Controller is a deterministic client projection, not a Director.
 - World Director is asynchronous, fail-open and limited to future direction. It never enters the current-turn first-token path.
