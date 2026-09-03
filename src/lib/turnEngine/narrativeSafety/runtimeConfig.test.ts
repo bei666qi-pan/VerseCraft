@@ -231,6 +231,28 @@ test("hard mode blocks a narrative inventory acquisition that has no committed a
   assert.equal(plan.shouldBlockCommit, true);
 });
 
+test("hard mode blocks a medium-severity private-fact leak", () => {
+  const plan = planNarrativeSafetyEnforcement({
+    safetyReport: safetyReport([
+      issue({
+        code: "dm_only_fact_leaked_in_narrative",
+        invariant: "npc_knows_forbidden_fact",
+        severity: "medium",
+        source: "validator",
+      }),
+    ]),
+    policy: {
+      kernelEnabled: true,
+      mode: "hard",
+      entityHardGateEnabled: true,
+      pacingValidatorEnabled: true,
+    },
+  });
+
+  assert.equal(plan.decision, "block_commit");
+  assert.equal(plan.shouldBlockCommit, true);
+});
+
 test("disabled kernel returns to the old no-op safety path", () => {
   const plan = planNarrativeSafetyEnforcement({
     safetyReport: safetyReport([issue()]),

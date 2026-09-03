@@ -159,6 +159,72 @@ function getSafeNarrativeVariant(language: GameLanguage, turnIndex: number, worl
 }
 
 const ITEM_ACTION_RE = /(捡起|拾起|获得|拿到|收入背包|加入背包|装备|pick up|obtain|add to inventory|equip)/i;
+const UNKNOWN_PERSON_INTENT_RE = /(?:(?:旁边|身边|那个|那位|这位|神秘|陌生|银发).{0,16}(?:女孩|女子|少女|姑娘|男人|男子|老人|孩子|人影|人物)|(?:女孩|女子|少女|姑娘|男人|男子|老人|孩子|人影|人物).{0,12}(?:是谁|身份)|who\s+is\s+(?:that|the).{0,24}(?:girl|woman|man|person))/i;
+const UNKNOWN_PERSON_BOUNDARY_RE = /(?:(?:无法|不能|尚难|未能|不足以).{0,18}(?:确认|核实|辨认).{0,18}(?:身份|人物|来者|女孩|女子|少女|姑娘|男人|男子|人影)|(?:identity|person).{0,24}(?:unverified|cannot be confirmed))/i;
+
+function getUnknownItemSafeNarrative(language: GameLanguage): string {
+  return languageText(
+    language,
+    "你没有在现场找到与描述相符的已登记物品，因此没有把任何新物品收入背包或装备；背包与装备状态保持不变。",
+    "No registered item matching that description is present, so nothing new enters your inventory or equipment; both remain unchanged."
+  );
+}
+
+function getUnknownPersonIntentSafeNarrative(language: GameLanguage, worldId?: WorldId): string {
+  return languageText(
+    language,
+    worldId === "xingni_taichu"
+      ? "你无法在青石县眼前确认与描述相符的新人物；对方身份没有被核实，因此不会新增或确认角色。"
+      : "你无法在现场确认与描述相符的新人物；对方身份没有被核实，因此不会新增或确认角色。",
+    "No new person matching that description can be confirmed here. Their identity is unverified, so no character is added or confirmed."
+  );
+}
+
+function getIntentAwareSafetyOptions(args: {
+  language: GameLanguage;
+  latestUserInput?: string;
+  report?: NarrativeSafetyReport | null;
+  forcedIntent?: "item" | "person";
+}): string[] {
+  const issueCodes = new Set((args.report?.issues ?? []).map((issue) => issue.code));
+  const issueDetails = (args.report?.issues ?? []).map((issue) => String(issue.detail ?? ""));
+  const input = String(args.latestUserInput ?? "");
+
+  if (issueCodes.has("unsupported_relationship_claim")) {
+    return args.language === "en-US"
+      ? ["Ask for verifiable relationship evidence", "Withdraw the unsupported relationship claim", "Observe how the people present actually respond"]
+      : ["请对方提供可核验的关系证据", "撤回未经证实的关系判断", "观察当前在场人物的实际反应"];
+  }
+  if (
+    issueCodes.has("dm_only_fact_leaked_in_narrative") ||
+    issueCodes.has("npc_knows_forbidden_fact") ||
+    issueCodes.has("unsupported_root_cause_claim")
+  ) {
+    return args.language === "en-US"
+      ? ["Ask what they can state publicly", "Inspect the clues already present", "End this line of questioning for now"]
+      : ["询问对方愿意公开的事实", "检查现场已有线索", "暂时结束这次追问"];
+  }
+  if (
+    (args.forcedIntent === "item" || ITEM_ACTION_RE.test(input)) &&
+    (args.forcedIntent === "item" || issueCodes.has("inventory_conflict") ||
+      issueDetails.some((detail) => detail.includes("kind=item") || detail.includes("item_acquisition_without_fact_or_award")))
+  ) {
+    return args.language === "en-US"
+      ? ["Observe the current scene again", "Check existing items and records", "Choose a clear, verifiable action"]
+      : ["重新观察当前场景", "检查已有物品和记录", "换一个明确、可核验的行动"];
+  }
+  if (args.forcedIntent === "person" || UNKNOWN_PERSON_INTENT_RE.test(input)) {
+    return args.language === "en-US"
+      ? ["Confirm who is currently present", "Ask about registered residents", "Keep observing the area nearby"]
+      : ["确认当前在场人物", "询问已登记住户", "继续观察柜台周围"];
+  }
+  return [];
+}
+
+function isDegenerateNarrative(value: unknown): boolean {
+  const meaningful = String(value ?? "").replace(/[\p{P}\p{S}\s]/gu, "");
+  return meaningful.length < 6;
+}
 
 function getIntentAwareSafetyNarrative(args: {
   language: GameLanguage;
@@ -194,23 +260,13 @@ function getIntentAwareSafetyNarrative(args: {
     (issueCodes.has("inventory_conflict") ||
       issueDetails.some((detail) => detail.includes("kind=item") || detail.includes("item_acquisition_without_fact_or_award")))
   ) {
-    return languageText(
-      args.language,
-      "你没有在现场找到与描述相符的已登记物品，因此没有把任何新物品收入背包或装备；背包与装备状态保持不变。",
-      "No registered item matching that description is present, so nothing new enters your inventory or equipment; both remain unchanged."
-    );
+    return getUnknownItemSafeNarrative(args.language);
   }
   if (
     issueCodes.has("unknown_entity_surface") &&
     (args.report?.issues ?? []).some((issue) => String(issue.detail ?? "").includes("kind=npc"))
   ) {
-    return languageText(
-      args.language,
-      args.worldId === "xingni_taichu"
-        ? "你无法在青石县眼前确认与描述相符的新人物；对方身份没有被核实，因此不会新增或确认角色。"
-        : "你无法在现场确认与描述相符的新人物；对方身份没有被核实，因此不会新增或确认角色。",
-      "No new person matching that description can be confirmed here. Their identity is unverified, so no character is added or confirmed."
-    );
+    return getUnknownPersonIntentSafeNarrative(args.language, args.worldId);
   }
   return getSafeNarrativeVariant(args.language, args.turnIndex, args.worldId);
 }
@@ -632,6 +688,35 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     });
     flags.add(isFallbackEnvelope ? "safe_narrative_fallback_applied" : "narrative_rewrite_applied");
   } else if (
+    delta.isActionLegal === false &&
+    ITEM_ACTION_RE.test(String(args.latestUserInput ?? "")) &&
+    isDegenerateNarrative(committed.narrative)
+  ) {
+    committed = {
+      ...committed,
+      narrative: getUnknownItemSafeNarrative(gameLanguage),
+      options: getIntentAwareSafetyOptions({
+        language: gameLanguage,
+        latestUserInput: args.latestUserInput,
+        forcedIntent: "item",
+      }),
+    };
+    flags.add("safe_narrative_fallback_applied");
+  } else if (
+    delta.isActionLegal === false &&
+    UNKNOWN_PERSON_INTENT_RE.test(String(args.latestUserInput ?? "")) &&
+    !UNKNOWN_PERSON_BOUNDARY_RE.test(String(committed.narrative ?? ""))
+  ) {
+    committed = {
+      ...committed,
+      narrative: getUnknownPersonIntentSafeNarrative(gameLanguage, args.worldId),
+      options: getIntentAwareSafetyOptions({
+        language: gameLanguage,
+        latestUserInput: args.latestUserInput,
+      }),
+    };
+    flags.add("safe_narrative_fallback_applied");
+  } else if (
     hardBlockFromSafety &&
     safetyEnforcement.entityHardGateTriggered &&
     hasUnknownPersonInNarrative
@@ -650,7 +735,11 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     committed = {
       ...committed,
       narrative: safeNarrative,
-      options: [],
+      options: getIntentAwareSafetyOptions({
+        language: gameLanguage,
+        latestUserInput: args.latestUserInput,
+        report: args.safetyReport,
+      }),
     };
     flags.add("safe_narrative_fallback_applied");
   } else if (hardBlockFromSafety && hasUnknownPersonOnlyInOptions) {
@@ -682,7 +771,11 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
         report: args.safetyReport,
         turnIndex: args.turnIndex,
       }),
-      options: [],
+      options: getIntentAwareSafetyOptions({
+        language: gameLanguage,
+        latestUserInput: args.latestUserInput,
+        report: args.safetyReport,
+      }),
     };
     flags.add("safe_narrative_fallback_applied");
   } else if (validatorReport.optionsOverride) {

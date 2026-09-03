@@ -52,6 +52,10 @@ const ZERO_TOLERANCE_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
   "npc_mentions_unknown_npc",
   "unsupported_relationship_claim",
   "unsupported_location_claim",
+  // A private/DM-only fact revealed through dialogue or body language is still
+  // a knowledge-boundary breach even when the detector rates the implication
+  // as medium severity. The authoritative finalizer must remove the prose.
+  "dm_only_fact_leaked_in_narrative",
   // Visible possession without an authoritative award is the same class of
   // split-brain failure as an invented entity: the prose must not survive
   // while the committed state says the item does not exist.
