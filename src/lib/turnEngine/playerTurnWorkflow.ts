@@ -209,6 +209,10 @@ import type {
 import { normalizePlayerInput } from "@/lib/turnEngine/normalizePlayerInput";
 import { routeTurnLane } from "@/lib/turnEngine/routeTurnLane";
 import {
+  buildTurnNarrativePrelude,
+  buildTurnNarrativePreludeFrame,
+} from "@/lib/turnEngine/turnNarrativePrelude";
+import {
   assessNarrativeLengthForTelemetry,
   buildNarrativeLengthTelemetry,
   type NarrativeLengthTelemetry,
@@ -2154,6 +2158,11 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
     // TurnLaneRouter 先走确定性规则，只有歧义输入才进入 300ms embedding 分类。
     // Mechanics lane 一旦取得本回合所有权，失败也只产生失败候选，不转入 Writer。
     const turnLane = await routeGenerationLane({ userInput: latestUserInput, worldId: clientState?.worldId });
+    if (turnLane.lane !== "mechanics") {
+      const preludeWorldId = clientState?.worldId ?? (isXingniTurn ? XINGNI_WORLD_ID : DARK_MOON_WORLD_ID);
+      const prelude = buildTurnNarrativePrelude(latestUserInput, preludeWorldId);
+      await writeToStream(buildTurnNarrativePreludeFrame(prelude));
+    }
     if (turnLane.lane === "mechanics") {
       const {
         runMechanicsRoute,
