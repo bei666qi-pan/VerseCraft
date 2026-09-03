@@ -2939,6 +2939,7 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
             requestId,
             language: validated.language,
             repairFailureReason,
+            latestUserInput,
           });
           const normalizedFallback = normalizePlayerDmJson(safeFallback);
           return normalizedFallback

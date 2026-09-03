@@ -34,6 +34,12 @@ const GENERIC_PERSON_SCENE_ACTION_RE =
 const INDIVIDUAL_PERSON_DESCRIPTION_RE =
   /(?:穿(?:着)?|身着|披着|戴着|留着|扎着|眼眶|头发|脸色|面容|伤疤|瞳孔|双眼|皮肤|身形|身材|神情|衣角|袖口|格子衫|工装|大衣|校服|裙摆|胡茬|指节)/u;
 const ANAPHORIC_PERSON_RE = /(?:他|她|那人|对方)[\s\S]{0,96}/u;
+const PLAYER_PROPOSED_SECOND_PERSON_RE =
+  /(?:旁边|身边|旁侧|身旁|身后|后面).{0,20}(?:女孩|女子|少女|姑娘|女人|男人|男孩|少年|陌生人|身影|人影)/u;
+const PLAYER_PROPOSED_PERSON_TRAIT_RE =
+  /(?:银发|白发|金发|红发|黑发|长发|短发|神秘|陌生|戴帽|蒙面|穿(?:着)?[^，。！？\n]{0,10})/u;
+const INVENTED_PERSON_RULE_RE =
+  /(?:银发|白发|金发|红发|黑发|长发|短发|神秘|陌生|蒙面).{0,18}(?:者|人|女孩|女子|少女|姑娘|女人|男人)?[^。！？\n]{0,40}(?:非(?:住户|居民|员工)|不是(?:住户|居民|员工)|禁止|不得|不能|不许|必须|规则|规定|登记|接触)/u;
 
 const STRUCTURED_FIELDS = [
   "codex_updates",
@@ -169,6 +175,24 @@ function hasPlayerInducedAnaphoricPersonClaim(input: NarrativeSafetyInput, surfa
     INDIVIDUAL_PERSON_DESCRIPTION_RE.test(intentText) &&
     ANAPHORIC_PERSON_RE.test(surfaceText) &&
     INDIVIDUAL_PERSON_DESCRIPTION_RE.test(surfaceText)
+  );
+}
+
+/**
+ * A present, authorized NPC does not authorize a second person proposed only
+ * by the player. Block only when the input explicitly places a described
+ * person beside someone and the model turns that description into a new rule
+ * or status. Plain denials such as “没有银发女孩” remain valid.
+ */
+function hasInventedRuleForPlayerProposedSecondPerson(
+  input: NarrativeSafetyInput,
+  surfaceText: string,
+): boolean {
+  const intentText = [input.intent?.rawText, input.intent?.normalizedText].filter(Boolean).join("\n");
+  return (
+    PLAYER_PROPOSED_SECOND_PERSON_RE.test(intentText) &&
+    PLAYER_PROPOSED_PERSON_TRAIT_RE.test(intentText) &&
+    INVENTED_PERSON_RULE_RE.test(surfaceText)
   );
 }
 
@@ -562,6 +586,18 @@ function collectSurfaceWhitelistIssues(input: NarrativeSafetyInput): NarrativeSa
         source: "entityAudit",
         detail: "kind=npc|context=player_induced_anaphoric_person",
         anchor: "surface:npc:player-induced-generic-person",
+      })
+    );
+  }
+
+  if (hasInventedRuleForPlayerProposedSecondPerson(input, surfaceText)) {
+    issues.push(
+      issue({
+        code: "unknown_entity_surface",
+        invariant: "unknown_entity_surface",
+        source: "entityAudit",
+        detail: "kind=npc|context=player_proposed_second_person_rule",
+        anchor: "surface:npc:player-proposed-second-person-rule",
       })
     );
   }
