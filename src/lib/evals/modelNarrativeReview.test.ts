@@ -122,10 +122,30 @@ test("gateway failure is inconclusive, never an offline pass", async () => {
     const result = await reviewModelNarrative(target, {
       liveRequested: true,
       consumeBudget: () => true,
-      callJudge: async () => ({ ok: false, code: "CHAIN_EXHAUSTED", message: "gateway unavailable" }),
+      callJudge: async () => ({
+        ok: false,
+        code: "CHAIN_EXHAUSTED",
+        message: "gateway unavailable",
+        routing: {
+          requestId: "judge-request",
+          task: "EVAL_JUDGE",
+          operationMode: "normal",
+          intendedRole: "reasoner",
+          actualLogicalRole: null,
+          fallbackCount: 0,
+          attempts: [{ logicalRole: "reasoner", providerId: "openai_compatible", gatewayModel: "judge", phase: "http", failureKind: "TIMEOUT", severity: "soft", latencyMs: 30_000 }],
+          finalStatus: "upstream_exhausted",
+          lastFailureSummary: "TIMEOUT:reasoner",
+        },
+      }),
     });
     assert.equal(result.provenance, "inconclusive");
     assert.equal(result.reason, "gateway_error");
+    assert.deepEqual(result.failure, {
+      code: "CHAIN_EXHAUSTED",
+      lastFailureSummary: "TIMEOUT:reasoner",
+      attempts: [{ logicalRole: "reasoner", failureKind: "TIMEOUT", latencyMs: 30_000 }],
+    });
   }));
 });
 

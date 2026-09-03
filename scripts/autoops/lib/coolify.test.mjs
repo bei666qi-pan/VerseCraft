@@ -1,11 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CoolifyClient,
   deploymentStatus,
   normalizeDeploymentList,
   planApplicationEnvMutation,
   selectTriggeredDeployment,
 } from "./coolify.mjs";
+
+test("Coolify API retries a transient connection failure without duplicating a successful mutation", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) throw new TypeError("fetch failed");
+    return new Response(JSON.stringify({ status: "ok" }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const client = new CoolifyClient({ baseUrl: "https://coolify.example/api/v1", apiKey: "test", requestTimeoutMs: 10, retryDelayMs: 0 });
+    assert.deepEqual(await client.health(), { status: "ok" });
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("Coolify env sync reads first, PATCHes existing keys and POSTs missing keys", () => {
   const existing = planApplicationEnvMutation(

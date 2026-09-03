@@ -75,7 +75,11 @@ jobs:
         run: pnpm exec tsx --test scripts/eval-live-semantic-edge-canary.test.ts
 
       - name: Validate live canary configuration without network
-        run: pnpm exec tsx scripts/eval-live-semantic-edge-canary.ts --dry-run
+        env:
+          AI_PROVIDER: mock
+          AUTH_SECRET: ci-ai-quality-auth-secret-at-least-32-characters
+          DATABASE_URL: postgres://mock:mock@127.0.0.1:5432/mock
+        run: pnpm eval:semantic-safety:live -- --dry-run
 
       - name: Detector eval and explicit hard assertion
         run: |
@@ -203,7 +207,7 @@ jobs:
 
       - name: Unified live semantic safety gate
         run: |
-          pnpm exec tsx scripts/eval-live-semantic-edge-canary.ts \
+          pnpm eval:semantic-safety:live -- \
             --base-url http://127.0.0.1:3000 \
             --json-out .runtime-data/ai-quality/live-semantic-safety-gate.json
 

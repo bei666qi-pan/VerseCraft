@@ -265,7 +265,17 @@ async function main(): Promise<void> {
   });
 
   if (dryRun) {
-    console.log(JSON.stringify({ selectedCaseIds: SELECTED_CASE_IDS, plannedSutCalls: 4, plannedSemanticJudgeCalls: 1, casesPath }, null, 2));
+    // This is also a launch-contract check: the canary is a server-side CLI and
+    // must run with the react-server condition so managed AI state can load.
+    const { ensureManagedAiSnapshot } = await import("../src/lib/ai/managed/runtime");
+    const snapshot = await ensureManagedAiSnapshot();
+    console.log(JSON.stringify({
+      selectedCaseIds: SELECTED_CASE_IDS,
+      plannedSutCalls: 4,
+      plannedSemanticJudgeCalls: 1,
+      casesPath,
+      managedAiRuntime: { ready: snapshot.ready, health: snapshot.health, judgeBindings: snapshot.byPurpose.judge.length },
+    }, null, 2));
     return;
   }
   if (process.env.E2E_AI_LIVE !== "1") throw new Error("Live semantic canary requires E2E_AI_LIVE=1.");
