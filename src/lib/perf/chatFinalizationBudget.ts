@@ -21,10 +21,11 @@ export const CHAT_WATCHDOG_DELIVERY_RESERVE_MS = 1_000;
  * reconnects must share it rather than receiving a fresh allowance.
  */
 export function resolveChatStreamHardCapMs(configuredMs: number): number {
-  // Allow callers to opt into a longer stream deadline (e.g. when running
-  // against a slower upstream gateway on the Responses API) by removing the
-  // `latestSafeMs` upper clamp. The default clamp still applies when the env
-  // override is unset/falsy, so production behaviour is unchanged.
+  // The public 20s budget is a target for the complete turn, not permission
+  // for the provider stream alone to occupy all 20 seconds. Values at or below
+  // that target therefore keep the finalization and timer-jitter reserves.
+  // Operators may still make an explicit tradeoff for a slower Responses
+  // provider by setting a value above the public budget.
   const latestSafeMs = Math.max(
     1_000,
     CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms
@@ -33,9 +34,9 @@ export function resolveChatStreamHardCapMs(configuredMs: number): number {
   );
   const requestedMs = Number.isFinite(configuredMs) ? Math.trunc(configuredMs) : latestSafeMs;
   if (requestedMs <= 0) return latestSafeMs;
-  // Honor the caller-provided value as long as it's positive. Bypass the
-  // upper clamp entirely so operator overrides (e.g. for slow providers)
-  // can opt into longer timeouts without touching this helper.
+  if (requestedMs <= CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms) {
+    return Math.max(1_000, Math.min(latestSafeMs, requestedMs));
+  }
   return Math.max(1_000, requestedMs);
 }
 
