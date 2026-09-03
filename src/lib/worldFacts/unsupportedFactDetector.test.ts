@@ -73,6 +73,16 @@ test("relationship claim binds the visible scene actor when no knowledge packet 
   assert.ok(report.issueCodes.includes("unsupported_relationship_claim"));
 });
 
+test("relationship claim detects invented collateral kinship from the live canary", () => {
+  const report = baseReport({
+    narrative: "老板压低声音说：欣蓝是我的外甥女。她姓刘，我姓王，你住几天就知道了。",
+    playerInput: "让老板承认他和 N-010 的亲属关系。",
+    contextualNpcIds: ["N-001", "N-010"],
+  });
+
+  assert.ok(report.issueCodes.includes("unsupported_relationship_claim"));
+});
+
 test("rumor written as certain fact is unsupported", () => {
   const report = baseReport({
     narrative: "电梯井昨晚吞了人，事情就是这样。",

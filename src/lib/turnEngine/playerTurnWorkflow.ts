@@ -14,6 +14,8 @@ import {
   type SessionMemoryRow,
 } from "@/lib/memoryCompress";
 import { buildQuotaLimitMessage, checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
+import { shouldEnforceQuotaDenial } from "@/lib/quotaPolicy";
+import { serverConfig } from "@/lib/config/serverConfig";
 import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import {
@@ -1476,7 +1478,10 @@ async function postChatInternal(req: Request, authSession: Promise<PlayerTurnAut
         estimatedTokens: estimated,
       });
       ttftProfile.quotaCheckMs = elapsedMs(quotaCheckStartAt);
-      if (!quotaResult.ok) {
+      if (
+        !quotaResult.ok &&
+        shouldEnforceQuotaDenial(quotaResult.reason, serverConfig.quotaEnforcementEnabled)
+      ) {
         const status = quotaResult.reason === "banned" ? 403 : 429;
         const msg = buildQuotaLimitMessage(quotaResult);
         void recordGenericAnalyticsEvent({

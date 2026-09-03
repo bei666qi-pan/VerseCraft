@@ -189,6 +189,8 @@ export async function runToolLoop(params: {
   invocationBudget?: AiInvocationBudget;
   /** 测试注入点；默认真实 executeChatCompletion。 */
   execute?: ExecuteChatCompletionFn;
+  /** 单调墙钟注入点；仅用于让截止预算测试不依赖调度时序。 */
+  now?: () => number;
 }): Promise<ToolLoopResult> {
   assertToolUseAllowedForTask(params.task);
 
@@ -214,12 +216,13 @@ export async function runToolLoop(params: {
     signal: params.signal,
   };
 
-  const t0 = Date.now();
-  const remainingMs = () => Math.max(0, totalBudgetMs - (Date.now() - t0));
+  const now = params.now ?? Date.now;
+  const t0 = now();
+  const remainingMs = () => Math.max(0, totalBudgetMs - (now() - t0));
   const trace: ToolLoopTrace = { rounds: [], totalToolCalls: 0, failedToolCalls: 0, totalLatencyMs: 0 };
   const receipts: ToolExecutionReceipt[] = [];
   const finishTrace = () => {
-    trace.totalLatencyMs = Date.now() - t0;
+    trace.totalLatencyMs = now() - t0;
     return trace;
   };
 
@@ -256,7 +259,7 @@ export async function runToolLoop(params: {
         trace: finishTrace(),
       };
     }
-    const roundT0 = Date.now();
+    const roundT0 = now();
     const res = await execute({
       task: params.task,
       messages: transcript,
@@ -289,13 +292,13 @@ export async function runToolLoop(params: {
 
     const toolCalls = res.toolCalls ?? [];
     if (toolCalls.length === 0) {
-      trace.rounds.push({ round, latencyMs: Date.now() - roundT0, toolCalls: [] });
+      trace.rounds.push({ round, latencyMs: now() - roundT0, toolCalls: [] });
       return { ok: true, response: res, receipts, trace: finishTrace() };
     }
 
     // 非常规上游：最后一轮已强制 toolChoice="none" 仍返回 tool_calls。
     if (isFinalRound) {
-      trace.rounds.push({ round, latencyMs: Date.now() - roundT0, toolCalls: [] });
+      trace.rounds.push({ round, latencyMs: now() - roundT0, toolCalls: [] });
       if (res.content.trim()) {
         return { ok: true, response: res, receipts, trace: finishTrace() };
       }
@@ -343,7 +346,7 @@ export async function runToolLoop(params: {
       trace.totalToolCalls += 1;
       if (!callTrace.ok) trace.failedToolCalls += 1;
     }
-    trace.rounds.push({ round, latencyMs: Date.now() - roundT0, toolCalls: roundTrace });
+    trace.rounds.push({ round, latencyMs: now() - roundT0, toolCalls: roundTrace });
   }
 
   // maxRounds >= 1 时循环内必然 return；保底返回防御性错误。

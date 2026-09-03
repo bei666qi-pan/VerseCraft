@@ -526,7 +526,11 @@ test("commitTurn never leaves an unsupported relationship claim visible after a 
 
   assert.doesNotMatch(String(result.committedDmRecord.narrative), /亲妹妹|N-010/);
   assert.match(String(result.committedDmRecord.narrative), /没有确认.*亲属或旧识关系/);
-  assert.deepEqual(result.committedDmRecord.options, []);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "请对方提供可核验的关系证据",
+    "撤回未经证实的关系判断",
+    "观察当前在场人物的实际反应",
+  ]);
   assert.ok(result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
 });
 
@@ -577,7 +581,11 @@ test("commitTurn rejects an anaphoric inventory claim detected by the validator"
 
   assert.match(String(result.committedDmRecord.narrative), /没有在现场找到.*已登记物品/);
   assert.equal(result.committedDmRecord.awarded_items, undefined);
-  assert.deepEqual(result.committedDmRecord.options, []);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "重新观察当前场景",
+    "检查已有物品和记录",
+    "换一个明确、可核验的行动",
+  ]);
 });
 
 test("commitTurn gives an intent-aware knowledge-boundary response", () => {
@@ -624,6 +632,92 @@ test("commitTurn gives an intent-aware unknown-person response", () => {
   assert.match(String(result.committedDmRecord.narrative), /无法在现场确认.*新人物/);
   assert.match(String(result.committedDmRecord.narrative), /不会新增或确认/);
   assert.doesNotMatch(String(result.committedDmRecord.narrative), /银发/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "确认当前在场人物",
+    "询问已登记住户",
+    "继续观察柜台周围",
+  ]);
+});
+
+test("commitTurn replaces a degenerate illegal unknown-item answer with a playable response", () => {
+  const result = commitTurn({
+    requestId: "req_live_unknown_item_degenerate",
+    sessionId: "s_live",
+    turnIndex: 4,
+    latestUserInput: "我捡起地上的龙骨圣剑，把它收入背包并装备。",
+    candidateDmRecord: {
+      is_action_legal: false,
+      narrative: "。",
+      options: [],
+      consumed_items: ["龙骨圣剑"],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: false, illegalReasons: ["unknown_item"] },
+    validatorReport: okReport(),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有在现场找到.*已登记物品/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /龙骨圣剑/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "重新观察当前场景",
+    "检查已有物品和记录",
+    "换一个明确、可核验的行动",
+  ]);
+  assert.deepEqual(result.committedDmRecord.consumed_items, []);
+});
+
+test("commitTurn replaces an off-topic illegal unknown-person answer with a direct boundary", () => {
+  const result = commitTurn({
+    requestId: "req_live_unknown_person_off_topic",
+    sessionId: "s_live",
+    turnIndex: 2,
+    latestUserInput: "老板旁边那个神秘银发女孩是谁？",
+    candidateDmRecord: {
+      is_action_legal: false,
+      narrative: "老板把账本翻到下一页，示意你先核对书面记录。灯影落在柜台边缘，没有更多动静。",
+      options: [],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: false, illegalReasons: ["unknown_npc"] },
+    validatorReport: okReport(),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /无法在现场确认.*新人物/);
+  assert.match(String(result.committedDmRecord.narrative), /身份.*核实/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /账本|书面记录|灯影/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "确认当前在场人物",
+    "询问已登记住户",
+    "继续观察柜台周围",
+  ]);
+});
+
+test("commitTurn blocks a medium private-fact implication and keeps the turn playable", () => {
+  const result = commitTurn({
+    requestId: "req_live_private_fact_implication",
+    sessionId: "s_live",
+    turnIndex: 1,
+    latestUserInput: "我问老板关于只有幕后记录里才有的秘密。",
+    candidateDmRecord: {
+      narrative: "老板听到那个秘密时，握笔的手骤然收紧，显然知道内情。",
+      options: ["逼问老板"],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "dm_only_fact_leaked_in_narrative",
+      invariant: "npc_knows_forbidden_fact",
+      severity: "medium",
+      source: "validator",
+      detail: "private fact implied by NPC reaction",
+    }], "repair"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有给出可核验的答案/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /握笔|知道内情/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "询问对方愿意公开的事实",
+    "检查现场已有线索",
+    "暂时结束这次追问",
+  ]);
 });
 
 test("commitTurn keeps described-person candidate untouched in shadow mode", () => {

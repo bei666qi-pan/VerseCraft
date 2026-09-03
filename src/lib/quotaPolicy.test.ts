@@ -8,6 +8,7 @@ import {
   computeDailyTokenLimit,
   formatQuotaRefreshTimeChinese,
   getDailyQuotaWindow,
+  shouldEnforceQuotaDenial,
 } from "@/lib/quotaPolicy";
 
 test("guest token allowance defaults to 500k and prompts registration on limit", () => {
@@ -74,6 +75,13 @@ test("daily quota window uses UTC date keys and advances at the next UTC midnigh
     dateKey: "2026-07-21",
     nextRefreshAt: new Date("2026-07-22T00:00:00.000Z"),
   });
+});
+
+test("internal beta disables only token and action quota denials", () => {
+  assert.equal(shouldEnforceQuotaDenial("token_limit", false), false);
+  assert.equal(shouldEnforceQuotaDenial("action_limit", false), false);
+  assert.equal(shouldEnforceQuotaDenial("banned", false), true);
+  assert.equal(shouldEnforceQuotaDenial("token_limit", true), true);
 });
 
 test("quota denial names the next refresh in Beijing time for users and guests", () => {

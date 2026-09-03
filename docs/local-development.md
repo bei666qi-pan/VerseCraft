@@ -47,6 +47,7 @@ pnpm test:unit
 - `AI_PLAYER_ROLE_CHAIN`、`AI_REQUEST_TIMEOUT_MS`、`AI_ENABLE_STREAM`、`AI_LOG_LEVEL` 等（见 `.env.example`）
 - `MIGRATE_ON_BOOT`（默认 `1`）
 - `RUNTIME_SCHEMA_ENSURE`（默认 `1`）
+- `QUOTA_ENFORCEMENT_ENABLED`（生产环境内测期默认关闭；设为 `1` 可恢复每日额度拦截，账号封禁始终生效）
 - `DAILY_TOKEN_LIMIT`（注册用户默认 `1000000`）
 - `GUEST_DAILY_TOKEN_LIMIT`（游客默认 `500000`）
 - `SURVEY_BONUS_DAILY_TOKEN_LIMIT`（注册用户填写问卷后当日额外 `1000000`）
