@@ -37,18 +37,11 @@ test.describe("Admin dashboard performance baseline", () => {
     await expect(page.locator("body")).toBeVisible({ timeout: 15_000 });
 
     // 这里的目标是“页面能稳定完成首屏渲染”，而不是在本地降级环境里做 FPS/longtask。
-    // 本地降级可能不会渲染固定的中文标题，因此改为等待稳定 DOM 结构：
-    // - 正常：页面会有范围选择的 `<select>`
-    // - 降级：fallback UI 会包含 `<a href="/saiduhsa">刷新重试</a>`
-    const dashboardRangeSelect = page.locator("select").first();
-    const fallbackRetryLink = page.locator('a[href="/saiduhsa"]').first();
-    try {
-      await dashboardRangeSelect.waitFor({ timeout: 20_000 });
-    } catch {
-      await fallbackRetryLink.waitFor({ timeout: 20_000 });
-    }
+    // 正常与数据库离线降级都保留同一组确定性范围操作，避免测试绑定已删除的
+    // `<select>`/整页 fallback 旧实现。
+    await page.getByRole("button", { name: "今日", exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: "刷新", exact: true }).waitFor({ timeout: 20_000 });
 
     expect(errors.length, `page errors: ${errors.join(" | ")}`).toBe(0);
   });
 });
-
