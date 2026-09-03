@@ -22,6 +22,8 @@
 
 每次生产部署都由发布工作流将完整 Git commit SHA 写入 **`BUILD_ID`**。客户端会轮询 `GET /api/build-id`，发现变化后自动 `reload`；发布门禁必须同时确认 Gitee 分支 SHA 一致、Coolify 应用为 `running:healthy`、公网 health 业务 JSON 健康且 `/api/build-id` 与目标 SHA 精确一致，不再把旧容器的 HTTP 200 当成发布成功。
 
+生产发布还会使用 GitHub 加密密钥构造十分钟有效的后台签名会话，验证 `/api/admin/overview` 返回非降级业务数据；密码与会话 Cookie 均不会写入日志或仓库。
+
 - 验证：`GET /api/build-id` 返回的 `buildId` 在每次部署后应变化。
 
 ## 方案 A：使用 Dockerfile
