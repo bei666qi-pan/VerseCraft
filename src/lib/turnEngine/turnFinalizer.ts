@@ -5,6 +5,8 @@ import {
 } from "./commitTurn";
 import type { CommittedTurnReceipt, TurnLane } from "./contracts";
 import type { MapId } from "@/lib/worlds/types";
+import { enrichOptionsFromNarrative } from "@/lib/playRealtime/legalTurnOptionsFallback";
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 
 export type TurnFinalizationInput = CommitTurnArgs & {
   worldId: NonNullable<CommitTurnArgs["worldId"]>;
@@ -26,6 +28,28 @@ export interface TurnFinalizer {
     finalRecord?: Record<string, unknown>,
   ): Promise<TurnFinalizationResult>;
   finalize(input: TurnFinalizationInput): Promise<TurnFinalizationResult>;
+}
+
+function projectDeterministicPlayerOptions(record: Record<string, unknown>): Record<string, unknown> {
+  const current = filterNarrativeActionOptions(
+    Array.isArray(record.options) ? record.options.filter((item): item is string => typeof item === "string") : [],
+    4,
+  );
+  if (current.length >= 3) return record;
+
+  const fallback = enrichOptionsFromNarrative({
+    currentOptions: [],
+    narrative: typeof record.narrative === "string" ? record.narrative : "",
+  });
+  const merged = filterNarrativeActionOptions(
+    [...new Set([...current, ...fallback].map((item) => item.trim()).filter(Boolean))],
+    4,
+  );
+  const projected: Record<string, unknown> = { ...record, options: merged };
+  if (record.decision_required === true || record.turn_mode === "decision_required") {
+    projected.decision_options = merged;
+  }
+  return projected;
 }
 
 export function createTurnFinalizer(deps: {
@@ -76,11 +100,12 @@ export function createTurnFinalizer(deps: {
     if (existing) return existing;
 
     const published = (async (): Promise<TurnFinalizationResult> => {
-      await deps.emitFinal(finalRecord);
-      const result = { ...prepared, committedDmRecord: finalRecord };
+      const playerFacingRecord = projectDeterministicPlayerOptions(finalRecord);
+      await deps.emitFinal(playerFacingRecord);
+      const result = { ...prepared, committedDmRecord: playerFacingRecord };
       // Director work starts only after FINAL and is intentionally off the online latency path.
       void Promise.resolve(
-        deps.enqueueDirector(prepared.receipt, finalRecord, prepared.summary),
+        deps.enqueueDirector(prepared.receipt, playerFacingRecord, prepared.summary),
       ).catch((error) => deps.onBackgroundError?.(error));
       return result;
     })();

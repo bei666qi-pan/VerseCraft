@@ -98,6 +98,42 @@ test("prepared commit stays private until the same finalizer publishes it", asyn
 
   assert.equal(finals, 1);
   assert.equal(jobs, 1);
-  assert.deepEqual(first.committedDmRecord, { narrative: "post-processed" });
+  assert.equal(first.committedDmRecord.narrative, "post-processed");
+  assert.equal((first.committedDmRecord.options as unknown[]).length, 4);
   assert.equal(first.receipt.id, replay.receipt.id);
+});
+
+test("Finalizer projects at least three deterministic player options without another model call", async () => {
+  let emitted: Record<string, unknown> | null = null;
+  let directed: Record<string, unknown> | null = null;
+  const finalizer = createTurnFinalizer({
+    commit: () => ({
+      committedDmRecord: { narrative: "走廊尽头传来危险的脚步声。", options: [] },
+      summary: { commitFlags: [] } as unknown as CommitTurnResult["summary"],
+    }),
+    emitFinal: async (record) => { emitted = record; },
+    enqueueDirector: async (_receipt, record) => { directed = record; },
+  });
+
+  const result = await finalizer.finalize(input);
+  const options = result.committedDmRecord.options;
+  assert.ok(Array.isArray(options));
+  assert.equal(options.length, 4);
+  assert.deepEqual(emitted, result.committedDmRecord);
+  assert.deepEqual(directed, result.committedDmRecord);
+});
+
+test("Finalizer preserves an already playable model option set", async () => {
+  const modelOptions = ["我检查门锁。", "我退回灯下。", "我询问身边的人。"];
+  const finalizer = createTurnFinalizer({
+    commit: () => ({
+      committedDmRecord: { narrative: "门后没有声音。", options: modelOptions },
+      summary: { commitFlags: [] } as unknown as CommitTurnResult["summary"],
+    }),
+    emitFinal: async () => {},
+    enqueueDirector: async () => {},
+  });
+
+  const result = await finalizer.finalize(input);
+  assert.deepEqual(result.committedDmRecord.options, modelOptions);
 });
