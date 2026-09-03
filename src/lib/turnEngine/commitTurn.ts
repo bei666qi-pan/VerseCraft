@@ -158,6 +158,7 @@ function getSafeNarrativeVariant(language: GameLanguage, turnIndex: number, worl
   return variants[turnIndex % variants.length] ?? getUnknownEntitySafeNarrative(language, worldId);
 }
 
+const ITEM_ACQUISITION_INTENT_RE = /(捡起|拾起|获得|拿到|收入背包|加入背包|pick up|obtain|add to inventory)/i;
 const ITEM_ACTION_RE = /(捡起|拾起|获得|拿到|收入背包|加入背包|装备|pick up|obtain|add to inventory|equip)/i;
 const UNKNOWN_PERSON_INTENT_RE = /(?:(?:旁边|身边|那个|那位|这位|神秘|陌生|银发).{0,16}(?:女孩|女子|少女|姑娘|男人|男子|老人|孩子|人影|人物)|(?:女孩|女子|少女|姑娘|男人|男子|老人|孩子|人影|人物).{0,12}(?:是谁|身份)|who\s+is\s+(?:that|the).{0,24}(?:girl|woman|man|person))/i;
 const UNKNOWN_PERSON_BOUNDARY_RE = /(?:(?:无法|不能|尚难|未能|不足以).{0,18}(?:确认|核实|辨认).{0,18}(?:身份|人物|来者|女孩|女子|少女|姑娘|男人|男子|人影)|(?:identity|person).{0,24}(?:unverified|cannot be confirmed))/i;
@@ -219,18 +220,6 @@ function getIntentAwareSafetyOptions(args: {
       : ["确认当前在场人物", "询问已登记住户", "继续观察柜台周围"];
   }
   return [];
-}
-
-function isDegenerateNarrative(value: unknown): boolean {
-  const meaningful = String(value ?? "").replace(/[\p{P}\p{S}\s]/gu, "");
-  return meaningful.length < 6;
-}
-
-function wasAcquisitionDowngraded(record: Record<string, unknown>): boolean {
-  const securityMeta = record.security_meta;
-  if (!securityMeta || typeof securityMeta !== "object" || Array.isArray(securityMeta)) return false;
-  return String((securityMeta as Record<string, unknown>).consistency_warning ?? "")
-    .startsWith("acquire_without_awards");
 }
 
 function hasUnsupportedItemAcquisition(report?: NarrativeSafetyReport | null): boolean {
@@ -725,9 +714,12 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     flags.add("safe_narrative_fallback_applied");
   } else if (
     delta.isActionLegal === false &&
-    ITEM_ACTION_RE.test(String(args.latestUserInput ?? "")) &&
-    (isDegenerateNarrative(committed.narrative) || wasAcquisitionDowngraded(committed))
+    ITEM_ACQUISITION_INTENT_RE.test(String(args.latestUserInput ?? ""))
   ) {
+    // An illegal item-acquisition turn must never echo the player's invented
+    // item through an otherwise fluent model denial. The player input itself
+    // is untrusted, while this deterministic copy contains no candidate names
+    // and preserves a playable next step.
     committed = {
       ...committed,
       narrative: getUnknownItemSafeNarrative(gameLanguage),

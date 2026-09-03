@@ -33,8 +33,11 @@ test("provider stream rounds share an absolute cap that leaves finalization rese
   assert.equal(resolveChatStreamHardCapMs(7_000), 7_000);
   assert.equal(
     resolveChatStreamHardCapMs(CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms),
-    CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
+    CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms
+      - CHAT_FINALIZATION_RESERVE_MS
+      - CHAT_STREAM_TIMER_JITTER_RESERVE_MS,
   );
+  assert.equal(resolveChatStreamHardCapMs(35_000), 35_000);
 });
 
 test("stream idle timeout uses the full final budget instead of the p50 target", () => {

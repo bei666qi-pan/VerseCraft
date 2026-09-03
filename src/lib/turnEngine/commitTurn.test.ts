@@ -724,6 +724,30 @@ test("commitTurn removes an unknown item name from a downgraded live denial", ()
   ]);
 });
 
+test("commitTurn never echoes a requested unknown item from a non-degenerate illegal denial", () => {
+  const result = commitTurn({
+    requestId: "req_live_unknown_item_explicit_denial",
+    sessionId: "s_live",
+    turnIndex: 4,
+    latestUserInput: "我捡起地上的龙骨圣剑，把它收入背包并装备。",
+    candidateDmRecord: {
+      is_action_legal: false,
+      narrative: "当前场景不存在龙骨圣剑，系统拒绝该行动。我摸索地面后站起身。",
+      options: [],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: false },
+    validatorReport: okReport(),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有在现场找到.*已登记物品/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /龙骨圣剑|系统拒绝/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "重新观察当前场景",
+    "检查已有物品和记录",
+    "换一个明确、可核验的行动",
+  ]);
+});
+
 test("commitTurn replaces an off-topic illegal unknown-person answer with a direct boundary", () => {
   const result = commitTurn({
     requestId: "req_live_unknown_person_off_topic",
