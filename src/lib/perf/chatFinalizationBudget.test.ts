@@ -5,6 +5,7 @@ import {
   CHAT_STREAM_TIMER_JITTER_RESERVE_MS,
   CHAT_WATCHDOG_DELIVERY_RESERVE_MS,
   resolveChatStreamHardCapMs,
+  resolveChatStreamIdleTimeoutMs,
   resolveChatTurnWatchdogMs,
   resolveOptionalEnhanceBudgetMs,
 } from "./chatFinalizationBudget";
@@ -34,6 +35,15 @@ test("provider stream rounds share an absolute cap that leaves finalization rese
     resolveChatStreamHardCapMs(CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms),
     CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
   );
+});
+
+test("stream idle timeout uses the full final budget instead of the p50 target", () => {
+  assert.equal(
+    resolveChatStreamIdleTimeoutMs(CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms),
+    CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms,
+  );
+  assert.equal(resolveChatStreamIdleTimeoutMs(900), 1_000);
+  assert.equal(resolveChatStreamIdleTimeoutMs(45_000), CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms);
 });
 
 test("optional enhancement runs only when the full configured budget and final reserve remain", () => {
