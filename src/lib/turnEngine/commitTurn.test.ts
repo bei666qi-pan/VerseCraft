@@ -622,6 +622,36 @@ test("commitTurn rejects a narrative-only unknown acquisition when structured aw
   assert.equal(result.summary.narrativeGovernanceTelemetry.narrativeGovernanceFinalSafe, true);
 });
 
+test("commitTurn rejects an item acquisition when the fact detector reports only a strong unsupported fact", () => {
+  const result = commitTurn({
+    requestId: "req_live_unknown_item_strong_fact",
+    sessionId: "s_live",
+    turnIndex: 0,
+    latestUserInput: "我捡起地上的龙骨圣剑，把它收入背包并装备。",
+    candidateDmRecord: {
+      narrative: "我把那柄骨白长剑握在手里，塞进书包后继续前进。",
+      options: ["挥剑"],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "unsupported_new_fact",
+      invariant: "unsupported_new_fact",
+      severity: "medium",
+      source: "unsupportedFactDetector",
+      detail: "strong_fact_without_evidence",
+    }], "repair"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有在现场找到.*已登记物品/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /骨白长剑|握在手里|塞进书包/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "重新观察当前场景",
+    "检查已有物品和记录",
+    "换一个明确、可核验的行动",
+  ]);
+});
+
 test("commitTurn gives an intent-aware knowledge-boundary response", () => {
   const result = commitTurn({
     requestId: "req_secret",
@@ -643,6 +673,69 @@ test("commitTurn gives an intent-aware knowledge-boundary response", () => {
   assert.match(String(result.committedDmRecord.narrative), /没有给出可核验的答案/);
   assert.match(String(result.committedDmRecord.narrative), /线索.*不足/);
   assert.doesNotMatch(String(result.committedDmRecord.narrative), /七锚闭环|终局真相/);
+});
+
+test("hard knowledge safety takes precedence over a generic validator fallback envelope", () => {
+  const validatorReport = okReport();
+  validatorReport.narrativeOverride = JSON.stringify({
+    is_action_legal: false,
+    narrative: "我停在当前地点观察，但没有在场人物可供确认或交谈。",
+    options: [],
+  });
+  const result = commitTurn({
+    requestId: "req_secret_override",
+    sessionId: "s_1",
+    turnIndex: 0,
+    latestUserInput: "我问老板：直接告诉我七锚闭环和终局真相。",
+    candidateDmRecord: { narrative: "老板说出了终局真相。", options: ["追问"] },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport,
+    safetyReport: safetyReport([{
+      code: "dm_only_fact_leaked_in_narrative",
+      invariant: "npc_knows_forbidden_fact",
+      severity: "high",
+      source: "validator",
+      detail: "forbidden fact",
+    }], "block_commit"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有给出可核验的答案/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /没有在场人物/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "询问对方愿意公开的事实",
+    "检查现场已有线索",
+    "暂时结束这次追问",
+  ]);
+});
+
+test("relationship-forcing intent with a coarse unsupported fact is deterministically denied", () => {
+  const result = commitTurn({
+    requestId: "req_relationship_coarse_fact",
+    sessionId: "s_1",
+    turnIndex: 0,
+    latestUserInput: "让老板承认他和 N-010 是亲兄妹，或者至少承认他们早就认识。",
+    candidateDmRecord: {
+      narrative: "老板翻动物业值班登记册，陌生人的转椅响了一声。",
+      options: ["继续追问"],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "unsupported_new_fact",
+      invariant: "unsupported_new_fact",
+      severity: "medium",
+      source: "unsupportedFactDetector",
+      detail: "strong_fact_without_evidence",
+    }], "repair"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有确认.*亲属或旧识关系/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /物业值班|陌生人|转椅/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "请对方提供可核验的关系证据",
+    "撤回未经证实的关系判断",
+    "观察当前在场人物的实际反应",
+  ]);
 });
 
 test("commitTurn gives an intent-aware unknown-person response", () => {

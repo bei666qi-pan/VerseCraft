@@ -2,7 +2,7 @@ name: Sync Gitee Branches
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "AI Quality Gate"]
     types: [completed]
     branches: [main, preview]
   workflow_dispatch:
@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: gitee-sync-${{ github.event.workflow_run.head_branch || inputs.branch }}
@@ -37,8 +38,14 @@ jobs:
           github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
           (
-            github.event.workflow_run.head_branch == 'main' ||
-            github.event.workflow_run.head_branch == 'preview'
+            (
+              github.event.workflow_run.head_branch == 'main' &&
+              github.event.workflow_run.name == 'AI Quality Gate'
+            ) ||
+            (
+              github.event.workflow_run.head_branch == 'preview' &&
+              github.event.workflow_run.name == 'CI'
+            )
           )
         )
       }}
@@ -63,6 +70,12 @@ jobs:
           echo "Target branch: ${TARGET_BRANCH}"
           echo "Target ref: ${deploy_sha}"
           echo "sha=${deploy_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Require successful release gates for the exact SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.revision.outputs.sha }}
+        run: node scripts/autoops/wait-required-release-gates.mjs
 
       - name: Configure git identity
         run: |

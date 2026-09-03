@@ -13,3 +13,11 @@ Director planning is limited to one model invocation per eligible tick. Actor co
 The Writer model emits only `narrative`, four candidate `options`, `turn_mode` and `decision_required` through the single `submit_narrative` terminal tool. The former state-bearing full DM JSON terminal, its feature switch and its compatibility retry are removed. Server code projects safe defaults, Mechanics receipts carry registered state deltas, and the sole Turn Finalizer remains the only commit authority.
 
 This reduces schema decoding work, removes a second failure/retry path and makes state ownership enforceable in code. Live acceptance measures the first concrete narrative character separately from JSON/tool protocol bytes: p95 remains at most 5 seconds and no turn may exceed 8 seconds. Options maintenance is deterministic and has one 5-second client/server ceiling.
+
+The terminal tool is only a narrow transport envelope. Its argument deltas are
+forwarded through the existing SSE candidate stream so the client can extract
+`narrative` incrementally; they are never held until FINAL. That preview is
+non-authoritative and is always replaced by the sole Finalizer's FINAL frame.
+When a fact guard rejects a state change, the same deterministic commit step
+must subtract the corresponding prose claim as well as the structured delta;
+state-safe but narratively false split-brain turns are forbidden.

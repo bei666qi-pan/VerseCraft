@@ -4,7 +4,7 @@
 
 - Read `CONTEXT.md` before changing narrative-runtime terms.
 - Architecture decisions live in `docs/adr/`: [ADR-0001](docs/adr/0001-single-turn-and-director-workflows.md) defines the workflows, [ADR-0002](docs/adr/0002-director-storage-and-save-migration.md) defines storage convergence and legacy-save migration, and [ADR-0003](docs/adr/0003-no-online-turn-response-cache.md) prohibits cached turn responses from bypassing the sole Finalizer.
-- ADR-0001 was amended on 2026-09-03: Writer has one four-field narrative-candidate wire contract; the full DM JSON terminal and compatibility retry no longer exist.
+- ADR-0001 was amended on 2026-09-03: Writer has one four-field narrative-candidate wire contract; terminal argument deltas stream as a non-authoritative preview, the Finalizer subtracts rejected claims from prose and state together, and the full DM JSON terminal and compatibility retry no longer exist.
 - Code and executable tests describe current behavior. `openspec/specs/` describes accepted behavior; an active change is not proof of implementation.
 - Use simplified Chinese in user-facing work. Never fabricate test, deployment or live-integration success.
 
@@ -55,4 +55,5 @@
 - Relevant behavior tests, lint, typecheck and build are hard gates; timeouts, warnings-as-success and skipped required checks are failures.
 - Turn/AI/Director changes also require SSE contracts, mock chat benchmark, Director/Social World/NPC consistency/narrative safety evaluation and dual-world scenarios.
 - Deploy only through feature branch → GitHub PR → GitHub main → Gitee mirror → Coolify.
+- A main release requires successful `CI` and `AI Quality Gate` runs for the exact push SHA; neither a manual dispatch nor a successful CI alone may bypass that pair.
 - Production completion requires deployment `finished`, application `running:healthy`, business health JSON, public build ID matching the target SHA, and real browser acceptance.

@@ -20,21 +20,6 @@ on:
       - ".github/workflows/ai-quality-gate.yml"
   push:
     branches: [main]
-    paths:
-      - "src/app/api/chat/**"
-      - "src/lib/ai/**"
-      - "src/lib/epistemic/**"
-      - "src/lib/evals/**"
-      - "src/lib/narrativeEngine/**"
-      - "src/lib/npcConsistency/**"
-      - "src/lib/playRealtime/**"
-      - "src/lib/registry/**"
-      - "src/lib/turnEngine/**"
-      - "scripts/eval-*.ts"
-      - "scripts/assert-eval-report.mjs"
-      - "scripts/assert-eval-report.test.mjs"
-      - "benchmarks/**"
-      - ".github/workflows/ai-quality-gate.yml"
   schedule:
     # Twice weekly rather than nightly: keeps drift detection while limiting spend.
     - cron: "43 20 * * 1,4"
