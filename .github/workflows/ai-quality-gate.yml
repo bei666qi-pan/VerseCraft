@@ -99,11 +99,27 @@ jobs:
     needs: offline-hard-gates
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       CI: "true"
       AUTH_SECRET: ci-ai-quality-auth-secret-at-least-32-characters
       DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
       REDIS_URL: ""
+      RUNTIME_SCHEMA_ENSURE: "1"
+      AI_CONFIG_ENCRYPTION_KEY: ci-ai-config-encryption-key-32-bytes
       E2E_AI_LIVE: "1"
       BENCHMARK_BASE_URL: http://127.0.0.1:3000
       PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
