@@ -28,6 +28,14 @@ export type DailyQuotaWindow = {
   nextRefreshAt: Date;
 };
 
+/** Internal-beta policy: disabling daily quotas never disables account bans. */
+export function shouldEnforceQuotaDenial(
+  reason: QuotaDenialReason,
+  enforcementEnabled: boolean
+): boolean {
+  return reason === "banned" || enforcementEnabled;
+}
+
 function safeNonNegativeInt(value: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(0, Math.trunc(value));

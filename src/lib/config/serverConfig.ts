@@ -46,6 +46,8 @@ export interface ServerConfig {
   guestDailyTokenLimit: number;
   surveyBonusDailyTokenLimit: number;
   dailyActionLimit: number;
+  /** Daily token/action quota gate. Production defaults off during internal beta; bans remain enforced. */
+  quotaEnforcementEnabled: boolean;
   securityModerationEnabled: boolean;
   securityModerationProvider: string;
   securityModerationTimeoutMs: number;
@@ -109,6 +111,7 @@ function loadServerConfig(): ServerConfig {
       DEFAULT_SURVEY_BONUS_DAILY_TOKEN_LIMIT
     ),
     dailyActionLimit: envNumber("DAILY_ACTION_LIMIT", 200),
+    quotaEnforcementEnabled: envBoolean("QUOTA_ENFORCEMENT_ENABLED", nodeEnv !== "production"),
     securityModerationEnabled: moderationEnabled,
     securityModerationProvider: moderationProvider,
     securityModerationTimeoutMs: moderationTimeoutMs,

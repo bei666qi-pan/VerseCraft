@@ -58,6 +58,7 @@
 - 详见 [`docs/ai-gateway.md`](ai-gateway.md)
 - `MIGRATE_ON_BOOT=1`
 - `RUNTIME_SCHEMA_ENSURE=1`
+- `QUOTA_ENFORCEMENT_ENABLED=0`（内测期关闭每日 Token/动作额度拦截；封禁、安全限流、单回合调用与超时护栏仍生效）
 - `DAILY_TOKEN_LIMIT=1000000`（注册用户每日 Token 上限，可选）
 - `GUEST_DAILY_TOKEN_LIMIT=500000`（游客每日 Token 上限，可选）
 - `SURVEY_BONUS_DAILY_TOKEN_LIMIT=1000000`（注册用户填写问卷后的当日额外额度，可选）

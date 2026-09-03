@@ -305,10 +305,11 @@ test("runToolLoop: AI 错误直接返回 AI_ERROR 并携带 lastError", async ()
 
 test("runToolLoop: 总预算耗尽返回 BUDGET_EXHAUSTED 而不是发起必败请求", async () => {
   let call = 0;
+  let nowMs = 0;
   const fakeExecute: ExecuteChatCompletionFn = async () => {
     call += 1;
-    // 第一轮慢调用吃掉预算
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    // 确定性推进墙钟，避免 CI 并行负载让首轮调用数发生漂移。
+    nowMs += 1;
     return okResponse({ toolCalls: [toolCall("c1", "echo", {})] });
   };
   const result = await runToolLoop({
@@ -318,6 +319,7 @@ test("runToolLoop: 总预算耗尽返回 BUDGET_EXHAUSTED 而不是发起必败�
     ctx: CTX,
     maxRounds: 5,
     totalBudgetMs: 1_500, // 等于 MIN_ROUND_BUDGET_MS 下限：第一轮后剩余预算必然不足
+    now: () => nowMs,
     execute: fakeExecute,
   });
   assert.equal(result.ok, false);
