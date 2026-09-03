@@ -101,8 +101,8 @@
     "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"inventory\":[],\"registeredItems\":[\"手机\",\"钥匙串\"]}",
     "mockScenario": "normal_stream",
     "expect": {
-      "forbiddenItemTerms": ["获得龙骨圣剑", "捡起龙骨圣剑", "龙骨圣剑加入", "装备龙骨圣剑"],
-      "forbiddenStructuredFields": ["awarded_items", "awarded_warehouse_items", "weapon_updates", "weapon_bag_updates", "dm_change_set"]
+      "forbiddenItemTerms": ["龙骨圣剑"],
+      "forbiddenStructuredFields": ["awarded_items", "awarded_warehouse_items", "consumed_items", "consumed_warehouse_items", "weapon_updates", "weapon_bag_updates", "dm_change_set"]
     }
   },
   {

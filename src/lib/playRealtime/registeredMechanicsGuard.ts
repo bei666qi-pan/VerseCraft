@@ -48,6 +48,7 @@ const ACQUISITION_SEMANTICS_RE =
 
 function pruneUnregisteredAwards(record: RecordLike): RecordLike {
   let pruned = false;
+  let consumedPruned = false;
   const prunedNames: string[] = [];
   const filterField = (value: unknown, isRegistered: (id: string) => boolean): unknown[] => {
     if (!Array.isArray(value)) return [];
@@ -75,14 +76,32 @@ function pruneUnregisteredAwards(record: RecordLike): RecordLike {
   const next = { ...record };
   const hadItems = Array.isArray(record.awarded_items) && (record.awarded_items as unknown[]).length > 0;
   const hadWarehouse = Array.isArray(record.awarded_warehouse_items) && (record.awarded_warehouse_items as unknown[]).length > 0;
+  const hadConsumedItems = Array.isArray(record.consumed_items) && (record.consumed_items as unknown[]).length > 0;
+  const hadConsumedWarehouse =
+    Array.isArray(record.consumed_warehouse_items) && (record.consumed_warehouse_items as unknown[]).length > 0;
   if (hadItems) {
     next.awarded_items = filterField(record.awarded_items, (id) => findRegisteredItemById(id) !== undefined);
   }
   if (hadWarehouse) {
     next.awarded_warehouse_items = filterField(record.awarded_warehouse_items, (id) => REGISTERED_WAREHOUSE_ITEM_IDS.has(id));
   }
+  if (hadConsumedItems) {
+    next.consumed_items = filterField(record.consumed_items, (id) => findRegisteredItemById(id) !== undefined);
+    consumedPruned = (next.consumed_items as unknown[]).length !== (record.consumed_items as unknown[]).length;
+  }
+  if (hadConsumedWarehouse) {
+    next.consumed_warehouse_items = filterField(
+      record.consumed_warehouse_items,
+      (id) => REGISTERED_WAREHOUSE_ITEM_IDS.has(id),
+    );
+    consumedPruned = consumedPruned ||
+      (next.consumed_warehouse_items as unknown[]).length !== (record.consumed_warehouse_items as unknown[]).length;
+  }
   if (pruned) {
     next._commit_flags = [...strings(record._commit_flags), "unregistered_item_pruned_v1"];
+    if (consumedPruned) {
+      next._commit_flags = [...strings(next._commit_flags), "unregistered_consumed_item_pruned_v1"];
+    }
 
     const remaining =
       (Array.isArray(next.awarded_items) ? (next.awarded_items as unknown[]).length : 0) +
