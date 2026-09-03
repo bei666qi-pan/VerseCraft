@@ -32,7 +32,10 @@ export function planApplicationEnvMutation(result, key, value) {
       key,
       value,
       is_preview: false,
-      is_build_time: false,
+      // Coolify's public API spells this field without an underscore.
+      // Sending `is_build_time` is rejected with 422 and the base-URL
+      // fallback used to obscure that response as a later 404.
+      is_buildtime: false,
       is_literal: true,
     },
   };

@@ -18,7 +18,7 @@ test("Coolify env sync reads first, PATCHes existing keys and POSTs missing keys
     key: "ADMIN_PASSWORD",
     value: "new-secret",
     is_preview: false,
-    is_build_time: false,
+    is_buildtime: false,
     is_literal: true,
   });
 

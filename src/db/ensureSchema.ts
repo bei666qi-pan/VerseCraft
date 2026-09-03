@@ -3,6 +3,7 @@ import "server-only";
 import { pool } from "@/db/index";
 import { env } from "@/lib/env";
 import { envNumber } from "@/lib/config/envRaw";
+import { resolveManagedBootstrapGenerationConfig } from "@/lib/ai/managed/bootstrapEnv";
 import {
   buildWorldKnowledgeChunksIvfflatIndexSql,
   parsePgVectorDimension,
@@ -1272,22 +1273,18 @@ async function bootstrapDefaultManagedAiConfig(client: { query: (sql: string, pa
     const count = Number(countRes.rows?.[0]?.count ?? 0);
     if (count > 0) return;
 
-    const deepseekKey = (process.env.DEEPSEEK_API_KEY || "").trim();
     const arkEmbeddingKey = (process.env.ARK_EMBEDDING_API_KEY || process.env.AI_EMBEDDING_API_KEY || "").trim();
-    const arkGatewayKey = (process.env.ARK_GATEWAY_API_KEY || process.env.AI_GATEWAY_API_KEY || deepseekKey).trim();
+    const generation = resolveManagedBootstrapGenerationConfig(process.env);
 
-    if (arkGatewayKey || deepseekKey) {
-      const serviceId = "volcengine-ark-responses";
-      const modelId = "deepseek-v4-flash-ark";
-      const keyToUse = arkGatewayKey || deepseekKey;
-      const encrypted = encryptApiKey(keyToUse, serviceId);
+    if (generation) {
+      const encrypted = encryptApiKey(generation.apiKey, generation.serviceId);
 
       await client.query(
         `INSERT INTO ai_service_connections
            (id, name, base_url, transport, enabled, encrypted_api_key, key_last_four, created_at, updated_at)
          VALUES ($1, $2, $3, $4, TRUE, $5, $6, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING;`,
-        [serviceId, "Volcengine Ark Responses (deepseek-v4-flash)", "https://ark.cn-beijing.volces.com/api/plan/v3", "openai_responses", encrypted, keyToUse.slice(-4)]
+        [generation.serviceId, generation.serviceName, generation.baseUrl, generation.transport, encrypted, generation.apiKey.slice(-4)]
       );
 
       await client.query(
@@ -1295,28 +1292,8 @@ async function bootstrapDefaultManagedAiConfig(client: { query: (sql: string, pa
            (id, service_id, name, upstream_model, capability, enabled, embedding_dimension, created_at, updated_at)
          VALUES ($1, $2, $3, $4, 'generation', TRUE, NULL, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING;`,
-        [modelId, serviceId, "deepseek-v4-flash", "deepseek-v4-flash"]
+        [generation.modelId, generation.serviceId, generation.model, generation.model]
       );
-
-      if (deepseekKey) {
-        const directSvcId = "deepseek-direct";
-        const directModelId = "deepseek-v4-flash";
-        const directEncrypted = encryptApiKey(deepseekKey, directSvcId);
-        await client.query(
-          `INSERT INTO ai_service_connections
-             (id, name, base_url, transport, enabled, encrypted_api_key, key_last_four, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, TRUE, $5, $6, NOW(), NOW())
-           ON CONFLICT (id) DO NOTHING;`,
-          [directSvcId, "DeepSeek 直连", "https://api.deepseek.com", "openai_compatible", directEncrypted, deepseekKey.slice(-4)]
-        );
-        await client.query(
-          `INSERT INTO ai_service_models
-             (id, service_id, name, upstream_model, capability, enabled, embedding_dimension, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'generation', TRUE, NULL, NOW(), NOW())
-           ON CONFLICT (id) DO NOTHING;`,
-          [directModelId, directSvcId, "DeepSeek V4 Flash", "deepseek-v4-flash"]
-        );
-      }
 
       if (arkEmbeddingKey) {
         const embedSvcId = "volcengine-ark-embeddings";
@@ -1349,7 +1326,7 @@ async function bootstrapDefaultManagedAiConfig(client: { query: (sql: string, pa
           `INSERT INTO ai_route_assignments (purpose, priority, model_id)
            VALUES ($1, 0, $2)
            ON CONFLICT (purpose, priority) DO NOTHING;`,
-          [purpose, modelId]
+          [purpose, generation.modelId]
         );
       }
 
