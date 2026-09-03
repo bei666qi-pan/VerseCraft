@@ -233,6 +233,14 @@ function wasAcquisitionDowngraded(record: Record<string, unknown>): boolean {
     .startsWith("acquire_without_awards");
 }
 
+function hasUnsupportedItemAcquisition(report?: NarrativeSafetyReport | null): boolean {
+  return Boolean(report?.issues.some((issue) => {
+    if (issue.code === "inventory_conflict") return true;
+    if (issue.code !== "unsupported_new_fact") return false;
+    return String(issue.detail ?? "").includes("item_acquisition_without_fact_or_award");
+  }));
+}
+
 function getIntentAwareSafetyNarrative(args: {
   language: GameLanguage;
   worldId?: WorldId;
@@ -694,6 +702,27 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
       preserveStateFields: !hardBlockCommit,
     });
     flags.add(isFallbackEnvelope ? "safe_narrative_fallback_applied" : "narrative_rewrite_applied");
+  } else if (
+    safetyEnforcement.enabled &&
+    safetyEnforcement.mode !== "shadow" &&
+    ITEM_ACTION_RE.test(String(args.latestUserInput ?? "")) &&
+    hasUnsupportedItemAcquisition(args.safetyReport)
+  ) {
+    // A medium-severity unsupported-fact repair is enough to reject prose that
+    // claims an acquisition while every authoritative award field is empty.
+    // This catches narrative-only hallucinations without adding another model
+    // call or depending on an optional consistency-warning envelope.
+    committed = {
+      ...committed,
+      narrative: getUnknownItemSafeNarrative(gameLanguage),
+      options: getIntentAwareSafetyOptions({
+        language: gameLanguage,
+        latestUserInput: args.latestUserInput,
+        report: args.safetyReport,
+        forcedIntent: "item",
+      }),
+    };
+    flags.add("safe_narrative_fallback_applied");
   } else if (
     delta.isActionLegal === false &&
     ITEM_ACTION_RE.test(String(args.latestUserInput ?? "")) &&

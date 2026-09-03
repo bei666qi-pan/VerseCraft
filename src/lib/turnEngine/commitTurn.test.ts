@@ -588,6 +588,40 @@ test("commitTurn rejects an anaphoric inventory claim detected by the validator"
   ]);
 });
 
+test("commitTurn rejects a narrative-only unknown acquisition when structured awards are empty", () => {
+  const result = commitTurn({
+    requestId: "req_live_unknown_item_narrative_only",
+    sessionId: "s_live",
+    turnIndex: 0,
+    latestUserInput: "我捡起地上的龙骨圣剑，把它收入背包并装备。",
+    candidateDmRecord: {
+      is_action_legal: true,
+      narrative: "龙骨圣剑被我纳入行囊，装备完成的刹那，走廊里的灯逐盏熄灭。",
+      options: ["挥剑"],
+      awarded_items: [],
+      awarded_warehouse_items: [],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([{
+      code: "unsupported_new_fact",
+      invariant: "unsupported_new_fact",
+      severity: "medium",
+      source: "unsupportedFactDetector",
+      detail: "item_acquisition_without_fact_or_award",
+    }], "repair"),
+  });
+
+  assert.match(String(result.committedDmRecord.narrative), /没有在现场找到.*已登记物品/);
+  assert.doesNotMatch(String(result.committedDmRecord.narrative), /龙骨圣剑|纳入行囊|装备完成/);
+  assert.deepEqual(result.committedDmRecord.options, [
+    "重新观察当前场景",
+    "检查已有物品和记录",
+    "换一个明确、可核验的行动",
+  ]);
+  assert.equal(result.summary.narrativeGovernanceTelemetry.narrativeGovernanceFinalSafe, true);
+});
+
 test("commitTurn gives an intent-aware knowledge-boundary response", () => {
   const result = commitTurn({
     requestId: "req_secret",
