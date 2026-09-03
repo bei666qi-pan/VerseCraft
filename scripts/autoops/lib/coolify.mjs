@@ -1,7 +1,21 @@
 import { env, logJson, warnJson, writeRuntimeJson } from "./logger.mjs";
 
-const SUCCESS_STATUS_RE = /(success|finished|completed|healthy|running)/i;
-const FAILURE_STATUS_RE = /(fail|failed|error|cancel|exited|unhealthy)/i;
+export function isSuccessfulDeploymentStatus(value) {
+  const status = String(value ?? "").trim().toLowerCase();
+  return ["success", "successful", "finished", "completed", "running:healthy"].includes(status);
+}
+
+export function isFailedDeploymentStatus(value) {
+  const status = String(value ?? "").trim().toLowerCase();
+  return (
+    status === "error" ||
+    status === "exited" ||
+    status === "unhealthy" ||
+    status === "running:unhealthy" ||
+    status.startsWith("fail") ||
+    status.startsWith("cancel")
+  );
+}
 
 export function normalizeDeploymentList(result) {
   if (Array.isArray(result)) return result;
@@ -372,7 +386,7 @@ export class CoolifyClient {
           const applicationStatus = deploymentStatus(application);
           const currentApplicationUpdatedAt = String(application?.last_online_at || application?.updated_at || "");
           if (
-            SUCCESS_STATUS_RE.test(applicationStatus) &&
+            isSuccessfulDeploymentStatus(applicationStatus) &&
             applicationUpdatedAt &&
             currentApplicationUpdatedAt &&
             currentApplicationUpdatedAt !== applicationUpdatedAt
@@ -392,11 +406,11 @@ export class CoolifyClient {
         status,
         response: last,
       });
-      if (SUCCESS_STATUS_RE.test(status)) {
-        return { ok: true, status, response: last, deploymentUuid: observedUuid };
-      }
-      if (FAILURE_STATUS_RE.test(status)) {
+      if (isFailedDeploymentStatus(status)) {
         return { ok: false, status, response: last, deploymentUuid: observedUuid };
+      }
+      if (isSuccessfulDeploymentStatus(status)) {
+        return { ok: true, status, response: last, deploymentUuid: observedUuid };
       }
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }

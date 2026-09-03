@@ -3,10 +3,21 @@ import test from "node:test";
 import {
   CoolifyClient,
   deploymentStatus,
+  isFailedDeploymentStatus,
+  isSuccessfulDeploymentStatus,
   normalizeDeploymentList,
   planApplicationEnvMutation,
   selectTriggeredDeployment,
 } from "./coolify.mjs";
+
+test("Coolify terminal status checks distinguish finished from running health", () => {
+  assert.equal(isSuccessfulDeploymentStatus("finished"), true);
+  assert.equal(isSuccessfulDeploymentStatus("running:healthy"), true);
+  assert.equal(isSuccessfulDeploymentStatus("running"), false);
+  assert.equal(isSuccessfulDeploymentStatus("running:unhealthy"), false);
+  assert.equal(isFailedDeploymentStatus("running:unhealthy"), true);
+  assert.equal(isFailedDeploymentStatus("failed"), true);
+});
 
 test("Coolify API retries a transient connection failure without duplicating a successful mutation", async () => {
   const originalFetch = globalThis.fetch;
