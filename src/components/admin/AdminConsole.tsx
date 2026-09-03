@@ -32,7 +32,7 @@ const when = (v?: string | number | null) => !v ? "尚无记录" : new Date(v).t
 
 async function request<T>(url: string, init?: RequestInit): Promise<AdminApiEnvelope<T>> {
   const response = await fetch(url, { credentials: "include", ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
-  if (response.status === 403) window.location.href = "/saiduhsa";
+  if (response.status === 403) window.location.href = "/admin";
   return readAdminResponseJson<T>(response);
 }
 
@@ -101,7 +101,7 @@ export default function AdminConsole() {
         <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 md:mt-8 md:flex-col" aria-label="后台主导航">
           {DESTINATIONS.map(({ label, icon: Icon }) => <button key={label} onClick={() => setDestination(label)} className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#174d46] ${destination === label ? "bg-[#174d46] text-[#fffaf0]" : "text-[#38574f] hover:bg-[#e2d9ca]"}`}><Icon className="h-4 w-4" />{label}</button>)}
         </nav>
-        <button onClick={async () => { await clearAdminShadowSession(); window.location.href = "/saiduhsa"; }} className="mt-3 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[#6c7771] hover:bg-[#e2d9ca] md:absolute md:bottom-5"><LogOut className="h-4 w-4" />退出后台</button>
+        <button onClick={async () => { await clearAdminShadowSession(); window.location.href = "/admin"; }} className="mt-3 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[#6c7771] hover:bg-[#e2d9ca] md:absolute md:bottom-5"><LogOut className="h-4 w-4" />退出后台</button>
       </aside>
       <div className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
         <header className="flex flex-col gap-4 border-b border-vc-line pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm text-vc-ink-soft">运营中心</p><h1 className="vc-reading-serif mt-1 text-3xl font-semibold">{destination}</h1></div><div className="flex flex-wrap items-center gap-2"><div className="flex rounded-xl border border-vc-line-warm bg-vc-paper-bright p-1" aria-label="查看范围">{[1, 7, 30].map((d) => <button key={d} onClick={() => setDays(d)} className={`rounded-lg px-3 py-1.5 text-xs ${days === d ? "bg-vc-accent/15 text-vc-ink" : "text-vc-ink-soft"}`}>{d === 1 ? "今日" : `${d} 日`}</button>)}</div><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-vc-line-warm bg-vc-paper-bright px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vc-accent"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />刷新</button></div></header>

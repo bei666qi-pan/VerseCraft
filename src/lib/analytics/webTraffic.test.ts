@@ -18,7 +18,8 @@ const VISITOR_B = "b".repeat(24);
 test("web traffic accepts only privacy-minimized public paths and stable anonymous visitor ids", () => {
   assert.equal(normalizeWebTrafficPathname("/play"), "/play");
   assert.equal(normalizeWebTrafficPathname("/play?secret=1"), null);
-  assert.equal(normalizeWebTrafficPathname("/saiduhsa"), null);
+  assert.equal(normalizeWebTrafficPathname("/admin"), null);
+  assert.equal(normalizeWebTrafficPathname("/admin/users"), null);
   assert.equal(normalizeWebTrafficPathname("/api/admin/overview"), null);
   assert.equal(normalizeWebTrafficVisitorId(VISITOR_A), VISITOR_A);
   assert.equal(normalizeWebTrafficVisitorId("short"), null);
@@ -36,7 +37,7 @@ test("page-view request contract rejects malformed and internal-path traffic", (
   const eventId = "event_" + "x".repeat(24);
   assert.deepEqual(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId }), { pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "direct" });
   assert.deepEqual(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "search" }), { pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "search" });
-  assert.equal(parsePageViewRequest({ pathname: "/saiduhsa", visitorId: VISITOR_A, eventId }), null);
+  assert.equal(parsePageViewRequest({ pathname: "/admin", visitorId: VISITOR_A, eventId }), null);
   assert.equal(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId: "bad" }), null);
   assert.equal(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "raw-referrer.example" }), null);
 });

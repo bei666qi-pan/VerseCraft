@@ -44,7 +44,7 @@ test.describe("Admin dashboard partial API failure", () => {
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
 
-    await page.goto("/saiduhsa", { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.goto("/admin", { waitUntil: "domcontentloaded", timeout: 45_000 });
     await expect(page.locator("body")).toBeVisible({ timeout: 15_000 });
 
     await expect(page.locator("select").first()).toBeVisible({ timeout: 20_000 });

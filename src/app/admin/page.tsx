@@ -7,7 +7,7 @@ import { unwrapPageDynamicOnServer, type AppPageDynamicProps } from "@/lib/next/
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function ShadowAdminPage(props: AppPageDynamicProps) {
+export default async function AdminPage(props: AppPageDynamicProps) {
   await unwrapPageDynamicOnServer(props);
   const actor = await requireAdminSession();
 
@@ -18,7 +18,7 @@ export default async function ShadowAdminPage(props: AppPageDynamicProps) {
   try {
     await ensureRuntimeSchema();
   } catch (e) {
-    console.warn("[saiduhsa] ensureRuntimeSchema best-effort failed", e);
+    console.warn("[admin] ensureRuntimeSchema best-effort failed", e);
   }
 
   return <AdminConsole />;

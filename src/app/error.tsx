@@ -8,7 +8,7 @@ import { VerseCraftPaperDivider, VerseCraftPaperMark } from "@/components/VerseC
 
 // Next.js 部署后旧标签页仍持有旧构建里编译出的 Server Action 加密 ID，提交时服务端
 // 报 "Failed to find Server Action ... older or newer deployment"（生产已实测反复出现，
-// 常见于登录/提交类表单，例如 /saiduhsa 的 shadow 登录）。这类错误靠 reset() 重渲染
+// 常见于登录/提交类表单，例如 /admin 的 shadow 登录）。这类错误靠 reset() 重渲染
 // 同一份旧 bundle 没用，必须整页硬刷新才能拿到新构建的 Server Action 清单。
 function isStaleServerActionError(error: Error): boolean {
   return /Failed to find Server Action/i.test(error.message);

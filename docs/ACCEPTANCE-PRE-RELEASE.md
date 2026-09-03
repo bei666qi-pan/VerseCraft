@@ -6,7 +6,7 @@
 
 1. 应用 `drizzle/0019_admin_ai_management.sql`。
 2. 设置并长期保存同一 32 字节 `AI_CONFIG_ENCRYPTION_KEY`。
-3. 登录 `/saiduhsa` → “AI 管理”，添加服务、模型、人民币单价和用途候选。
+3. 登录 `/admin` → “AI 管理”，添加服务、模型、人民币单价和用途候选。
 4. 确认全部变化模型测试成功；向量模型维度与数据库列宽一致。
 5. 验证主用失败时会尝试备用，无故事模型时仍返回既有 `keys_missing` SSE。
 6. 运行 `pnpm test:e2e:contract` 与 `pnpm benchmark:chat:mock`。

@@ -102,7 +102,7 @@ test.describe("Admin duration rendering", () => {
       });
     });
 
-    await page.goto("/saiduhsa", { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.goto("/admin", { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.locator("select").first().waitFor({ timeout: 20_000 });
     await expect(page.locator("body")).toContainText(/1\s*小时\s*1\s*分\s*1\s*秒/, { timeout: 20_000 });
 

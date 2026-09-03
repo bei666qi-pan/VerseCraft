@@ -3,7 +3,7 @@ export const WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN = "^[A-Za-z0-9_-]{16,96}$";
 export const WEB_TRAFFIC_SOURCE_VALUES = ["direct", "internal", "search", "social", "referral"] as const;
 export type WebTrafficSource = (typeof WEB_TRAFFIC_SOURCE_VALUES)[number];
 
-const INTERNAL_PATH_PREFIXES = ["/api", "/saiduhsa", "/preview"] as const;
+const INTERNAL_PATH_PREFIXES = ["/api", "/admin", "/preview"] as const;
 
 export function normalizeWebTrafficPathname(value: unknown): string | null {
   if (typeof value !== "string") return null;

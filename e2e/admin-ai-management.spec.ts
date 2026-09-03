@@ -1,14 +1,16 @@
 import { test, expect } from "@playwright/test";
 
 test("admin gate hides the console from unauthenticated visitors", async ({ page }) => {
-  await page.goto("/saiduhsa");
+  const response = await page.goto("/admin");
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "后台登录" })).toBeVisible();
   await expect(page.getByTestId("admin-ai-management")).toHaveCount(0);
 });
 
 test.describe("authenticated AI console", () => {
   test.skip(!process.env.ADMIN_PASSWORD, "需要 ADMIN_PASSWORD 登录后台");
   test("shows exactly four plain-language destinations without secret-view action", async ({ page }) => {
-    await page.goto("/saiduhsa");
+    await page.goto("/admin");
     await page.getByLabel(/管理密码|后台密码|密码/).fill(process.env.ADMIN_PASSWORD!);
     await page.getByRole("button", { name: /进入|登录/ }).click();
     const nav = page.getByRole("navigation", { name: "后台主导航" });

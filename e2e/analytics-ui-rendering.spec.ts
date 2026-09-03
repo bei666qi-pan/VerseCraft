@@ -40,12 +40,12 @@ test.describe("Admin dashboard UI rendering — no NaN/undefined/null", () => {
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
 
-    await page.goto("/saiduhsa", { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.goto("/admin", { waitUntil: "domcontentloaded", timeout: 45_000 });
     await expect(page.locator("body")).toBeVisible({ timeout: 15_000 });
 
     // 等待 dashboard 加载完成：存在范围选择 <select>
     const dashboardRangeSelect = page.locator("select").first();
-    const fallbackRetryLink = page.locator('a[href="/saiduhsa"]').first();
+    const fallbackRetryLink = page.locator('a[href="/admin"]').first();
     try {
       await dashboardRangeSelect.waitFor({ timeout: 20_000 });
     } catch {

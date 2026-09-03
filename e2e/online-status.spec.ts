@@ -109,7 +109,7 @@ test.describe("在线状态", () => {
       });
     });
 
-    await page.goto("/saiduhsa", { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.goto("/admin", { waitUntil: "domcontentloaded", timeout: 45_000 });
     const select = page.locator("select").first();
     await select.waitFor({ timeout: 20_000 });
 

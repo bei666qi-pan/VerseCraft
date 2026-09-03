@@ -641,7 +641,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
       ]);
       for (const [key, item] of Object.entries({ overview: ov, northStar: ns, journey: j, ai, content: cq, survey, eventHealth: eh, health: h, audit: au })) {
         if (item.status === 403) {
-          window.location.href = "/saiduhsa";
+          window.location.href = "/admin";
           return;
         }
         if (!item.env.ok || item.env.degraded) nextDegraded[key] = item.env.reason ?? "degraded";
@@ -671,7 +671,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
     if (onlyOnline) params.set("onlyOnline", "1");
     const { env, status } = await fetchEnvelope<UsersData>(`/api/admin/users?${params.toString()}`);
     if (status === 403) {
-      window.location.href = "/saiduhsa";
+      window.location.href = "/admin";
       return;
     }
     if (env.data) setUsers(env.data);
@@ -720,7 +720,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
     try {
       const { env, status } = await fetchEnvelope<AiReport>(`/api/admin/ai-insights?range=${range}`, { method: "POST" });
       if (status === 403) {
-        window.location.href = "/saiduhsa";
+        window.location.href = "/admin";
         return;
       }
       if (env.data) setAiReport(env.data);
@@ -738,7 +738,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
   async function openUserDetail(actorKey: string) {
     const { env, status } = await fetchEnvelope<UserDetail>(`/api/admin/users/${encodeURIComponent(actorKey)}`);
     if (status === 403) {
-      window.location.href = "/saiduhsa";
+      window.location.href = "/admin";
       return;
     }
     if (env.data) setUserDetail(env.data);
@@ -749,7 +749,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
     const days = Math.max(1, Math.min(30, Math.trunc(rebuildDays || 3)));
     const { env, status } = await fetchEnvelope<{ ok: boolean; days: number; results: Array<{ ok: boolean }> }>(`/api/admin/rebuild-daily?days=${days}`, { method: "POST" });
     if (status === 403) {
-      window.location.href = "/saiduhsa";
+      window.location.href = "/admin";
       return;
     }
     const failed = env.data?.results?.filter((r) => !r.ok).length ?? 0;
@@ -804,7 +804,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 className="inline-flex items-center gap-2 rounded-lg border border-[#cfc6b7] bg-[#fffaf0] px-3 py-2 text-sm text-[#173f39] transition hover:bg-[#f7eddd]"
                 onClick={async () => {
                   await clearAdminShadowSession();
-                  window.location.href = "/saiduhsa";
+                  window.location.href = "/admin";
                 }}
               >
                 <LogOut className="h-4 w-4" />

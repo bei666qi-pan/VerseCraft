@@ -1,6 +1,6 @@
 # VerseCraft AI 基础设施
 
-运维入口以 [`docs/ai-gateway.md`](ai-gateway.md) 为准。真实 AI 服务、模型、Key、人民币单价和用途候选统一在 `/saiduhsa` → “AI 管理”维护；生产不从环境变量恢复真实服务。
+运维入口以 [`docs/ai-gateway.md`](ai-gateway.md) 为准。真实 AI 服务、模型、Key、人民币单价和用途候选统一在 `/admin` → “AI 管理”维护；生产不从环境变量恢复真实服务。
 
 ## 目录职责
 

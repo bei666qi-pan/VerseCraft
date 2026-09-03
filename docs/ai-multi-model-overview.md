@@ -1,6 +1,6 @@
 # AI 多服务与多模型总览
 
-VerseCraft 支持多个 OpenAI 兼容服务，以及知识检索用的火山多模态向量服务。配置入口是 `/saiduhsa` → “AI 管理”。
+VerseCraft 支持多个 OpenAI 兼容服务，以及知识检索用的火山多模态向量服务。配置入口是 `/admin` → “AI 管理”。
 
 ## 必读索引
 

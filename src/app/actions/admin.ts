@@ -88,7 +88,7 @@ export async function authenticateAdminShadow(
     sessionId: "admin_shadow",
     eventName: "admin_login_success",
     eventTime: new Date(now),
-    page: "/saiduhsa",
+    page: "/admin",
     source: "admin_auth",
     platform: "unknown",
     tokenCost: 0,
@@ -103,7 +103,7 @@ export async function clearAdminShadowSession(): Promise<{ ok: true }> {
   const cookieStore = await cookies();
   const fingerprint = await getAdminRequestFingerprint();
   cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/" });
-  cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/saiduhsa" });
+  cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/admin" });
   await recordAdminAuditLog({
     action: "admin_logout",
     actorId: "shadow_admin",
