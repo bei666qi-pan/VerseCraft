@@ -93,8 +93,8 @@ jobs:
       - name: Multi-turn deterministic regression
         run: pnpm test:playthrough
 
-  live-deepseek-canary:
-    name: live DeepSeek semantic safety gate
+  live-minimax-canary:
+    name: live MiniMax semantic safety gate
     if: github.event_name != 'pull_request'
     needs: offline-hard-gates
     runs-on: ubuntu-latest
@@ -107,15 +107,15 @@ jobs:
       E2E_AI_LIVE: "1"
       BENCHMARK_BASE_URL: http://127.0.0.1:3000
       PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
-      VC_AI_DIRECT_BASE_URL: https://api.deepseek.com
-      VC_AI_DIRECT_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
-      VC_AI_DIRECT_MODEL: deepseek-v4-flash
-      AI_GATEWAY_BASE_URL: https://api.deepseek.com
-      AI_GATEWAY_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
-      AI_MODEL_MAIN: deepseek-v4-flash
-      AI_MODEL_CONTROL: deepseek-v4-flash
-      AI_MODEL_ENHANCE: deepseek-v4-flash
-      AI_MODEL_REASONER: deepseek-v4-flash
+      VC_AI_DIRECT_BASE_URL: https://api.minimaxi.com/v1
+      VC_AI_DIRECT_API_KEY: ${{ secrets.MINIMAX_EVAL_API_KEY }}
+      VC_AI_DIRECT_MODEL: MiniMax-M3
+      AI_GATEWAY_BASE_URL: https://api.minimaxi.com/v1
+      AI_GATEWAY_API_KEY: ${{ secrets.MINIMAX_EVAL_API_KEY }}
+      AI_MODEL_MAIN: MiniMax-M3
+      AI_MODEL_CONTROL: MiniMax-M3
+      AI_MODEL_ENHANCE: MiniMax-M3
+      AI_MODEL_REASONER: MiniMax-M3
       AI_PLAYER_ROLE_CHAIN: main
       AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES: "1"
       AI_MAX_RETRIES: "0"
@@ -145,7 +145,7 @@ jobs:
         shell: bash
         run: |
           if [[ -z "${VC_AI_DIRECT_API_KEY:-}" ]]; then
-            echo "::error::Missing encrypted GitHub Actions secret DEEPSEEK_EVAL_API_KEY. Live AI checks must not silently skip."
+            echo "::error::Missing encrypted GitHub Actions secret MINIMAX_EVAL_API_KEY. Live AI checks must not silently skip."
             exit 1
           fi
 
