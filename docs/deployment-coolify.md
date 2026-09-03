@@ -20,7 +20,7 @@
 
 ### 部署版本与长开标签页
 
-建议每次部署设置 **`NEXT_PUBLIC_BUILD_ID` 或 `BUILD_ID`**（与上次不同，例如 Git commit SHA）。客户端会轮询 `GET /api/build-id`，发现变化后自动 `reload`，避免旧 `_next` 壳与 Server Action 映射错位。
+每次生产部署都由发布工作流将完整 Git commit SHA 写入 **`BUILD_ID`**。客户端会轮询 `GET /api/build-id`，发现变化后自动 `reload`；发布门禁必须同时确认 Gitee 分支 SHA 一致、Coolify 应用为 `running:healthy`、公网 health 业务 JSON 健康且 `/api/build-id` 与目标 SHA 精确一致，不再把旧容器的 HTTP 200 当成发布成功。
 
 - 验证：`GET /api/build-id` 返回的 `buildId` 在每次部署后应变化。
 

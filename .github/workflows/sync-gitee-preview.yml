@@ -53,11 +53,14 @@ jobs:
           fetch-depth: 0
 
       - name: Show deployment target
+        id: revision
         run: |
           set -euo pipefail
+          deploy_sha="$(git rev-parse HEAD)"
           echo "Deployment event: ${GITHUB_EVENT_NAME}"
           echo "Target branch: ${TARGET_BRANCH}"
-          echo "Target ref: ${TARGET_REF}"
+          echo "Target ref: ${deploy_sha}"
+          echo "sha=${deploy_sha}" >> "${GITHUB_OUTPUT}"
 
       - name: Configure git identity
         run: |
@@ -133,16 +136,32 @@ jobs:
             exit "${push_status}"
           fi
 
-          echo "Gitee ${BRANCH_NAME} branch sync completed."
+          target_sha="$(git rev-parse HEAD)"
+          set +e
+          timeout 60s git ls-remote --heads gitee "${BRANCH_NAME}" >/tmp/gitee-heads-after-push.txt
+          verify_status=$?
+          set -e
+          if [ "${verify_status}" -ne 0 ]; then
+            echo "::error::Cannot verify the Gitee branch after push."
+            exit "${verify_status}"
+          fi
+          mirrored_sha="$(awk 'NR == 1 { print $1 }' /tmp/gitee-heads-after-push.txt)"
+          if [ "${mirrored_sha}" != "${target_sha}" ]; then
+            echo "::error::Gitee ${BRANCH_NAME} is ${mirrored_sha:-missing}, expected ${target_sha}."
+            exit 1
+          fi
 
-      - name: Sync production admin secret to Coolify
+          echo "Gitee ${BRANCH_NAME} branch sync completed and SHA verified."
+
+      - name: Sync production release environment to Coolify
         if: env.TARGET_BRANCH == 'main'
         env:
           COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
           COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
           COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-        run: node scripts/autoops/sync-coolify-admin-password.mjs
+          DEPLOY_SHA: ${{ steps.revision.outputs.sha }}
+        run: node scripts/autoops/sync-coolify-release-env.mjs
 
       - name: Trigger Coolify deploy
         id: deploy
@@ -361,28 +380,8 @@ jobs:
         if: steps.deploy.outputs.deployed == 'true'
         env:
           HEALTH_URL: ${{ steps.deploy.outputs.health_url }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${HEALTH_URL}" ]; then
-            echo "::error::Missing health URL for deployed branch."
-            exit 1
-          fi
-
-          echo "Waiting for healthy response from ${HEALTH_URL}."
-          for attempt in $(seq 1 18); do
-            status_code="$(curl --output /tmp/versecraft-health-response.txt --silent --show-error --location --write-out "%{http_code}" "${HEALTH_URL}" || true)"
-
-            if [ "${status_code}" = "200" ]; then
-              echo "Health check passed on attempt ${attempt}."
-              exit 0
-            fi
-
-            echo "Health check attempt ${attempt}/18 returned HTTP ${status_code}."
-            if [ "${attempt}" -lt 18 ]; then
-              sleep 10
-            fi
-          done
-
-          echo "::error::Health check failed after 18 attempts for ${HEALTH_URL}."
-          exit 1
+          EXPECTED_BUILD_ID: ${{ steps.revision.outputs.sha }}
+          COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+          COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+          COOLIFY_APP_UUID: ${{ env.TARGET_BRANCH == 'main' && secrets.COOLIFY_APP_UUID || secrets.COOLIFY_PREVIEW_APP_UUID }}
+        run: node scripts/autoops/verify-deployed-site.mjs --attempts 18 --delayMs 10000
