@@ -126,6 +126,8 @@ jobs:
           let warnings = 0;
 
           for (const file of testFiles) {
+            // This file intentionally contains every forbidden pattern as detector fixtures.
+            if (file.endsWith("src/lib/testing/integrityChecker.test.ts")) continue;
             const content = fs.readFileSync(file, "utf8");
             const lines = content.split("\n");
 

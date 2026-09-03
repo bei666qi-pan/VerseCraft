@@ -81,7 +81,7 @@ jobs:
         run: |
           pnpm eval:detectors:mock
           node scripts/assert-eval-report.mjs \
-            --file .runtime-data/eval-detectors-mock.json \
+            --file .runtime-data/eval/detectors-mock/report.json \
             --require-equal summary.gate=pass
 
       - name: Narrative style hard gate
